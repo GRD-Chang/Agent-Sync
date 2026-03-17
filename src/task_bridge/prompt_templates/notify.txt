@@ -1,0 +1,8 @@
+[TASK_UPDATE]
+job_id={job_id}
+task_id={task_id}
+worker_agent={assigned_agent}
+state={state}
+{detail_path_line}user_chat_id={user_chat_id}
+{result}
+{follow_up}

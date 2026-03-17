@@ -1,0 +1,181 @@
+# OpenClaw Agent Setup
+
+Goals:
+
+- Create `team-leader`, `code-agent`, and `quality-agent` with the OpenClaw CLI
+- Migrate the agent definitions from this repository
+- Install and verify `task-bridge`
+- Configure `tools.exec.pathPrepend` so agents can run `task-bridge` directly
+
+References:
+
+- <https://docs.openclaw.ai/concepts/agent-workspace>
+- <https://docs.openclaw.ai/cli/agents>
+- <https://docs.openclaw.ai/tools/exec>
+
+## 1. Create the 3 agents
+
+First verify that the OpenClaw CLI is available:
+
+```bash
+openclaw --help
+openclaw agents --help
+```
+
+Create 3 isolated workspaces:
+
+```bash
+openclaw agents add team-leader --non-interactive --workspace ~/.openclaw/workspaces/team-leader
+openclaw agents add code-agent --non-interactive --workspace ~/.openclaw/workspaces/code-agent
+openclaw agents add quality-agent --non-interactive --workspace ~/.openclaw/workspaces/quality-agent
+```
+
+Verify:
+
+```bash
+openclaw agents list --json
+```
+
+## 2. Migrate the agent definitions from this repo
+
+This repository already includes:
+
+- `agents/team-leader/*`
+- `agents/code-agent/*`
+- `agents/quality-agent/*`
+- `skills/local/team-leader-orchestrator/SKILL.md`
+- `skills/coding-agent/SKILL.md`
+
+Copy those files into each workspace:
+
+```bash
+REPO_ROOT=/path/to/task-bridge
+
+for agent in team-leader code-agent quality-agent; do
+  mkdir -p "$HOME/.openclaw/workspaces/$agent/memory"
+  cp "$REPO_ROOT/agents/$agent/AGENTS.md" "$HOME/.openclaw/workspaces/$agent/"
+  cp "$REPO_ROOT/agents/$agent/SOUL.md" "$HOME/.openclaw/workspaces/$agent/"
+  cp "$REPO_ROOT/agents/$agent/USER.md" "$HOME/.openclaw/workspaces/$agent/"
+  cp "$REPO_ROOT/agents/$agent/IDENTITY.md" "$HOME/.openclaw/workspaces/$agent/"
+  cp "$REPO_ROOT/agents/$agent/TOOLS.md" "$HOME/.openclaw/workspaces/$agent/"
+done
+```
+
+Sync `IDENTITY.md` into OpenClaw identity settings:
+
+```bash
+for agent in team-leader code-agent quality-agent; do
+  openclaw agents set-identity --workspace "$HOME/.openclaw/workspaces/$agent" --from-identity
+done
+```
+
+Copy the required skills:
+
+```bash
+mkdir -p "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator"
+cp "$REPO_ROOT/skills/local/team-leader-orchestrator/SKILL.md" \
+  "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator/SKILL.md"
+
+for agent in code-agent quality-agent; do
+  mkdir -p "$HOME/.openclaw/workspaces/$agent/skills/coding-agent"
+  cp "$REPO_ROOT/skills/coding-agent/SKILL.md" \
+    "$HOME/.openclaw/workspaces/$agent/skills/coding-agent/SKILL.md"
+done
+```
+
+## 3. Install `task-bridge`
+
+This project is a Python package, so you usually do not need to build a standalone binary. The recommended setup is an editable install:
+
+```bash
+cd /path/to/task-bridge
+python -m pip install -e .
+```
+
+Verify:
+
+```bash
+command -v task-bridge
+task-bridge -h
+```
+
+If you only changed `src/task_bridge/**`, editable install usually does not need to be re-run.
+
+If you do want build artifacts, run:
+
+```bash
+cd /path/to/task-bridge
+python -m pip install build
+python -m build
+```
+
+## 4. Configure `tools.exec.pathPrepend`
+
+Find the directory that contains `task-bridge`:
+
+```bash
+dirname "$(command -v task-bridge)"
+```
+
+Write it into OpenClaw config:
+
+```bash
+TASK_BRIDGE_BIN_DIR="$(dirname "$(command -v task-bridge)")"
+openclaw config set tools.exec.pathPrepend "[\"$TASK_BRIDGE_BIN_DIR\"]"
+```
+
+Verify:
+
+```bash
+openclaw config get tools.exec.pathPrepend
+```
+
+If you just changed `~/.openclaw/openclaw.json`, restart the Gateway:
+
+```bash
+systemctl --user restart openclaw-gateway.service
+```
+
+## 5. Configure Feishu permissions and store the `chat_id`
+
+Reference:
+
+- <https://www.feishu.cn/content/article/7613711414611463386>
+
+After installing the Feishu plugin, complete authorization in Feishu:
+
+```text
+/feishu auth
+```
+
+Verify the installation:
+
+```text
+/feishu start
+```
+
+Notes:
+
+- If you want OpenClaw to send messages as you, also enable the bot permission `im:message.send_as_user`
+- Once the plugin and permissions are ready, ask the agent directly in Feishu: `What is the chat_id for this conversation?`
+
+After you get the `chat_id`, put it in `.env`:
+
+```env
+TASK_BRIDGE_USER_CHAT_ID=oc_xxx
+```
+
+If you run `task-bridge` directly from this repository, use the repo root `.env`.
+
+If you mainly use OpenClaw agents, `~/.openclaw/.env` is the safer default.
+
+## 6. Final check
+
+```bash
+openclaw agents list --json
+openclaw config get tools.exec.pathPrepend
+command -v task-bridge
+task-bridge -h
+```
+
+Once these pass, your OpenClaw agents should be able to run `task-bridge ...` directly.

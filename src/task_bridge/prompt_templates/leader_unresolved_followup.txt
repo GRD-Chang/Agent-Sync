@@ -1,0 +1,13 @@
+[TASK_FOLLOWUP_REQUIRED]
+job_id={job_id}
+user_chat_id={user_chat_id}
+
+以下终态结果在 5 分钟前已通知给你，但当前 task-bridge 中仍没有观察到该 job 下的新 task：
+{source_task_summaries}
+
+请立即执行以下之一：
+1. 创建下一步 task；
+2. 明确判断该 job 已完成，并向用户收口；
+3. 若你决定先等待其他 running task，也请立即向用户同步你的判断、原因和下一步。
+
+不要只复述旧结果，不要只回复 NO_REPLY。如需联系用户，使用上面的飞书 chat_id 向用户发送消息。

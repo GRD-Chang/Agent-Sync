@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "task-bridge"
+version = "0.1.0"
+description = "Minimal local task bridge for team-leader and workers"
+requires-python = ">=3.11"
+
+[project.scripts]
+task-bridge = "task_bridge.cli:main"
+
+[tool.setuptools.package-data]
+task_bridge = ["prompt_templates/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

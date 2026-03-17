@@ -1,0 +1,20 @@
+/coding-agent [TASK_DISPATCH]
+job_id={job_id}
+task_id={task_id}
+task_path={task_path}
+detail_path={detail_path}
+assigned_agent={assigned_agent}
+
+任务 requirement:
+{requirement}
+
+执行要求：
+你需要使用 Codex 完全自主推进该任务，直到 requirement 达成，或明确进入 blocked/failed。
+1. 你已经收到上面的 requirement；同时读取 task.json，确认没有遗漏上下文。
+2. 接到任务后，开始任何实际工作前，必须先通过 task-bridge 将 task 标记为 running。
+3. 执行任务时，使用 task-bridge 持续写回 result，记录关键进展、验证证据和当前判断。
+4. 如果你希望 team-leader 能查看完整执行细节，请在任务进入 done/blocked/failed 前，将 Codex 的具体执行结果写入 detail_path 指向的 detail.md；内容不限定模板。若该文件存在，bridge 会在通知 team-leader 时附带该路径。
+5. 准备结束前，必须对照 requirement 验收结果，明确说明是否满足要求；若不满足，继续修改并再次验证，直到满足 requirement。
+6. 验收通过后，如果当前工作目录位于 Git 仓库，且本轮产生了与任务相关的有效修改，先完成一次只包含当前任务相关改动的 commit。
+7. commit 完成后，才可以通过 task-bridge 将任务标记为 complete；修改 task 状态必须是最后一步。
+8. 最终写回的 result 必须清楚说明：完成了什么、验证证据、是否满足 requirement、风险/限制、以及是否已 commit。

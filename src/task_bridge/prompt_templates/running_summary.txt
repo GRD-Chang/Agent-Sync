@@ -1,0 +1,7 @@
+[RUNNING_TASKS_SUMMARY_REQUEST]
+running_tasks={running_tasks_count}
+user_chat_id={user_chat_id}
+请你查看当前任务状态，通过上面的飞书 chat_id 给我发送总结。若发现任务停滞、阻塞或风险，请主动跟进并给出下一步建议；如需联系用户，使用上面的飞书 chat_id 向用户发送消息。
+
+当前运行中任务：
+{task_summaries}
