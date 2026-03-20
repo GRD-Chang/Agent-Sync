@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
+from starlette.testclient import TestClient
 
 from task_bridge.cli import main
-from task_bridge.dashboard import DashboardQueryService
+from task_bridge.dashboard import DashboardQueryService, create_dashboard_app
 from task_bridge.store import TaskStore
 
 
@@ -86,3 +88,82 @@ def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
     assert overview.queued_tasks == 0
     assert overview.recent_updates == []
     assert [metric.count for metric in overview.task_status_metrics] == [0, 0, 0, 0, 0]
+
+
+def test_dashboard_root_redirects_to_overview(home: Path) -> None:
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"].endswith("/overview")
+
+
+def test_dashboard_overview_route_exposes_frozen_read_only_selectors(home: Path) -> None:
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-shell"' in body
+    assert 'data-testid="dashboard-primary-nav"' in body
+    assert body.count('data-testid="dashboard-nav-') == 6
+    assert 'data-testid="dashboard-page-title"' in body
+    assert 'data-testid="dashboard-overview-hero"' in body
+    assert 'data-testid="dashboard-overview-task-status"' in body
+    assert 'data-testid="dashboard-overview-worker-utilization"' in body
+    assert 'data-testid="dashboard-overview-worker-list"' in body
+    assert 'data-testid="dashboard-overview-recent-updates"' in body
+    assert 'data-testid="dashboard-overview-empty-state"' in body
+    assert 'data-testid="dashboard-overview-error-state"' not in body
+
+
+@pytest.mark.parametrize(
+    ("route", "page_key"),
+    [
+        ("/jobs", "jobs"),
+        ("/tasks", "tasks"),
+        ("/worker-queue", "worker-queue"),
+        ("/alerts", "alerts"),
+        ("/health", "health"),
+    ],
+)
+def test_dashboard_placeholder_routes_keep_shell_only_contract(
+    home: Path,
+    route: str,
+    page_key: str,
+) -> None:
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(route)
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-shell"' in body
+    assert 'data-testid="dashboard-primary-nav"' in body
+    assert 'data-testid="dashboard-page-title"' in body
+    assert 'data-testid="dashboard-boundary-note"' in body
+    assert f'data-testid="dashboard-{page_key}-shell"' in body
+    assert re.search(
+        rf'data-testid="dashboard-nav-{re.escape(page_key)}"[^>]*aria-current="page"',
+        body,
+    )
+    assert "<form" not in body
+    assert "<button" not in body
+    assert "<input" not in body
+    assert "<textarea" not in body
+    assert "<select" not in body
+
+
+def test_dashboard_overview_error_state_preserves_shell(home: Path) -> None:
+    job_dir = home / "jobs" / "job-broken"
+    job_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text("{broken", encoding="utf-8")
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview")
+
+    assert response.status_code == 500
+    body = response.text
+    assert 'data-testid="dashboard-shell"' in body
+    assert 'data-testid="dashboard-primary-nav"' in body
+    assert 'data-testid="dashboard-page-title"' in body
+    assert 'data-testid="dashboard-overview-error-state"' in body

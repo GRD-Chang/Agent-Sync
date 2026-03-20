@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero-panel" aria-labelledby="overview-title">
+<section class="hero-panel" aria-labelledby="overview-title" data-testid="dashboard-overview-hero">
   <div class="hero-copy">
     <p class="eyebrow">Overview</p>
-    <h2 id="overview-title">Live dispatch posture for the current task bridge.</h2>
+    <h2 id="overview-title" data-testid="dashboard-page-title">Live dispatch posture for the current task bridge.</h2>
     <p class="hero-text">
       This page stays read-only and reports only what already exists in the local task-bridge store:
       task states, worker utilization, queue depth, and recent task updates.
@@ -34,7 +34,7 @@
   </dl>
 </section>
 
-<section class="section-block" aria-labelledby="task-status-title">
+<section class="section-block" aria-labelledby="task-status-title" data-testid="dashboard-overview-task-status">
   <div class="section-heading">
     <p class="eyebrow">Task states</p>
     <h2 id="task-status-title">Task Status Summary</h2>
@@ -50,7 +50,7 @@
   </div>
 </section>
 
-<section class="section-block util-section" aria-labelledby="worker-utilization-title">
+<section class="section-block util-section" aria-labelledby="worker-utilization-title" data-testid="dashboard-overview-worker-utilization">
   <div class="section-heading">
     <p class="eyebrow">Workers</p>
     <h2 id="worker-utilization-title">Worker Utilization Summary</h2>
@@ -74,7 +74,7 @@
     </article>
   </div>
 
-  <div class="worker-list" aria-label="Worker lanes">
+  <div class="worker-list" aria-label="Worker lanes" data-testid="dashboard-overview-worker-list">
     {% for worker in overview.workers %}
     <article class="worker-card">
       <header>
@@ -106,14 +106,14 @@
   </div>
 </section>
 
-<section class="section-block recent-section" aria-labelledby="recent-updates-title">
+<section class="section-block recent-section" aria-labelledby="recent-updates-title" data-testid="dashboard-overview-recent-updates">
   <div class="section-heading">
     <p class="eyebrow">Activity</p>
     <h2 id="recent-updates-title">Recent Updates</h2>
   </div>
 
   {% if overview.is_empty %}
-  <div class="state-panel empty-state" role="status" aria-live="polite">
+  <div class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-overview-empty-state">
     <h3>No jobs or tasks yet</h3>
     <p>
       The dashboard is connected and readable, but the store is currently empty. Create a job and tasks through

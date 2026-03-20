@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="placeholder-panel" aria-labelledby="placeholder-title">
+<section class="placeholder-panel" aria-labelledby="placeholder-title" data-testid="dashboard-{{ active_page }}-shell">
   <p class="eyebrow">{{ page_title }}</p>
-  <h2 id="placeholder-title">{{ page_title }} page shell is in place.</h2>
+  <h2 id="placeholder-title" data-testid="dashboard-page-title">{{ page_title }} page shell is in place.</h2>
   <p>{{ placeholder_copy }}</p>
   <div class="state-panel">
     <h3>MVP boundary</h3>

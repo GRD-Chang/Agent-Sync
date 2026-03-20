@@ -8,12 +8,12 @@
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
-    <div class="page-shell">
+    <div class="page-shell" data-testid="dashboard-shell">
       <header class="masthead">
         <div class="masthead-copy">
           <p class="eyebrow">task-bridge / read-only dispatch wall</p>
           <h1>Dashboard foundation</h1>
-          <p class="masthead-note">
+          <p class="masthead-note" data-testid="dashboard-boundary-note">
             Built on the existing job/task JSON store, worker queue semantics, and daemon state model.
           </p>
         </div>
@@ -23,11 +23,12 @@
         </aside>
       </header>
 
-      <nav class="top-nav" aria-label="Primary">
+      <nav class="top-nav" aria-label="Primary" data-testid="dashboard-primary-nav">
         <ul>
           {% for item in nav_items %}
           <li>
             <a
+              data-testid="dashboard-nav-{{ item.key }}"
               href="{{ item.href }}"
               {% if item.key == active_page %}aria-current="page"{% endif %}
             >{{ item.label }}</a>

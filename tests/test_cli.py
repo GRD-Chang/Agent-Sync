@@ -31,9 +31,7 @@ def parse_last_json(capsys: pytest.CaptureFixture[str]) -> dict:
 
 def run_python_snippet(snippet: str) -> subprocess.CompletedProcess[str]:
     repo_root = Path(__file__).resolve().parents[1]
-    env = dict(os.environ)
-    source_path = str(repo_root / "src")
-    env["PYTHONPATH"] = source_path + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env = _subprocess_env(repo_root)
     return subprocess.run(
         [sys.executable, "-c", snippet],
         cwd=repo_root,
@@ -42,6 +40,34 @@ def run_python_snippet(snippet: str) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
+
+
+def run_module_cli(
+    argv: list[str],
+    *,
+    env_overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    repo_root = Path(__file__).resolve().parents[1]
+    env = _subprocess_env(repo_root)
+    if env_overrides:
+        env.update(env_overrides)
+    return subprocess.run(
+        [sys.executable, "-m", "task_bridge", *argv],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _subprocess_env(repo_root: Path) -> dict[str, str]:
+    env = dict(os.environ)
+    source_path = str(repo_root / "src")
+    env["PYTHONPATH"] = source_path + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env.pop("TASK_BRIDGE_HOME", None)
+    env.pop("TASK_BRIDGE_USER_CHAT_ID", None)
+    return env
 
 
 @pytest.fixture()
@@ -83,6 +109,19 @@ def test_dashboard_package_import_keeps_web_app_module_lazy() -> None:
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "False"
+
+
+def test_create_job_cli_smoke_uses_isolated_task_bridge_home(tmp_path: Path) -> None:
+    isolated_home = tmp_path / "isolated-home"
+    completed = run_module_cli(
+        ["create-job", "--title", "smoke test"],
+        env_overrides={"TASK_BRIDGE_HOME": str(isolated_home)},
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    job_id = payload["id"]
+    assert (isolated_home / "jobs" / job_id / "job.json").exists()
 
 
 @pytest.mark.parametrize(
