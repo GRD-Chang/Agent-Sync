@@ -6,7 +6,6 @@ import sys
 import time
 from typing import Any
 
-from .dashboard import run_dashboard
 from .runtime import BridgeRuntime
 from .store import TaskStore, infer_worker_status
 
@@ -353,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
                     leader_reminder_seconds=args.leader_reminder_seconds,
                 )
             case "dashboard":
-                run_dashboard(home=store.home, host=args.host, port=args.port)
+                _run_dashboard_command(home=store.home, host=args.host, port=args.port)
                 return 0
             case _:
                 raise ValueError(f"unsupported command: {args.command}")
@@ -396,6 +395,12 @@ def _run_daemon(
         if iterations and rounds >= iterations:
             return 0
         time.sleep(poll_seconds)
+
+
+def _run_dashboard_command(*, home: Any, host: str, port: int) -> None:
+    from .dashboard import run_dashboard
+
+    run_dashboard(home=home, host=host, port=port)
 
 
 def _print_payload(payload: Any, *, as_json: bool) -> int:

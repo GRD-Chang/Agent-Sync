@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -26,6 +29,21 @@ def parse_last_json(capsys: pytest.CaptureFixture[str]) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
+def run_python_snippet(snippet: str) -> subprocess.CompletedProcess[str]:
+    repo_root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ)
+    source_path = str(repo_root / "src")
+    env["PYTHONPATH"] = source_path + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    return subprocess.run(
+        [sys.executable, "-c", snippet],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 @pytest.fixture()
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("TASK_BRIDGE_HOME", str(tmp_path))
@@ -47,6 +65,24 @@ def test_top_level_help_lists_command_summaries(
     assert "create-task" in help_text and "创建 task，可选分配给 worker" in help_text
     assert "dispatch-once" in help_text and "执行一轮派发扫描" in help_text
     assert "daemon" in help_text and "循环执行派发与通知" in help_text
+
+
+def test_cli_import_does_not_eager_load_dashboard_app_module() -> None:
+    completed = run_python_snippet(
+        "import sys; import task_bridge.cli; print('task_bridge.dashboard.app' in sys.modules)"
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "False"
+
+
+def test_dashboard_package_import_keeps_web_app_module_lazy() -> None:
+    completed = run_python_snippet(
+        "import sys; import task_bridge.dashboard; print('task_bridge.dashboard.app' in sys.modules)"
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "False"
 
 
 @pytest.mark.parametrize(
