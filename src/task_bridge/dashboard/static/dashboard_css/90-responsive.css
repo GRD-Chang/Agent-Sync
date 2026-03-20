@@ -21,6 +21,11 @@
     align-items: start;
   }
 
+  .page-chrome-tools {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
   .pagination-bar {
     grid-template-columns: 1fr;
   }
@@ -70,5 +75,14 @@
   .signal-card-grid,
   .health-check-grid {
     gap: 0.85rem;
+  }
+
+  .font-links {
+    gap: 0.45rem;
+  }
+
+  .font-link {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

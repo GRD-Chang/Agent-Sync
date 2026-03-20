@@ -213,6 +213,7 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert 'data-font-preset="sans"' in body
     assert 'data-testid="dashboard-locale-switch"' in body
     assert 'data-testid="dashboard-page-chrome"' in body
+    assert 'data-testid="dashboard-page-tools"' in body
     assert 'data-testid="dashboard-breadcrumbs"' in body
     assert 'data-testid="dashboard-locale-en"' in body
     assert 'data-testid="dashboard-locale-zh-cn"' in body
@@ -237,6 +238,19 @@ def test_dashboard_font_switcher_renders_samples_and_default_state(home: Path) -
     assert re.search(r'data-testid="dashboard-font-editorial"[^>]*aria-pressed="false"', body)
     assert "默认推荐，适合中英混排长时间阅读" in body
     assert "更偏工程面板感，适合信息密集页面" in body
+
+
+def test_dashboard_font_switcher_moves_below_masthead_into_page_chrome(home: Path) -> None:
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview")
+
+    assert response.status_code == 200
+    body = response.text
+    masthead = re.search(r'<header class="masthead">[\s\S]*?</header>', body)
+
+    assert masthead is not None
+    assert 'data-testid="dashboard-font-switch"' not in masthead.group(0)
+    assert body.index('data-testid="dashboard-page-chrome"') < body.index('data-testid="dashboard-font-switch"')
 
 
 def test_dashboard_i18n_catalogs_cover_same_surface() -> None:

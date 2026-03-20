@@ -102,6 +102,21 @@ async function getTestIdWidth(page, testId) {
   }, testId);
 }
 
+async function expectSelectorContained(page, selector) {
+  const metrics = await page.locator(selector).first().evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+      right: rect.right,
+      viewport: window.innerWidth,
+    };
+  });
+
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(metrics.right).toBeLessThanOrEqual(metrics.viewport + 1);
+}
+
 async function getFontSnapshot(page) {
   return page.evaluate(() => ({
     body: getComputedStyle(document.body).fontFamily,
@@ -301,6 +316,42 @@ async function seedDenseDashboard(homeDir) {
   }
 
   return { job, tasksByState };
+}
+
+async function seedOverflowDashboard(homeDir) {
+  const job = runBridgeJson(homeDir, ["create-job", "--title", "overflow containment review"]);
+  const longAgent =
+    "agent-with-an-extremely-long-routing-label-that-needs-to-wrap-inside-job-detail-cards-without-blowing-out-the-panel-width-1234567890";
+  const longToken =
+    "metadata-chain-without-natural-breakpoints-abcdefghijklmnopqrstuvwxyz-1234567890-abcdefghijklmnopqrstuvwxyz";
+  const task = runBridgeJson(homeDir, [
+    "create-task",
+    "--job",
+    job.id,
+    "--requirement",
+    `Need to inspect ${longToken} and confirm the dashboard keeps the card contained.`,
+    "--assign",
+    longAgent,
+  ]);
+  runBridgeJson(homeDir, [
+    "start",
+    task.id,
+    "--job",
+    job.id,
+    "--result",
+    `result ${longToken} ${longToken}`,
+  ]);
+
+  const taskJsonPath = path.join(homeDir, "jobs", job.id, "tasks", `${task.id}.json`);
+  const payload = JSON.parse(await fs.readFile(taskJsonPath, "utf-8"));
+  payload.assignedAgent = longAgent;
+  payload.notifyTarget = `team-leader/${longToken}/${longToken}`;
+  payload.detailPath = path.join(homeDir, "jobs", job.id, "details", `${longToken}-${longToken}.md`);
+  await fs.mkdir(path.dirname(payload.detailPath), { recursive: true });
+  await fs.writeFile(payload.detailPath, `# Overflow detail\n\n${longToken}\n`, "utf-8");
+  await fs.writeFile(taskJsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+
+  return { job, task, longAgent };
 }
 
 test("overview renders the live happy path shell", async ({ page }) => {
@@ -557,6 +608,8 @@ test("font presets switch and persist without breaking dense bilingual layout", 
     await page.goto(`${server.baseUrl}/tasks?job=${seeded.job.id}&lang=zh-CN`);
 
     await expect(page.getByTestId("dashboard-font-switch")).toBeVisible();
+    await expect(page.locator('[data-testid="dashboard-page-chrome"] [data-testid="dashboard-font-switch"]')).toBeVisible();
+    await expect(page.locator(".masthead [data-testid='dashboard-font-switch']")).toHaveCount(0);
     await expect(page.locator("html")).toHaveAttribute("data-font-preset", "sans");
     await expect(page.locator("body")).toHaveAttribute("data-font-preset", "sans");
     await expect(page.getByTestId("dashboard-font-sans")).toHaveAttribute("aria-pressed", "true");
@@ -592,6 +645,33 @@ test("font presets switch and persist without breaking dense bilingual layout", 
     await expect(page.locator("body")).toHaveAttribute("data-font-preset", "mono");
     await expect(page.getByTestId("dashboard-font-mono")).toHaveAttribute("aria-pressed", "true");
     await expectNoHorizontalOverflow(page);
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("job detail task cards keep long agent labels and metadata contained", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-overflow-"));
+  const seeded = await seedOverflowDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4186);
+  const cardSelector = `[data-testid="dashboard-jobs-task-card-${seeded.task.id}"]`;
+
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${server.baseUrl}/jobs?job=${seeded.job.id}`);
+
+    await expect(page.locator(cardSelector)).toBeVisible();
+    await expect(page.locator(cardSelector)).toContainText("agent-with-an-extremely-long-routing-label");
+    await expectNoHorizontalOverflow(page);
+    await expectSelectorContained(page, cardSelector);
+    await expectSelectorContained(page, `${cardSelector} .task-preview-meta`);
+
+    await page.locator(cardSelector).click();
+    await expect(page.getByTestId("dashboard-jobs-task-detail")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await expectSelectorContained(page, '[data-testid="dashboard-jobs-task-detail"] .detail-card');
+    await expectSelectorContained(page, '[data-testid="dashboard-jobs-task-detail"] .meta-grid');
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

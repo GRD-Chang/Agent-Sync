@@ -47,24 +47,6 @@
             </div>
             <p class="locale-note">{{ ui.shell.locale_note }}</p>
           </section>
-          <section class="locale-switcher" aria-label="{{ ui.shell.font_label }}" data-testid="dashboard-font-switch">
-            <p class="aside-label">{{ ui.shell.font_label }}</p>
-            <div class="font-links" role="group" aria-label="{{ ui.shell.font_label }}">
-              {% for option in font_options %}
-              <button
-                type="button"
-                class="font-link{% if option.is_default %} is-active{% endif %}"
-                data-font-option="{{ option.key }}"
-                data-testid="dashboard-font-{{ option.key }}"
-                aria-pressed="{% if option.is_default %}true{% else %}false{% endif %}"
-              >
-                <span class="font-link-label">{{ option.label }}</span>
-                <span class="font-link-sample">{{ option.sample }}</span>
-              </button>
-              {% endfor %}
-            </div>
-            <p class="locale-note">{{ ui.shell.font_note }}</p>
-          </section>
           <aside class="masthead-aside" aria-label="{{ ui.shell.framing_label }}">
             <p class="aside-label">{{ ui.shell.scope_label }}</p>
             <p class="aside-body" data-testid="dashboard-boundary-note">{{ ui.shell.scope_note }}</p>
@@ -105,6 +87,28 @@
             <a class="back-link" data-testid="dashboard-back-link" href="{{ page_chrome.back_href }}">{{ page_chrome.back_label }}</a>
             {% endif %}
           </div>
+          <section class="page-chrome-tools" aria-label="{{ ui.shell.font_label }}" data-testid="dashboard-page-tools">
+            <div class="page-chrome-copy">
+              <p class="aside-label">{{ ui.shell.font_label }}</p>
+              <p class="page-chrome-note">{{ ui.shell.font_note }}</p>
+            </div>
+            <div class="font-links" role="group" aria-label="{{ ui.shell.font_label }}" data-testid="dashboard-font-switch">
+              {% for option in font_options %}
+              <button
+                type="button"
+                class="font-link{% if option.is_default %} is-active{% endif %}"
+                data-font-option="{{ option.key }}"
+                data-testid="dashboard-font-{{ option.key }}"
+                aria-label="{{ option.label }}. {{ option.sample }}"
+                title="{{ option.sample }}"
+                aria-pressed="{% if option.is_default %}true{% else %}false{% endif %}"
+              >
+                <span class="font-link-label">{{ option.label }}</span>
+                <span class="font-link-sample">{{ option.sample }}</span>
+              </button>
+              {% endfor %}
+            </div>
+          </section>
         </section>
         {% block content %}{% endblock %}
       </main>

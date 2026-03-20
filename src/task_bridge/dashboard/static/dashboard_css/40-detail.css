@@ -43,12 +43,23 @@
   min-width: 0;
 }
 
+.detail-stack > *,
+.detail-card,
+.detail-title-row > *,
+.meta-grid > *,
+.timeline-copy {
+  min-width: 0;
+}
+
 .detail-callout p,
 .markdown-preview p,
 .markdown-preview li,
 .markdown-preview blockquote,
 .timeline-item p,
-.meta-grid dd {
+.meta-grid dd,
+.detail-card h3,
+.detail-title-row p,
+.timeline-item time {
   overflow-wrap: anywhere;
 }
 
@@ -121,6 +132,10 @@
 .detail-title-copy {
   display: grid;
   gap: 0.3rem;
+}
+
+.detail-title-row {
+  flex-wrap: wrap;
 }
 
 .detail-title-copy p {
