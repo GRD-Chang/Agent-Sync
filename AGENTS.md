@@ -13,6 +13,32 @@
 - 如果修改了 `pyproject.toml`、依赖、console script 入口或包元数据，再重新安装：
   - `cd <repo-root>`
   - `python -m pip install -e .`
+- 如果新增了 dashboard / Web 相关依赖，也按“依赖已变更”处理：先执行 `python -m pip install -e .`，再继续运行 CLI、测试或 dashboard 验证
+
+## Repo Hygiene
+
+- 必须持续维护 `.gitignore`，不要让本地临时文件、测试产物、构建产物、依赖目录或其他无关文件进入代码仓库
+- 如果开发过程中引入了新的本地产物目录或缓存文件，提交前先更新 `.gitignore`
+- 提交前先检查 `git status`，确保只包含本次任务相关的源码、测试和文档改动
+- 像 `node_modules/`、`.tmp/`、`test-results/`、浏览器下载目录、日志文件这类无关内容，不应进入版本库
+
+## Commit Workflow
+
+- 如果任务包含“提交代码”“生成 commit message”“整理 staged changes”等动作，使用 skill: `Git Commit Helper`
+- 提交信息遵循 conventional commits，且一次提交只包含单一逻辑变更，避免把无关文件混入同一个 commit
+
+## Dashboard Development Guardrails
+
+- 开发 dashboard 时，必须保证原始 `task-bridge` CLI 仍然可用，不能因为新增页面、路由、模板或 Web 依赖而破坏已有命令
+- 严禁让非 dashboard 命令对 dashboard 依赖产生强耦合；例如不能让 `task-bridge -h`、`create-job`、`list-tasks` 这类基础命令因为 dashboard 的导入或初始化而失败
+- 如果新增依赖、改动 `pyproject.toml` 或引入新的模板引擎 / Web 框架，先安装依赖，再验证 CLI 没有回归，再继续开发 dashboard
+- dashboard 相关改动完成后，至少回归验证：
+  - `task-bridge -h`
+  - `task-bridge create-job --title "smoke test"`（建议配合隔离的 `TASK_BRIDGE_HOME`）
+  - `python -m pytest -q`
+- 如果 dashboard 本身也要验证，再额外执行：
+  - `task-bridge dashboard -h`
+  - 启动 dashboard 后做一次只读页面 smoke test
 
 ## CLI Path
 
@@ -40,9 +66,11 @@
 
 - CLI 可用性验证：
   - `task-bridge -h`
+- 若改动涉及 dashboard，除 dashboard 自身验证外，还必须先确认原始 CLI 未被破坏：
+  - `TASK_BRIDGE_HOME=/tmp/task-bridge-smoke-<marker> task-bridge create-job --title "smoke test"`
 - 测试建议在仓库根目录执行：
   - `cd <repo-root>`
-  - `PYTHONPATH=src pytest -q`
+  - `python -m pytest -q`
 
 ## Safe E2E Testing
 

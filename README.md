@@ -99,6 +99,23 @@ task-bridge daemon --poll-seconds 10 --worker-reminder-seconds 900 --leader-remi
 - `--worker-reminder-seconds 900`: Worker 执行任务的防挂起提醒间隔（默认 15 分钟）。若超时未更新进度，Daemon 会提醒 Worker 推进。
 - `--leader-reminder-seconds 3600`: Leader 关注运行中任务的提醒间隔（默认 60 分钟）。如果有正在执行的长程任务，Daemon 会按此间隔定期提醒 Leader 获取最新进度，防止 Leader 长时间失去对任务执行状态的感知。
 
+如果你希望关闭终端后仍然持续运行，可以使用 `nohup`：
+
+```bash
+mkdir -p .task-bridge
+nohup task-bridge daemon \
+  --poll-seconds 60 \
+  --worker-reminder-seconds 900 \
+  --leader-reminder-seconds 7200 \
+  > .task-bridge/daemon.log 2>&1 &
+echo $! > .task-bridge/daemon.pid
+```
+
+- 查看日志：`tail -f .task-bridge/daemon.log`
+- 查看进程：`ps -fp "$(cat .task-bridge/daemon.pid)"`
+- 停止 Daemon：`kill "$(cat .task-bridge/daemon.pid)"`
+- 若需要自定义数据目录，可在命令前加环境变量，例如：`TASK_BRIDGE_HOME=/tmp/task-bridge-demo nohup task-bridge daemon ...`
+
 ### 3. 给 Team Leader 下发需求
 
 在你的 IM（如飞书）或终端中，直接与 **Team Leader** 对话：
