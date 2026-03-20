@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel" aria-labelledby="overview-title">
+  <div class="hero-copy">
+    <p class="eyebrow">Overview</p>
+    <h2 id="overview-title">Live dispatch posture for the current task bridge.</h2>
+    <p class="hero-text">
+      This page stays read-only and reports only what already exists in the local task-bridge store:
+      task states, worker utilization, queue depth, and recent task updates.
+    </p>
+  </div>
+  <dl class="hero-stats" aria-label="Overview framing">
+    <div>
+      <dt>Current job</dt>
+      <dd>{{ overview.current_job_id or "None selected" }}</dd>
+    </div>
+    <div>
+      <dt>Jobs tracked</dt>
+      <dd>{{ overview.jobs_count }}</dd>
+    </div>
+    <div>
+      <dt>Tasks tracked</dt>
+      <dd>{{ overview.tasks_count }}</dd>
+    </div>
+    <div>
+      <dt>Generated</dt>
+      <dd>{{ overview.generated_at }}</dd>
+    </div>
+    <div class="hero-home">
+      <dt>Store home</dt>
+      <dd>{{ overview.home_path }}</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="section-block" aria-labelledby="task-status-title">
+  <div class="section-heading">
+    <p class="eyebrow">Task states</p>
+    <h2 id="task-status-title">Task Status Summary</h2>
+  </div>
+  <div class="summary-grid">
+    {% for metric in overview.task_status_metrics %}
+    <article class="summary-card summary-{{ metric.state }}">
+      <p class="summary-label">{{ metric.label }}</p>
+      <p class="summary-value">{{ metric.count }}</p>
+      <p class="summary-note">{{ metric.description }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="section-block util-section" aria-labelledby="worker-utilization-title">
+  <div class="section-heading">
+    <p class="eyebrow">Workers</p>
+    <h2 id="worker-utilization-title">Worker Utilization Summary</h2>
+  </div>
+
+  <div class="util-grid">
+    <article class="util-card">
+      <p class="summary-label">Busy / total</p>
+      <p class="summary-value">{{ overview.busy_workers }} / {{ overview.worker_count }}</p>
+      <p class="summary-note">{{ overview.idle_workers }} idle workers remain available.</p>
+    </article>
+    <article class="util-card">
+      <p class="summary-label">Queued tasks</p>
+      <p class="summary-value">{{ overview.queued_tasks }}</p>
+      <p class="summary-note">Counted from existing per-agent queue semantics.</p>
+    </article>
+    <article class="util-card">
+      <p class="summary-label">Terminal tasks</p>
+      <p class="summary-value">{{ overview.terminal_count }}</p>
+      <p class="summary-note">Derived from done / blocked / failed task states.</p>
+    </article>
+  </div>
+
+  <div class="worker-list" aria-label="Worker lanes">
+    {% for worker in overview.workers %}
+    <article class="worker-card">
+      <header>
+        <h3>{{ worker.agent }}</h3>
+        <span class="status-pill status-{{ worker.status }}">{{ worker.status }}</span>
+      </header>
+      <dl>
+        <div>
+          <dt>Running</dt>
+          <dd>{{ worker.running_task_id or "None" }}</dd>
+        </div>
+        <div>
+          <dt>Queued</dt>
+          <dd>{{ worker.queued }}</dd>
+        </div>
+        <div>
+          <dt>Head of line</dt>
+          <dd>
+            {% if worker.next_queued_task_id %}
+            {{ worker.next_queued_task_id }} / {{ worker.next_queued_job_id }}
+            {% else %}
+            None
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="section-block recent-section" aria-labelledby="recent-updates-title">
+  <div class="section-heading">
+    <p class="eyebrow">Activity</p>
+    <h2 id="recent-updates-title">Recent Updates</h2>
+  </div>
+
+  {% if overview.is_empty %}
+  <div class="state-panel empty-state" role="status" aria-live="polite">
+    <h3>No jobs or tasks yet</h3>
+    <p>
+      The dashboard is connected and readable, but the store is currently empty. Create a job and tasks through
+      `task-bridge` to populate the dispatch wall.
+    </p>
+  </div>
+  {% elif overview.recent_updates %}
+  <div class="recent-list">
+    {% for item in overview.recent_updates %}
+    <article class="recent-item">
+      <header>
+        <div>
+          <h3>{{ item.task_id }}</h3>
+          <p>{{ item.job_id }} / {{ item.assigned_agent }}</p>
+        </div>
+        <div class="recent-meta">
+          <span class="status-pill status-{{ item.state }}">{{ item.state }}</span>
+          <time datetime="{{ item.updated_at }}">{{ item.updated_at }}</time>
+        </div>
+      </header>
+      <p><strong>{{ item.summary_label }}:</strong> {{ item.summary_text }}</p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="state-panel empty-state" role="status" aria-live="polite">
+    <h3>No recent updates available</h3>
+    <p>Tasks exist, but none expose a recent update summary yet.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

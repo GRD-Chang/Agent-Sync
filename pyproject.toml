@@ -7,12 +7,21 @@ name = "task-bridge"
 version = "0.1.0"
 description = "Minimal local task bridge for team-leader and workers"
 requires-python = ">=3.11"
+dependencies = [
+  "jinja2>=3.1",
+  "starlette>=0.37",
+  "uvicorn>=0.30",
+]
 
 [project.scripts]
 task-bridge = "task_bridge.cli:main"
 
 [tool.setuptools.package-data]
-task_bridge = ["prompt_templates/*.txt"]
+task_bridge = [
+  "prompt_templates/*.txt",
+  "dashboard/templates/*.html",
+  "dashboard/static/*.css",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

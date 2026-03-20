@@ -6,6 +6,7 @@ import sys
 import time
 from typing import Any
 
+from .dashboard import run_dashboard
 from .runtime import BridgeRuntime
 from .store import TaskStore, infer_worker_status
 
@@ -222,6 +223,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="存在 running task 时向 team-leader 发送汇总提醒的间隔秒数；0 表示每轮都发",
     )
 
+    dashboard = subparsers.add_parser(
+        "dashboard",
+        help="启动只读 dashboard Web 界面",
+        description="启动 task-bridge 的只读 dashboard。Overview 为 MVP 页面，其余一级导航先保留壳层。",
+        formatter_class=HelpFormatter,
+    )
+    dashboard.add_argument("--host", default="127.0.0.1", help="dashboard 监听地址")
+    dashboard.add_argument("--port", type=int, default=8000, help="dashboard 监听端口")
+
     return parser
 
 
@@ -229,7 +239,6 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     store = TaskStore()
     store.ensure_dirs()
-    runtime = BridgeRuntime(home=store.home)
 
     try:
         match args.command:
@@ -279,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
                 payload = {"workers": infer_worker_status(store.list_tasks(all_jobs=True))}
                 return _print_payload(payload, as_json=args.as_json)
             case "queue":
+                runtime = BridgeRuntime(home=store.home)
                 return _print_payload(runtime.queue_for_agent(args.agent), as_json=args.as_json)
             case "claim":
                 task = store.update_task(
@@ -319,6 +329,7 @@ def main(argv: list[str] | None = None) -> int:
                     as_json=True,
                 )
             case "dispatch-once":
+                runtime = BridgeRuntime(home=store.home)
                 payload = runtime.dispatch_once()
                 return _print_payload(
                     {
@@ -329,9 +340,11 @@ def main(argv: list[str] | None = None) -> int:
                     as_json=args.as_json,
                 )
             case "notify":
+                runtime = BridgeRuntime(home=store.home)
                 notified = runtime.notify_task(args.task_id, job_id=args.job, force=args.force)
                 return _print_payload({"task_id": args.task_id, "notified": notified}, as_json=True)
             case "daemon":
+                runtime = BridgeRuntime(home=store.home)
                 return _run_daemon(
                     runtime,
                     poll_seconds=args.poll_seconds,
@@ -339,6 +352,9 @@ def main(argv: list[str] | None = None) -> int:
                     worker_reminder_seconds=args.worker_reminder_seconds,
                     leader_reminder_seconds=args.leader_reminder_seconds,
                 )
+            case "dashboard":
+                run_dashboard(home=store.home, host=args.host, port=args.port)
+                return 0
             case _:
                 raise ValueError(f"unsupported command: {args.command}")
     except FileNotFoundError as exc:

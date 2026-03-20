@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="placeholder-panel" aria-labelledby="error-title">
+  <p class="eyebrow">Overview</p>
+  <h2 id="error-title">{{ error_title }}</h2>
+  <p>The navigation shell is still available, but the Overview payload could not be built from the local store.</p>
+  <div class="state-panel error-state" role="alert">
+    <h3>Store read failed</h3>
+    <p>{{ error_message }}</p>
+  </div>
+</section>
+{% endblock %}

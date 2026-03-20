@@ -1,0 +1,11 @@
+{
+  "name": "task-bridge-dashboard",
+  "private": true,
+  "scripts": {
+    "playwright:install": "playwright install chromium",
+    "test:playwright": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
+  }
+}

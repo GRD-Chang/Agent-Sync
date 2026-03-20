@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="placeholder-panel" aria-labelledby="placeholder-title">
+  <p class="eyebrow">{{ page_title }}</p>
+  <h2 id="placeholder-title">{{ page_title }} page shell is in place.</h2>
+  <p>{{ placeholder_copy }}</p>
+  <div class="state-panel">
+    <h3>MVP boundary</h3>
+    <p>No write controls, no speculative metrics, and no extra domain fields are introduced in this slice.</p>
+  </div>
+</section>
+{% endblock %}
