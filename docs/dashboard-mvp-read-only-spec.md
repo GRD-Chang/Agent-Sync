@@ -1,14 +1,14 @@
 ## Execution Spec Patch: Agent-Sync dashboard MVP（只读版）
 
-This Slice B freeze is anchored to the current dashboard evidence in `src/task_bridge/dashboard/app.py`, `src/task_bridge/dashboard/templates/`, `src/task_bridge/dashboard/queries.py`, `tests/test_dashboard.py`, and `tests/playwright/dashboard.smoke.spec.js`.
+This reconciliation patch is anchored to the current dashboard evidence in `src/task_bridge/dashboard/app.py`, `src/task_bridge/dashboard/templates/`, `src/task_bridge/dashboard/queries.py`, `tests/test_dashboard.py`, and `tests/playwright/dashboard.smoke.spec.js`.
 
 ### Frozen Scope
 - Dashboard MVP remains a read-only web surface over the existing local `task-bridge` store and queue semantics. It may only read facts already represented by `job.json`, task JSON, worker queue derivation, and daemon-readable state; it must not add new persistence, mutation endpoints, background jobs, or daemon control paths.
 - Primary routes are frozen for MVP: `/overview`, `/jobs`, `/tasks`, `/worker-queue`, `/alerts`, `/health`.
-- `/overview`, `/jobs`, and `/tasks` are the only live data pages in MVP v1. `/worker-queue`, `/alerts`, and `/health` stay shell-only until a later spec update explicitly promotes them.
-- Any previously attempted promotion of `/worker-queue`, `/alerts`, or `/health` is out of scope for this slice and must be rolled back to the documented shell-only boundary.
+- All six primary routes are live read-only pages in the reconciled MVP.
+- `/worker-queue`, `/alerts`, and `/health` are live only within their base scope: summary + evidence views derived from existing store / queue / daemon facts, with no new models or write controls.
 - Overview data is limited to facts already derivable from the current query layer: current job id, job count, task count, generated timestamp, store home path, core task-state counts (`queued`, `running`, `done`, `blocked`, `failed`), worker utilization / queue snapshots, and recent task updates derived from existing task fields.
-- Read-only error handling is in scope. If the store is unreadable, the dashboard keeps the navigation shell and renders an explicit overview error state instead of failing CLI startup or hiding the shell.
+- Read-only error handling is in scope. If store or daemon data is unreadable, the dashboard keeps the navigation shell and renders an explicit live-page error or warning state instead of failing CLI startup or hiding the shell.
 - Out of scope unless a future spec explicitly reopens scope: create/update/delete actions, status transitions, claim/start/complete/block/fail controls, queue reordering, bulk actions, search/filter/sort/pagination, auth, per-user settings, live push/polling, charts, exports, alert rule configuration, and daemon lifecycle controls.
 
 ### Per-page Boundary Table
@@ -22,18 +22,18 @@ This Slice B freeze is anchored to the current dashboard evidence in `src/task_b
   - Must include: mounted route at `/tasks`; page identity and active-nav state; read-only task list/detail skeletons tied only to the existing task JSON contract; a query-string detail entry path; read-only `detail.md` preview placeholder / controlled rendering; a minimal timeline framework derived only from existing task timestamps and `_scheduler` timestamps; explicit empty state; and stable selectors for list/detail/preview/timeline coverage.
   - Must not include: task detail editor, status transition buttons, result or `detail_path` editing, reassignment, bulk actions, filters/search/sort/pagination controls, log tailing, or any new event/state model beyond existing store facts.
 - Worker & Queue
-  - Must include: mounted route at `/worker-queue`; page identity and active-nav state; explicit boundary copy that worker lanes and queue drill-down are deferred and any later live data must stay tied to existing per-agent queue semantics.
+  - Must include: mounted route at `/worker-queue`; page identity and active-nav state; current job id, generated timestamp, workers tracked, and store home; worker occupancy summary (`running_tasks`, `busy_workers`, `assigned_queue_depth`, `unassigned_queue_depth`); per-agent lane snapshots derived only from existing queue semantics; queued-task coverage for unassigned tasks; an explicit no-activity empty state; and stable selectors for hero/summary/lane/unassigned coverage.
   - Must not include: dispatch/reset buttons, queue reordering, worker claim/reassign controls, daemon controls, throughput/SLA charts, or any synthetic capacity metric not already derivable from current store state.
 - Alerts
-  - Must include: mounted route at `/alerts`; page identity and active-nav state; explicit boundary copy that alert summaries are deferred and current MVP only exposes terminal-state / follow-up semantics indirectly through overview facts.
+  - Must include: mounted route at `/alerts`; page identity and active-nav state; current job id, generated timestamp, pending follow-up count, and store home; blocked / failed / overdue follow-up summary derived from existing task JSON and `_scheduler` fields; a blocked/failed risk list; an unresolved leader follow-up list; an explicit no-alert empty state; and stable selectors for hero/summary/risk/follow-up coverage.
   - Must not include: alert inbox, notification replay, acknowledge/snooze flows, rule configuration, badge counters backed by new data sources, websockets, or toast centers.
 - Health
-  - Must include: mounted route at `/health`; page identity and active-nav state; explicit boundary copy that daemon/store health drill-down is deferred, and current MVP health evidence is limited to successful overview rendering versus unreadable-store failure handling.
+  - Must include: mounted route at `/health`; page identity and active-nav state; current job id, generated timestamp, `daemon_state.json` path, and store home; a summary of jobs tracked, tasks tracked, worker prompt cache entries, and last leader running notice; readable checks derived from existing store / daemon facts; warning states when daemon or record data cannot be read; and stable selectors for hero/summary/check coverage.
   - Must not include: daemon start/stop/restart, filesystem repair tools, arbitrary host metrics, log viewers, or write-side diagnostics.
 
 ### i18n MVP Contract
-- MVP ships one consistent default UI locale across nav labels, page titles, placeholder copy, empty states, error states, and Playwright assertions. Mixed-language top-level UI on the same page is a reject unless the text is a literal CLI command, route, field name, or state id shown in code formatting.
-- Current repo evidence baseline is English-only dashboard templates and browser smoke. A future localization slice may switch the dashboard UI to Simplified Chinese, but it must convert all shipped dashboard pages and browser assertions together in the same change; partial translation is not acceptable.
+- MVP ships one consistent default UI locale across nav labels, page titles, boundary copy, empty states, error states, and Playwright assertions. Mixed-language top-level UI on the same page is a reject unless the text is a literal CLI command, route, field name, or state id shown in code formatting.
+- Current repo evidence baseline is English-only dashboard templates and browser smoke across all six pages. A future localization slice may switch the dashboard UI to Simplified Chinese, but it must convert all shipped dashboard pages and browser assertions together in the same change; partial translation is not acceptable.
 - Runtime locale switchers, browser-language negotiation, translation catalogs, per-user locale preference, and pluralization infrastructure are out of scope for the read-only MVP.
 - Internal identifiers stay stable and untranslated: route paths, JSON keys, CLI command names, task state ids, and stable selectors.
 
@@ -44,9 +44,10 @@ This Slice B freeze is anchored to the current dashboard evidence in `src/task_b
 - Minimum overview hooks: `dashboard-overview-hero`, `dashboard-overview-task-status`, `dashboard-overview-worker-utilization`, `dashboard-overview-worker-list`, `dashboard-overview-recent-updates`, `dashboard-overview-empty-state`, and `dashboard-overview-error-state`.
 - Minimum jobs hooks: `dashboard-jobs-page`, `dashboard-jobs-list`, `dashboard-jobs-detail`, and `dashboard-jobs-empty-state`.
 - Minimum tasks hooks: `dashboard-tasks-page`, `dashboard-tasks-list`, `dashboard-tasks-detail`, `dashboard-tasks-detail-preview`, `dashboard-tasks-timeline`, and `dashboard-tasks-empty-state`.
-- Minimum placeholder hooks while pages remain shell-only: `dashboard-worker-queue-shell`, `dashboard-alerts-shell`, and `dashboard-health-shell`.
-- Read-only smoke matrix is frozen as follows: `/` redirects to `/overview`; primary nav renders all six destinations; overview covers the happy path, empty-store state, and unreadable-store `500` shell; jobs covers the live list/detail shell and explicit empty-store state; tasks covers the live list/detail shell plus `detail.md` preview / timeline presence and explicit empty-store state; each remaining placeholder route returns `200`, marks the correct nav item active, shows the boundary note, and exposes no write controls.
-- When a placeholder page becomes live in a later approved slice, that same change must update selectors, expand Playwright coverage, and amend this spec instead of silently widening behavior.
+- Minimum worker & queue hooks: `dashboard-worker-queue-hero`, `dashboard-worker-queue-summary`, `dashboard-worker-queue-lanes`, `dashboard-worker-queue-unassigned`, and `dashboard-worker-queue-empty-state`.
+- Minimum alerts hooks: `dashboard-alerts-hero`, `dashboard-alerts-summary`, `dashboard-alerts-risk-list`, `dashboard-alerts-followups`, and `dashboard-alerts-empty-state`.
+- Minimum health hooks: `dashboard-health-hero`, `dashboard-health-summary`, and `dashboard-health-checks`.
+- Read-only smoke matrix is frozen as follows: `/` redirects to `/overview`; primary nav renders all six destinations; overview covers the happy path, empty-store state, and unreadable-store `500` shell; jobs covers the live list/detail shell and explicit empty-store state; tasks covers the live list/detail shell plus `detail.md` preview / timeline presence and explicit empty-store state; worker & queue covers the live hero/summary/lane/unassigned base page with no write controls; alerts covers the live hero/summary/risk/follow-up base page with no write controls; health covers the live hero/summary/check base page with no write controls.
 
 ### Regression Gate Contract
 - A dashboard-affecting slice is not done until `task-bridge -h` succeeds and still lists the baseline CLI commands without pulling dashboard web dependencies into plain CLI startup.
@@ -68,5 +69,5 @@ This Slice B freeze is anchored to the current dashboard evidence in `src/task_b
 - Use the following requirement rider in future dashboard slices:
 
 ```text
-This dashboard slice must comply with docs/dashboard-mvp-read-only-spec.md. State explicitly which page(s) from the Per-page Boundary Table are in scope, keep every other page frozen at its documented boundary, and do not add write actions, new persistence, or background refresh behavior unless this spec is updated in the same change. Keep the shipped UI locale consistent per the i18n MVP Contract, add or preserve stable dashboard data-testid selectors for any touched template, update Playwright smoke coverage in the same slice when a page boundary changes, pass the Regression Gate Contract, and end with clean git status plus .gitignore coverage for any new local artifacts.
+This dashboard slice must comply with docs/dashboard-mvp-read-only-spec.md. State explicitly which page(s) from the Per-page Boundary Table are in scope, keep every other page within its documented read-only boundary, and do not add write actions, new persistence, or background refresh behavior unless this spec is updated in the same change. Keep the shipped UI locale consistent per the i18n MVP Contract, add or preserve stable dashboard data-testid selectors for any touched template, update Playwright smoke coverage in the same slice when a page boundary changes, pass the Regression Gate Contract, and end with clean git status plus .gitignore coverage for any new local artifacts.
 ```

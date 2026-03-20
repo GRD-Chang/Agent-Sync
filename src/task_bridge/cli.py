@@ -226,8 +226,9 @@ def build_parser() -> argparse.ArgumentParser:
         "dashboard",
         help="启动只读 dashboard Web 界面",
         description=(
-            "启动 task-bridge 的只读 dashboard。Overview / Jobs / Tasks 为只读 MVP 页面；"
-            "Worker & Queue / Alerts / Health 仍保留壳层。"
+            "启动 task-bridge 的只读 dashboard。"
+            "Overview / Jobs / Tasks / Worker & Queue / Alerts / Health 为只读 MVP 页面；"
+            "Worker & Queue / Alerts / Health 保持基础只读范围。"
         ),
         formatter_class=HelpFormatter,
     )

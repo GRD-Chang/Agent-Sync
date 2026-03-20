@@ -53,8 +53,8 @@ def test_dashboard_help_describes_read_only_shell(capsys: pytest.CaptureFixture[
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
     assert "启动 task-bridge 的只读 dashboard" in help_text
-    assert "Overview / Jobs / Tasks 为只读 MVP 页面" in help_text
-    assert "Worker & Queue / Alerts / Health 仍保留壳层" in help_text
+    assert "Overview / Jobs / Tasks / Worker & Queue / Alerts / Health 为只读 MVP 页面" in help_text
+    assert "Worker & Queue / Alerts / Health 保持基础只读范围" in help_text
     assert "--host" in help_text
     assert "--port" in help_text
 
@@ -71,7 +71,7 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert "MVP scope" in body
     assert "Task status summary" in body
     assert "Dashboard foundation" in body
-    assert "Overview, Jobs, and Tasks are live." in body
+    assert "All six primary pages are live and read-only." in body
 
 
 def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) -> None:
@@ -160,6 +160,91 @@ def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
     assert [block.kind for block in tasks.selected_task.detail_preview.blocks] == ["heading", "list"]
     assert [event.key for event in tasks.selected_task.timeline] == ["created", "updated", "dispatch"]
     assert tasks.selected_task.result == "actively working"
+
+
+def seed_operational_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
+    seeded = seed_dashboard_store(home)
+    store = TaskStore(home)
+
+    task_a3 = store.create_task(job_id=seeded["job_a"]["id"], requirement="triage backlog")
+    task_b2 = store.create_task(job_id=seeded["job_b"]["id"], requirement="failed req", assigned_agent="ops-agent")
+    store.update_task(task_b2["id"], job_id=seeded["job_b"]["id"], state="failed", result="worker crashed")
+
+    task_b1_record = store.load_task(seeded["task_b1"]["id"], job_id=seeded["job_b"]["id"])
+    task_b1_record["_scheduler"]["final_notified_at"] = "2026-03-19T09:00:00Z"
+    task_b1_record["_scheduler"]["leader_followup_due_at"] = "2026-03-19T10:00:00Z"
+    store.save_task(task_b1_record)
+
+    task_b2_record = store.load_task(task_b2["id"], job_id=seeded["job_b"]["id"])
+    task_b2_record["_scheduler"]["final_notified_at"] = "2026-03-20T08:00:00Z"
+    store.save_task(task_b2_record)
+
+    store.save_daemon_state(
+        {
+            "worker_last_prompt_at": {
+                "code-agent": "2026-03-20T09:15:00Z",
+                "quality-agent": "2026-03-20T09:20:00Z",
+                "review-agent": "2026-03-20T09:30:00Z",
+            },
+            "leader_last_running_notice_at": "2026-03-20T11:45:00Z",
+        }
+    )
+
+    return {
+        **seeded,
+        "task_a3": task_a3,
+        "task_b2": task_b2,
+    }
+
+
+def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> None:
+    seeded = seed_operational_dashboard_store(home)
+
+    worker_queue = DashboardQueryService(home).worker_queue()
+
+    assert worker_queue.worker_count == 4
+    assert worker_queue.busy_workers == 1
+    assert worker_queue.idle_workers == 3
+    assert worker_queue.running_tasks == 1
+    assert worker_queue.assigned_queue_depth == 1
+    assert worker_queue.unassigned_queue_depth == 1
+    assert worker_queue.has_activity is True
+    lanes = {lane.agent: lane for lane in worker_queue.lanes}
+    assert lanes["quality-agent"].running_task_id == seeded["task_a2"]["id"]
+    assert [task.task_id for task in lanes["code-agent"].queued_tasks] == [seeded["task_a1"]["id"]]
+    assert [task.task_id for task in worker_queue.unassigned_queued_tasks] == [seeded["task_a3"]["id"]]
+
+
+def test_dashboard_alerts_query_builds_live_base_snapshot(home: Path) -> None:
+    seeded = seed_operational_dashboard_store(home)
+
+    alerts = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts()
+
+    assert alerts.blocked_count == 1
+    assert alerts.failed_count == 1
+    assert alerts.pending_followups_count == 1
+    assert alerts.overdue_followups_count == 1
+    assert alerts.has_alerts is True
+    assert {task.task_id for task in alerts.risk_tasks} == {seeded["task_b1"]["id"], seeded["task_b2"]["id"]}
+    assert alerts.followup_tasks[0].task_id == seeded["task_b1"]["id"]
+    assert alerts.followup_tasks[0].is_overdue is True
+
+
+def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
+    seed_operational_dashboard_store(home)
+
+    health = DashboardQueryService(home).health()
+
+    assert health.jobs_count == 2
+    assert health.tasks_count == 5
+    assert health.worker_prompt_entries == 3
+    assert health.leader_last_running_notice_at == "2026-03-20 11:45 UTC"
+    assert {check.key: check.status for check in health.checks} == {
+        "store-home": "ok",
+        "records": "ok",
+        "daemon-state": "ok",
+        "prompt-cache": "ok",
+    }
 
 
 def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
@@ -291,33 +376,67 @@ def test_dashboard_tasks_route_explicit_empty_state(home: Path) -> None:
     assert "No tasks yet" in body
 
 
-@pytest.mark.parametrize(
-    ("route", "page_key"),
-    [
-        ("/worker-queue", "worker-queue"),
-        ("/alerts", "alerts"),
-        ("/health", "health"),
-    ],
-)
-def test_dashboard_placeholder_routes_keep_shell_only_contract(
-    home: Path,
-    route: str,
-    page_key: str,
-) -> None:
+def test_dashboard_worker_queue_route_renders_live_base_page(home: Path) -> None:
+    seeded = seed_operational_dashboard_store(home)
+
     with TestClient(create_dashboard_app(home)) as client:
-        response = client.get(route)
+        response = client.get("/worker-queue")
 
     assert response.status_code == 200
     body = response.text
-    assert 'data-testid="dashboard-shell"' in body
-    assert 'data-testid="dashboard-primary-nav"' in body
-    assert 'data-testid="dashboard-page-title"' in body
-    assert 'data-testid="dashboard-boundary-note"' in body
-    assert f'data-testid="dashboard-{page_key}-shell"' in body
-    assert re.search(
-        rf'data-testid="dashboard-nav-{re.escape(page_key)}"[^>]*aria-current="page"',
-        body,
-    )
+    assert 'data-testid="dashboard-worker-queue-hero"' in body
+    assert 'data-testid="dashboard-worker-queue-summary"' in body
+    assert 'data-testid="dashboard-worker-queue-lanes"' in body
+    assert 'data-testid="dashboard-worker-queue-unassigned"' in body
+    assert seeded["task_a1"]["id"] in body
+    assert seeded["task_a3"]["id"] in body
+    assert "quality-agent" in body
+    assert 'data-testid="dashboard-worker-queue-empty-state"' not in body
+    assert re.search(r'data-testid="dashboard-nav-worker-queue"[^>]*aria-current="page"', body)
+    assert "<form" not in body
+    assert "<button" not in body
+    assert "<input" not in body
+    assert "<textarea" not in body
+    assert "<select" not in body
+
+
+def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
+    seeded = seed_operational_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/alerts")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-alerts-hero"' in body
+    assert 'data-testid="dashboard-alerts-summary"' in body
+    assert 'data-testid="dashboard-alerts-risk-list"' in body
+    assert 'data-testid="dashboard-alerts-followups"' in body
+    assert seeded["task_b1"]["id"] in body
+    assert seeded["task_b2"]["id"] in body
+    assert "worker crashed" in body
+    assert re.search(r'data-testid="dashboard-nav-alerts"[^>]*aria-current="page"', body)
+    assert "<form" not in body
+    assert "<button" not in body
+    assert "<input" not in body
+    assert "<textarea" not in body
+    assert "<select" not in body
+
+
+def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:
+    seed_operational_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-health-hero"' in body
+    assert 'data-testid="dashboard-health-summary"' in body
+    assert 'data-testid="dashboard-health-checks"' in body
+    assert "daemon_state.json" in body
+    assert "2026-03-20 11:45 UTC" in body
+    assert re.search(r'data-testid="dashboard-nav-health"[^>]*aria-current="page"', body)
     assert "<form" not in body
     assert "<button" not in body
     assert "<input" not in body

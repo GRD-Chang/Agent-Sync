@@ -14,10 +14,7 @@ const navItems = [
   { key: "alerts", label: "Alerts", route: "/alerts" },
   { key: "health", label: "Health", route: "/health" },
 ];
-const liveSliceBItems = navItems.filter((item) =>
-  ["jobs", "tasks"].includes(item.key),
-);
-const placeholderItems = navItems.filter((item) =>
+const liveBaseItems = navItems.filter((item) =>
   ["worker-queue", "alerts", "health"].includes(item.key),
 );
 
@@ -134,6 +131,7 @@ async function seedLiveDashboard(homeDir) {
   const taskA2Payload = JSON.parse(await fs.readFile(taskA2JsonPath, "utf-8"));
   taskA2Payload._scheduler.last_dispatch_at = taskA2Payload.updatedAt;
   await fs.writeFile(taskA2JsonPath, `${JSON.stringify(taskA2Payload, null, 2)}\n`, "utf-8");
+  const taskA3 = runBridgeJson(homeDir, ["create-task", "--job", jobA.id, "--requirement", "triage backlog"]);
 
   const jobB = runBridgeJson(homeDir, ["create-job", "--title", "job-b"]);
   const taskB1 = runBridgeJson(homeDir, [
@@ -146,8 +144,45 @@ async function seedLiveDashboard(homeDir) {
     "review-agent",
   ]);
   runBridgeJson(homeDir, ["block", taskB1.id, "--job", jobB.id, "--result", "waiting on input"]);
+  const taskB1JsonPath = path.join(homeDir, "jobs", jobB.id, "tasks", `${taskB1.id}.json`);
+  const taskB1Payload = JSON.parse(await fs.readFile(taskB1JsonPath, "utf-8"));
+  taskB1Payload._scheduler.final_notified_at = "2026-03-19T09:00:00Z";
+  taskB1Payload._scheduler.leader_followup_due_at = "2026-03-19T10:00:00Z";
+  await fs.writeFile(taskB1JsonPath, `${JSON.stringify(taskB1Payload, null, 2)}\n`, "utf-8");
 
-  return { jobA, taskA1, taskA2, jobB, taskB1 };
+  const taskB2 = runBridgeJson(homeDir, [
+    "create-task",
+    "--job",
+    jobB.id,
+    "--requirement",
+    "failed req",
+    "--assign",
+    "ops-agent",
+  ]);
+  runBridgeJson(homeDir, ["fail", taskB2.id, "--job", jobB.id, "--result", "worker crashed"]);
+  const taskB2JsonPath = path.join(homeDir, "jobs", jobB.id, "tasks", `${taskB2.id}.json`);
+  const taskB2Payload = JSON.parse(await fs.readFile(taskB2JsonPath, "utf-8"));
+  taskB2Payload._scheduler.final_notified_at = "2026-03-20T08:00:00Z";
+  await fs.writeFile(taskB2JsonPath, `${JSON.stringify(taskB2Payload, null, 2)}\n`, "utf-8");
+
+  await fs.writeFile(
+    path.join(homeDir, "daemon_state.json"),
+    `${JSON.stringify(
+      {
+        worker_last_prompt_at: {
+          "code-agent": "2026-03-20T09:15:00Z",
+          "quality-agent": "2026-03-20T09:20:00Z",
+          "review-agent": "2026-03-20T09:30:00Z",
+        },
+        leader_last_running_notice_at: "2026-03-20T11:45:00Z",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+
+  return { jobA, taskA1, taskA2, taskA3, jobB, taskB1, taskB2 };
 }
 
 test("overview renders the live happy path shell", async ({ page }) => {
@@ -161,7 +196,7 @@ test("overview renders the live happy path shell", async ({ page }) => {
     await expect(page.getByTestId("dashboard-shell")).toBeVisible();
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
+      "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
     );
     for (const item of navItems) {
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveText(item.label);
@@ -213,7 +248,7 @@ test("jobs and tasks render live read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-jobs-list")).toContainText("job-a");
     await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("queued req");
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
+      "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
     );
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
 
@@ -246,21 +281,37 @@ test("jobs and tasks render explicit empty states", async ({ page }) => {
   }
 });
 
-test("worker queue, alerts, and health remain shell-only placeholders", async ({ page }) => {
-  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-shell-slice-b-"));
+test("worker queue, alerts, and health render live read-only base pages", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-live-base-"));
+  const seeded = await seedLiveDashboard(homeDir);
   const server = await startDashboard(homeDir, 4177);
 
   try {
-    for (const item of placeholderItems) {
+    for (const item of liveBaseItems) {
       await page.goto(`${server.baseUrl}${item.route}`);
-      await expect(page.getByTestId(`dashboard-${item.key}-shell`)).toBeVisible();
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-        "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
+        "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
       );
-      await expect(page.getByTestId("dashboard-page-title")).toContainText(item.label);
       await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
     }
+
+    await page.goto(`${server.baseUrl}/worker-queue`);
+    await expect(page.getByTestId("dashboard-worker-queue-hero")).toBeVisible();
+    await expect(page.getByTestId("dashboard-worker-queue-summary")).toContainText("Running tasks");
+    await expect(page.getByTestId("dashboard-worker-queue-lanes")).toContainText("quality-agent");
+    await expect(page.getByTestId("dashboard-worker-queue-unassigned")).toContainText(seeded.taskA3.id);
+
+    await page.goto(`${server.baseUrl}/alerts`);
+    await expect(page.getByTestId("dashboard-alerts-hero")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-summary")).toContainText("Blocked tasks");
+    await expect(page.getByTestId("dashboard-alerts-risk-list")).toContainText(seeded.taskB2.id);
+    await expect(page.getByTestId("dashboard-alerts-followups")).toContainText(seeded.taskB1.id);
+
+    await page.goto(`${server.baseUrl}/health`);
+    await expect(page.getByTestId("dashboard-health-hero")).toBeVisible();
+    await expect(page.getByTestId("dashboard-health-summary")).toContainText("Worker prompt cache entries");
+    await expect(page.getByTestId("dashboard-health-checks")).toContainText("daemon_state.json");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

@@ -22,7 +22,7 @@ _CATALOGS: dict[str, dict[str, Any]] = {
             "title": "Dashboard foundation",
             "note": "Built on the existing job/task JSON store, worker queue semantics, and daemon state model.",
             "scope_label": "MVP scope",
-            "scope_note": "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
+            "scope_note": "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
             "primary_nav_label": "Primary",
         },
         "common": {
@@ -265,9 +265,9 @@ _CATALOGS: dict[str, dict[str, Any]] = {
             "copy": {
                 "jobs": "The Jobs page is live and read-only in this slice. If this shell ever appears, treat it as a regression and keep the page tied to existing job.json records only.",
                 "tasks": "The Tasks page is live and read-only in this slice. If this shell ever appears, treat it as a regression and keep the page tied to the existing task JSON contract only.",
-                "worker-queue": "The Worker & Queue page stays a shell-only placeholder in this slice. Any future live data must stay read-only and tied to the existing per-agent queue semantics.",
-                "alerts": "The Alerts page stays a shell-only placeholder in this slice. Any future live data must stay limited to blocked / failed states and unresolved leader follow-up timestamps already present in task metadata.",
-                "health": "The Health page stays a shell-only placeholder in this slice. Any future live data must stay limited to readable daemon and store evidence already present on disk.",
+                "worker-queue": "The Worker & Queue page is live and read-only in this slice. If this shell ever appears, treat it as a regression and keep the page tied to existing per-agent queue semantics only.",
+                "alerts": "The Alerts page is live and read-only in this slice. If this shell ever appears, treat it as a regression and keep the page limited to blocked / failed states and unresolved leader follow-up timestamps already present in task metadata.",
+                "health": "The Health page is live and read-only in this slice. If this shell ever appears, treat it as a regression and keep the page limited to readable daemon and store evidence already present on disk.",
             },
         },
         "status": {
