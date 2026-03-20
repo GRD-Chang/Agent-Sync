@@ -1,0 +1,74 @@
+@media (max-width: 900px) {
+  .masthead,
+  .hero-panel,
+  .route-panel,
+  .browse-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .item-grid,
+  .task-preview-grid,
+  .queue-layout,
+  .alerts-layout,
+  .lane-grid,
+  .signal-card-grid,
+  .health-check-grid,
+  .status-ribbon {
+    grid-template-columns: 1fr;
+  }
+
+  .page-chrome-row {
+    align-items: start;
+  }
+
+  .pagination-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .recent-item header,
+  .worker-card header,
+  .list-card-header,
+  .status-group-header,
+  .task-preview-header,
+  .detail-title-row,
+  .timeline-item header {
+    flex-direction: column;
+  }
+
+  .recent-meta,
+  .task-preview-meta,
+  .status-group-meta {
+    align-items: start;
+    justify-items: start;
+  }
+
+  .status-group-meta p {
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    width: min(100% - 1rem, 1180px);
+    padding-top: 1rem;
+  }
+
+  .masthead,
+  .hero-panel,
+  .section-block,
+  .route-panel,
+  .placeholder-panel {
+    padding: 1rem;
+  }
+
+  .hero-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .util-grid,
+  .lane-grid,
+  .signal-card-grid,
+  .health-check-grid {
+    gap: 0.85rem;
+  }
+}

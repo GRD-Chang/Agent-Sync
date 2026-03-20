@@ -1,0 +1,78 @@
+:root {
+  --bg: #f3ebdf;
+  --panel: rgba(253, 250, 243, 0.82);
+  --panel-strong: rgba(255, 252, 247, 0.96);
+  --ink: #1e1a16;
+  --muted: #5d564d;
+  --line: rgba(30, 26, 22, 0.12);
+  --accent: #d96a32;
+  --accent-deep: #a74b1f;
+  --teal: #2c6d70;
+  --olive: #617239;
+  --maroon: #7a3838;
+  --shadow: 0 24px 60px rgba(44, 31, 16, 0.12);
+  --font-display: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(217, 106, 50, 0.2), transparent 32%),
+    radial-gradient(circle at 85% 12%, rgba(44, 109, 112, 0.18), transparent 28%),
+    linear-gradient(180deg, #faf4ec 0%, var(--bg) 55%, #efe4d4 100%);
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 62px,
+      rgba(30, 26, 22, 0.03) 62px,
+      rgba(30, 26, 22, 0.03) 63px
+    );
+}
+
+:root[data-font-preset="editorial"],
+body[data-font-preset="editorial"] {
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+  --font-body: "Charter", "Georgia", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif;
+  --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+}
+
+:root[data-font-preset="precision"],
+body[data-font-preset="precision"] {
+  --font-display: "IBM Plex Sans", "Bahnschrift", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-body: "IBM Plex Sans", "Aptos", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-ui: "IBM Plex Sans", "Aptos", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+}
+
+:root[data-font-preset="mono"],
+body[data-font-preset="mono"] {
+  --font-display: "JetBrains Mono", "IBM Plex Mono", "Sarasa Mono SC", "SFMono-Regular", monospace;
+  --font-body: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-ui: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(130deg, rgba(255, 255, 255, 0.24), transparent 40%),
+    radial-gradient(circle at bottom right, rgba(122, 56, 56, 0.16), transparent 26%);
+}

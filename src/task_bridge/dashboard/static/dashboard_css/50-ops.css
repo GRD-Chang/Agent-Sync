@@ -1,0 +1,128 @@
+.ops-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.ops-page .hero-copy,
+.ops-page .hero-stats,
+.ops-page .detail-title-copy,
+.ops-page .detail-title-row > *,
+.ops-page .task-preview-header > * {
+  min-width: 0;
+}
+
+.ops-page .hero-stats dd,
+.ops-page h2,
+.ops-page h3,
+.ops-page h4,
+.ops-page p,
+.ops-page .status-pill,
+.ops-page .section-note {
+  overflow-wrap: anywhere;
+}
+
+.queue-layout,
+.alerts-layout {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+
+.queue-layout {
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+}
+
+.alerts-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lane-grid,
+.signal-card-grid,
+.health-check-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.lane-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.signal-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.health-check-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-top: 1rem;
+}
+
+.lane-card,
+.signal-card,
+.health-check-card {
+  height: 100%;
+  display: grid;
+  align-content: start;
+}
+
+.lane-card,
+.signal-card,
+.health-check-card,
+.queue-panel .task-preview-card {
+  border-top-width: 4px;
+}
+
+.lane-card--busy {
+  border-top-color: rgba(44, 109, 112, 0.72);
+}
+
+.lane-card--idle {
+  border-top-color: rgba(97, 114, 57, 0.68);
+}
+
+.signal-card--blocked,
+.signal-card--due {
+  border-top-color: rgba(185, 138, 42, 0.72);
+}
+
+.signal-card--failed {
+  border-top-color: rgba(122, 56, 56, 0.76);
+}
+
+.signal-card--queued,
+.signal-card--scheduled {
+  border-top-color: rgba(217, 106, 50, 0.74);
+}
+
+.health-check-card--ok {
+  border-top-color: rgba(97, 114, 57, 0.7);
+}
+
+.health-check-card--warn {
+  border-top-color: rgba(185, 138, 42, 0.72);
+}
+
+.ops-page .detail-title-row,
+.ops-page .task-preview-header {
+  flex-wrap: wrap;
+}
+
+.ops-page .task-preview-meta {
+  justify-content: flex-start;
+}
+
+.ops-page .detail-callout {
+  margin-top: 1rem;
+}
+
+.ops-page .task-preview-list--queue {
+  margin-top: 0.9rem;
+}
+
+.queue-panel .task-preview-card {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.queue-panel--unassigned .detail-stack,
+.signal-panel .signal-card-grid {
+  margin-top: 1rem;
+}
