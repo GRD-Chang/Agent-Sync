@@ -13,9 +13,7 @@
         <div class="masthead-copy">
           <p class="eyebrow">{{ ui.shell.eyebrow }}</p>
           <h1>{{ ui.shell.title }}</h1>
-          <p class="masthead-note">
-            {{ ui.shell.note }}
-          </p>
+          <p class="masthead-note">{{ ui.shell.note }}</p>
         </div>
         <aside class="masthead-aside" aria-label="Dashboard framing">
           <p class="aside-label">{{ ui.shell.scope_label }}</p>
@@ -27,11 +25,7 @@
         <ul>
           {% for item in nav_items %}
           <li>
-            <a
-              data-testid="dashboard-nav-{{ item.key }}"
-              href="{{ item.href }}"
-              {% if item.key == active_page %}aria-current="page"{% endif %}
-            >{{ item.label }}</a>
+            <a data-testid="dashboard-nav-{{ item.key }}" href="{{ item.href }}" {% if item.key == active_page %}aria-current="page"{% endif %}>{{ item.label }}</a>
           </li>
           {% endfor %}
         </ul>

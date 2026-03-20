@@ -43,9 +43,9 @@ def create_dashboard_app(home: Path | None = None) -> Starlette:
             Route("/overview", endpoint=overview_page),
             Route("/jobs", endpoint=placeholder_page),
             Route("/tasks", endpoint=placeholder_page),
-            Route("/worker-queue", endpoint=placeholder_page),
-            Route("/alerts", endpoint=placeholder_page),
-            Route("/health", endpoint=placeholder_page),
+            Route("/worker-queue", endpoint=worker_queue_page),
+            Route("/alerts", endpoint=alerts_page),
+            Route("/health", endpoint=health_page),
             Mount(
                 "/static",
                 app=StaticFiles(directory=str(files("task_bridge.dashboard").joinpath("static"))),
@@ -65,22 +65,79 @@ async def overview_page(request: Request):
     context = _base_context(request, "overview")
     try:
         overview = request.app.state.dashboard_query_service.overview()
-    except Exception as exc:  # pragma: no cover - exercised via browser smoke path
-        context.update(
-            {
-                "page_title": context["ui"]["overview"]["error_title"],
-                "error_message": str(exc),
-            }
-        )
-        return templates.TemplateResponse(
-            request=request,
-            name="error.html",
+    except Exception as exc:  # pragma: no cover
+        return _render_live_page_error(
+            request,
             context=context,
-            status_code=500,
+            error_title=context["ui"]["overview"]["error_title"],
+            error_body=context["ui"]["overview"]["error_body"],
+            error_label=context["ui"]["overview"]["error_label"],
+            error_message=str(exc),
+            error_testid="dashboard-overview-error-state",
         )
 
     context["overview"] = overview
     return templates.TemplateResponse(request=request, name="overview.html", context=context)
+
+
+async def worker_queue_page(request: Request):
+    context = _base_context(request, "worker-queue")
+    context["page_title"] = context["ui"]["worker_queue"]["title"]
+    try:
+        snapshot = request.app.state.dashboard_query_service.worker_queue()
+    except Exception as exc:  # pragma: no cover
+        return _render_live_page_error(
+            request,
+            context=context,
+            error_title=context["ui"]["worker_queue"]["error_title"],
+            error_body=context["ui"]["worker_queue"]["error_body"],
+            error_label=context["ui"]["worker_queue"]["error_label"],
+            error_message=str(exc),
+            error_testid="dashboard-worker-queue-error-state",
+        )
+
+    context["worker_queue"] = snapshot
+    return templates.TemplateResponse(request=request, name="worker_queue.html", context=context)
+
+
+async def alerts_page(request: Request):
+    context = _base_context(request, "alerts")
+    context["page_title"] = context["ui"]["alerts"]["title"]
+    try:
+        snapshot = request.app.state.dashboard_query_service.alerts()
+    except Exception as exc:  # pragma: no cover
+        return _render_live_page_error(
+            request,
+            context=context,
+            error_title=context["ui"]["alerts"]["error_title"],
+            error_body=context["ui"]["alerts"]["error_body"],
+            error_label=context["ui"]["alerts"]["error_label"],
+            error_message=str(exc),
+            error_testid="dashboard-alerts-error-state",
+        )
+
+    context["alerts"] = snapshot
+    return templates.TemplateResponse(request=request, name="alerts.html", context=context)
+
+
+async def health_page(request: Request):
+    context = _base_context(request, "health")
+    context["page_title"] = context["ui"]["health"]["title"]
+    try:
+        snapshot = request.app.state.dashboard_query_service.health()
+    except Exception as exc:  # pragma: no cover
+        return _render_live_page_error(
+            request,
+            context=context,
+            error_title=context["ui"]["health"]["error_title"],
+            error_body=context["ui"]["health"]["error_body"],
+            error_label=context["ui"]["health"]["error_label"],
+            error_message=str(exc),
+            error_testid="dashboard-health-error-state",
+        )
+
+    context["health"] = snapshot
+    return templates.TemplateResponse(request=request, name="health.html", context=context)
 
 
 async def placeholder_page(request: Request):
@@ -93,18 +150,31 @@ async def placeholder_page(request: Request):
     return templates.TemplateResponse(request=request, name="placeholder.html", context=context)
 
 
-def run_dashboard(
+def run_dashboard(*, home: Path | None = None, host: str = "127.0.0.1", port: int = 8000) -> None:
+    uvicorn.run(create_dashboard_app(home), host=host, port=port, log_level="warning")
+
+
+def _render_live_page_error(
+    request: Request,
     *,
-    home: Path | None = None,
-    host: str = "127.0.0.1",
-    port: int = 8000,
-) -> None:
-    uvicorn.run(
-        create_dashboard_app(home),
-        host=host,
-        port=port,
-        log_level="warning",
+    context: dict[str, object],
+    error_title: str,
+    error_body: str,
+    error_label: str,
+    error_message: str,
+    error_testid: str,
+):
+    context.update(
+        {
+            "page_title": error_title,
+            "error_title": error_title,
+            "error_body": error_body,
+            "error_label": error_label,
+            "error_message": error_message,
+            "error_testid": error_testid,
+        }
     )
+    return templates.TemplateResponse(request=request, name="error.html", context=context, status_code=500)
 
 
 def _base_context(request: Request, active_page: str) -> dict[str, object]:
@@ -113,14 +183,7 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
         "request": request,
         "active_page": active_page,
         "page_title": ui["nav"][active_page],
-        "nav_items": [
-            {
-                "key": item.key,
-                "label": ui["nav"][item.key],
-                "href": item.href,
-            }
-            for item in NAV_ITEMS
-        ],
+        "nav_items": [{"key": item.key, "label": ui["nav"][item.key], "href": item.href} for item in NAV_ITEMS],
         "ui": ui,
         "html_lang": ui["html_lang"],
     }

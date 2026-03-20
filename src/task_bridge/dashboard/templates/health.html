@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel" aria-labelledby="health-title" data-testid="dashboard-health-hero">
+  <p class="eyebrow">{{ ui.health.eyebrow }}</p>
+  <h2 id="health-title" data-testid="dashboard-page-title">{{ ui.health.title }}</h2>
+  <p>{{ ui.health.intro }}</p>
+</section>
+
+<section class="stats-grid" aria-label="{{ ui.health.stats_label }}">
+  <article class="stat-card" data-testid="dashboard-health-current-job"><span>{{ ui.health.current_job }}</span><strong>{{ health.current_job_id or ui.overview.current_job_empty }}</strong></article>
+  <article class="stat-card" data-testid="dashboard-health-generated-at"><span>{{ ui.health.generated_at }}</span><strong>{{ health.generated_at }}</strong></article>
+  <article class="stat-card" data-testid="dashboard-health-daemon-path"><span>{{ ui.health.daemon_state_path }}</span><strong>{{ health.home_path }}/daemon_state.json</strong></article>
+  <article class="stat-card" data-testid="dashboard-health-store-home"><span>{{ ui.health.store_home }}</span><strong>{{ health.home_path }}</strong></article>
+</section>
+
+<section class="state-panel" data-testid="dashboard-health-summary">
+  <p class="eyebrow">{{ ui.health.summary_eyebrow }}</p>
+  <h3>{{ ui.health.summary_title }}</h3>
+  <ul>
+    <li>{{ ui.health.jobs_tracked }}: {{ health.jobs_count }}</li>
+    <li>{{ ui.health.tasks_tracked }}: {{ health.tasks_count }}</li>
+    <li>{{ ui.health.worker_prompt_entries }}: {{ health.worker_prompt_entries }}</li>
+    <li>{{ ui.health.leader_running_notice }}: {{ health.leader_last_running_notice_at }}</li>
+  </ul>
+</section>
+
+<section class="list-panel" data-testid="dashboard-health-checks">
+  <p class="eyebrow">{{ ui.health.checks_eyebrow }}</p>
+  <h3>{{ ui.health.checks_title }}</h3>
+  <ul>
+    {% for check in health.checks %}
+    <li>{{ check.label }} · {{ ui.health.status_labels[check.status] }} · {{ check.detail }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -14,6 +14,12 @@ const navItems = [
   { key: "alerts", label: "Alerts", route: "/alerts" },
   { key: "health", label: "Health", route: "/health" },
 ];
+const placeholderItems = navItems.filter((item) =>
+  ["jobs", "tasks"].includes(item.key),
+);
+const liveSliceCItems = navItems.filter((item) =>
+  ["worker-queue", "alerts", "health"].includes(item.key),
+);
 
 async function startDashboard(homeDir, port) {
   const child = spawn(
@@ -98,34 +104,51 @@ function runBridgeJson(homeDir, args) {
   return JSON.parse(completed.stdout);
 }
 
-function seedHappyOverview(homeDir) {
-  const job = runBridgeJson(homeDir, ["create-job", "--title", "dashboard-summary"]);
-  runBridgeJson(homeDir, ["create-task", "--job", job.id, "--requirement", "queued req", "--assign", "code-agent"]);
-  const running = runBridgeJson(homeDir, [
+async function seedLiveDashboard(homeDir) {
+  const jobA = runBridgeJson(homeDir, ["create-job", "--title", "job-a"]);
+  const taskA1 = runBridgeJson(homeDir, [
     "create-task",
     "--job",
-    job.id,
+    jobA.id,
+    "--requirement",
+    "queued req",
+    "--assign",
+    "code-agent",
+  ]);
+  const taskA2 = runBridgeJson(homeDir, [
+    "create-task",
+    "--job",
+    jobA.id,
     "--requirement",
     "running req",
     "--assign",
     "quality-agent",
   ]);
-  const blocked = runBridgeJson(homeDir, [
+  runBridgeJson(homeDir, ["start", taskA2.id, "--job", jobA.id, "--result", "actively working"]);
+  await fs.writeFile(
+    taskA2.detail_path,
+    "# Runbook\n\n- capture logs\n- compare outputs\n",
+    "utf-8",
+  );
+
+  const jobB = runBridgeJson(homeDir, ["create-job", "--title", "job-b"]);
+  const taskB1 = runBridgeJson(homeDir, [
     "create-task",
     "--job",
-    job.id,
+    jobB.id,
     "--requirement",
     "blocked req",
     "--assign",
     "review-agent",
   ]);
-  runBridgeJson(homeDir, ["start", running.id, "--job", job.id, "--result", "actively working"]);
-  runBridgeJson(homeDir, ["block", blocked.id, "--job", job.id, "--result", "waiting on input"]);
+  runBridgeJson(homeDir, ["block", taskB1.id, "--job", jobB.id, "--result", "waiting on input"]);
+
+  return { jobA, taskA1, taskA2, jobB, taskB1 };
 }
 
 test("overview renders the live happy path shell", async ({ page }) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-happy-"));
-  seedHappyOverview(homeDir);
+  await seedLiveDashboard(homeDir);
   const server = await startDashboard(homeDir, 4173);
 
   try {
@@ -134,7 +157,7 @@ test("overview renders the live happy path shell", async ({ page }) => {
     await expect(page.getByTestId("dashboard-shell")).toBeVisible();
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "Overview is live. The other primary destinations are shell-ready and intentionally read-only.",
+      "Overview, Worker & Queue, Alerts, and Health are live. Jobs and Tasks remain shell-ready and intentionally read-only.",
     );
     for (const item of navItems) {
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveText(item.label);
@@ -174,17 +197,38 @@ test("overview renders the explicit empty state", async ({ page }) => {
   }
 });
 
-test("placeholder routes stay shell-only and keep the active nav state", async ({ page }) => {
+test("jobs and tasks remain shell-only placeholders", async ({ page }) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-shell-"));
   const server = await startDashboard(homeDir, 4175);
 
   try {
-    for (const item of navItems.filter((entry) => entry.key !== "overview")) {
+    for (const item of placeholderItems) {
       await page.goto(`${server.baseUrl}${item.route}`);
       await expect(page.getByTestId(`dashboard-${item.key}-shell`)).toBeVisible();
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("dashboard-boundary-note")).toBeVisible();
       await expect(page.getByTestId("dashboard-page-title")).toContainText(item.label);
+      await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+    }
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("worker queue, alerts, and health render live read-only pages", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-live-slice-c-"));
+  await seedLiveDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4176);
+
+  try {
+    for (const item of liveSliceCItems) {
+      await page.goto(`${server.baseUrl}${item.route}`);
+      await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
+      await expect(page.getByTestId(`dashboard-${item.key}-hero`)).toBeVisible();
+      await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
+        "Overview, Worker & Queue, Alerts, and Health are live. Jobs and Tasks remain shell-ready and intentionally read-only.",
+      );
       await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
     }
   } finally {
@@ -199,7 +243,7 @@ test("overview renders an error state when store data is unreadable", async ({ p
   await fs.mkdir(jobDir, { recursive: true });
   await fs.writeFile(path.join(jobDir, "job.json"), "{broken", "utf-8");
 
-  const server = await startDashboard(homeDir, 4176);
+  const server = await startDashboard(homeDir, 4178);
 
   try {
     const response = await page.goto(`${server.baseUrl}/overview`);

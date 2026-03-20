@@ -225,7 +225,10 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard = subparsers.add_parser(
         "dashboard",
         help="启动只读 dashboard Web 界面",
-        description="启动 task-bridge 的只读 dashboard。Overview 为 MVP 页面，其余一级导航先保留壳层。",
+        description=(
+            "启动 task-bridge 的只读 dashboard。Overview / Worker & Queue / Alerts / Health 为只读 MVP 页面；"
+            "Jobs / Tasks 仍保留壳层。"
+        ),
         formatter_class=HelpFormatter,
     )
     dashboard.add_argument("--host", default="127.0.0.1", help="dashboard 监听地址")

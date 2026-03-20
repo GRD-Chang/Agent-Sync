@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel" aria-labelledby="worker-queue-title" data-testid="dashboard-worker-queue-hero">
+  <p class="eyebrow">{{ ui.worker_queue.eyebrow }}</p>
+  <h2 id="worker-queue-title" data-testid="dashboard-page-title">{{ ui.worker_queue.title }}</h2>
+  <p>{{ ui.worker_queue.intro }}</p>
+</section>
+
+<section class="stats-grid" aria-label="{{ ui.worker_queue.stats_label }}">
+  <article class="stat-card" data-testid="dashboard-worker-queue-current-job"><span>{{ ui.worker_queue.current_job }}</span><strong>{{ worker_queue.current_job_id or ui.overview.current_job_empty }}</strong></article>
+  <article class="stat-card" data-testid="dashboard-worker-queue-generated-at"><span>{{ ui.worker_queue.generated_at }}</span><strong>{{ worker_queue.generated_at }}</strong></article>
+  <article class="stat-card" data-testid="dashboard-worker-queue-workers-tracked"><span>{{ ui.worker_queue.workers_tracked }}</span><strong>{{ worker_queue.worker_count }}</strong></article>
+  <article class="stat-card" data-testid="dashboard-worker-queue-store-home"><span>{{ ui.worker_queue.store_home }}</span><strong>{{ worker_queue.home_path }}</strong></article>
+</section>
+
+<section class="state-panel" data-testid="dashboard-worker-queue-summary">
+  <p class="eyebrow">{{ ui.worker_queue.summary_eyebrow }}</p>
+  <h3>{{ ui.worker_queue.summary_title }}</h3>
+  <ul>
+    <li>{{ ui.worker_queue.running_tasks }}: {{ worker_queue.running_tasks }}</li>
+    <li>{{ ui.worker_queue.busy_workers }}: {{ worker_queue.busy_workers }} / {{ worker_queue.worker_count }}</li>
+    <li>{{ ui.worker_queue.assigned_queue_depth }}: {{ worker_queue.assigned_queue_depth }}</li>
+    <li>{{ ui.worker_queue.unassigned_queue_depth }}: {{ worker_queue.unassigned_queue_depth }}</li>
+  </ul>
+</section>
+
+{% if worker_queue.has_activity %}
+<section class="list-panel" data-testid="dashboard-worker-queue-lanes">
+  <p class="eyebrow">{{ ui.worker_queue.lane_eyebrow }}</p>
+  <h3>{{ ui.worker_queue.lane_title }}</h3>
+  {% for lane in worker_queue.lanes %}
+  <article class="lane-card" data-testid="dashboard-worker-queue-lane-{{ lane.agent }}">
+    <h4>{{ lane.agent }}</h4>
+    <p>{{ ui.worker_queue.lane_running }}: {{ lane.running_task_id or ui.worker_queue.lane_empty }}</p>
+    <p>{{ ui.worker_queue.lane_backlog }}: {{ lane.queued_tasks|length }}</p>
+    {% if lane.queued_tasks %}
+    <ul>
+      {% for task in lane.queued_tasks %}
+      <li>{{ task.task_id }} · {{ task.summary_label }}: {{ task.summary_text }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+<section class="list-panel" data-testid="dashboard-worker-queue-unassigned">
+  <p class="eyebrow">{{ ui.worker_queue.unassigned_eyebrow }}</p>
+  <h3>{{ ui.worker_queue.unassigned_title }}</h3>
+  <p>{{ ui.worker_queue.unassigned_note }}</p>
+  {% if worker_queue.unassigned_queued_tasks %}
+  <ul>
+    {% for task in worker_queue.unassigned_queued_tasks %}
+    <li>{{ task.task_id }} · {{ task.summary_label }}: {{ task.summary_text }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>{{ ui.worker_queue.unassigned_empty_body }}</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="empty-panel" data-testid="dashboard-worker-queue-empty-state">
+  <h3>{{ ui.worker_queue.no_activity_title }}</h3>
+  <p>{{ ui.worker_queue.no_activity_body }}</p>
+</section>
+{% endif %}
+{% endblock %}
