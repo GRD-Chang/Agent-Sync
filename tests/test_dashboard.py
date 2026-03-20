@@ -77,6 +77,7 @@ def test_dashboard_command_prints_actionable_launch_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    import task_bridge.cli as cli_module
     import task_bridge.dashboard as dashboard_package
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -89,6 +90,7 @@ def test_dashboard_command_prints_actionable_launch_output(
         "run_dashboard",
         lambda **kwargs: captured.update(kwargs),
     )
+    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@10.10.0.8")
 
     assert main(["dashboard", "--host", "127.0.0.1", "--port", str(port)]) == 0
     output = capsys.readouterr().out
@@ -98,7 +100,7 @@ def test_dashboard_command_prints_actionable_launch_output(
     assert f"监听端口: {port}" in output
     assert f"本机访问: http://127.0.0.1:{port}/overview" in output
     assert f"数据目录: {home}" in output
-    assert f"ssh -L {port}:127.0.0.1:{port} <remote-host>" in output
+    assert f"ssh -L {port}:127.0.0.1:{port} dev@10.10.0.8" in output
     assert "当前命令不会自动打开浏览器" in output
     assert "Ctrl+C" in output
     assert captured == {"home": home, "host": "127.0.0.1", "port": port}
@@ -127,7 +129,7 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert response.status_code == 200
     body = response.text
     assert "<html lang=\"en\">" in body
-    assert "Live dispatch posture for the current task bridge." in body
+    assert "Live dispatch posture for the current task bridge" in body
     assert "Recent updates" in body
     assert "Current view" in body
     assert "Task status summary" in body
@@ -138,6 +140,8 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert 'data-testid="dashboard-breadcrumbs"' in body
     assert 'data-testid="dashboard-locale-en"' in body
     assert 'data-testid="dashboard-locale-zh-cn"' in body
+    assert 'data-testid="dashboard-font-switch"' in body
+    assert 'data-testid="dashboard-font-editorial"' in body
     assert "MVP scope" not in body
     assert "read-only" not in body
 
@@ -166,14 +170,17 @@ def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> 
     assert zh_response.status_code == 200
     zh_body = zh_response.text
     assert "<html lang=\"zh-CN\">" in zh_body
-    assert "任务总表与详情预览。" in zh_body
+    assert "任务总表与详情预览" in zh_body
     assert "进行中" in zh_body
     assert 'data-testid="dashboard-back-link"' in zh_body
     assert re.search(
         rf'data-testid="dashboard-locale-en"[^>]*href="/tasks\?job={seeded["job_a"]["id"]}&amp;task={seeded["task_a2"]["id"]}"',
         zh_body,
     )
-    assert f"/jobs?job={seeded['job_a']['id']}&amp;lang=zh-CN" in zh_body
+    assert (
+        f"/jobs?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}&amp;lang=zh-CN#job-task-detail"
+        in zh_body
+    )
 
 
 def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
@@ -298,20 +305,22 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
     assert jobs.filtered_empty is False
     assert jobs.selection_missing is False
     assert jobs.selected_job is not None
+    assert jobs.selected_task is None
     assert jobs.selected_job.job_id == seeded["job_a"]["id"]
     assert jobs.detail_back_link is not None
-    assert jobs.detail_back_link.href == "/jobs"
+    assert jobs.detail_back_link.href == "/jobs#jobs-registry"
     assert jobs.selected_job.task_count == 2
     assert jobs.selected_job.active_task_count == 2
     assert jobs.selected_job.terminal_task_count == 0
-    assert jobs.selected_job.tasks_href.endswith(f"/tasks?job={seeded['job_a']['id']}")
+    assert jobs.selected_job.tasks_href.endswith(f"/tasks?job={seeded['job_a']['id']}#tasks-registry")
     assert jobs.selected_job.latest_task_href is not None
     assert [item.task_id for item in jobs.selected_job.task_previews] == [
         seeded["task_a2"]["id"],
         seeded["task_a1"]["id"],
     ]
+    assert [group.state for group in jobs.selected_job.task_groups] == ["running", "queued"]
     assert jobs.selected_job.task_previews[0].detail_href.endswith(
-        f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}"
+        f"/jobs?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}#job-task-detail"
     )
 
 
@@ -325,6 +334,26 @@ def test_dashboard_jobs_query_filters_by_active_view(home: Path) -> None:
     assert [item.job_id for item in jobs.jobs] == [seeded["job_a"]["id"]]
     assert jobs.selected_job is None
     assert jobs.detail_back_link is None
+
+
+def test_dashboard_jobs_query_surfaces_all_tasks_in_status_groups_and_inline_task_detail(home: Path) -> None:
+    seeded = seed_dashboard_store_with_many_job_tasks(home)
+    selected_task = str(seeded["tasks"][1]["id"])
+
+    jobs = DashboardQueryService(home).jobs(
+        selected_job_id=str(seeded["job"]["id"]),
+        selected_task_id=selected_task,
+    )
+
+    assert jobs.selected_job is not None
+    assert jobs.selected_task is not None
+    assert jobs.selected_job.task_count == 8
+    assert len(jobs.selected_job.task_previews) == 8
+    assert [group.state for group in jobs.selected_job.task_groups] == ["running", "blocked", "failed", "queued", "done"]
+    assert [group.count for group in jobs.selected_job.task_groups] == [2, 1, 1, 2, 2]
+    assert jobs.selected_task.task_id == selected_task
+    assert jobs.selected_task.back_links[0].href.endswith("#job-task-groups")
+    assert jobs.selected_task.back_links[1].href.endswith("#tasks-detail")
 
 
 def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
@@ -343,8 +372,11 @@ def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
     assert tasks.selected_task is not None
     assert tasks.selected_task.task_id == seeded["task_a2"]["id"]
     assert tasks.detail_back_link is not None
-    assert tasks.detail_back_link.href == f"/tasks?job={seeded['job_a']['id']}"
+    assert tasks.detail_back_link.href == f"/tasks?job={seeded['job_a']['id']}#tasks-registry"
     assert [item.label for item in tasks.selected_task.back_links] == ["Back to filtered task cards", "Back to job detail"]
+    assert tasks.selected_task.back_links[1].href == (
+        f"/jobs?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}#job-task-detail"
+    )
     assert tasks.selected_task.detail_status_label == "Preview ready"
     assert tasks.selected_task.detail_preview.status == "rendered"
     assert [block.kind for block in tasks.selected_task.detail_preview.blocks] == ["heading", "list"]
@@ -438,6 +470,36 @@ def test_dashboard_tasks_query_filters_by_job_state_and_agent(home: Path) -> Non
     }
 
 
+def test_dashboard_tasks_query_groups_statuses_and_paginates(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="paged-tasks")
+    state_cycle = ["running", "blocked", "failed", "queued", "done"]
+    for index in range(14):
+        task = store.create_task(
+            job_id=job["id"],
+            requirement=f"task {index}",
+            assigned_agent=f"agent-{index % 3}",
+        )
+        state = state_cycle[index % len(state_cycle)]
+        if state != "queued":
+            store.update_task(task["id"], job_id=job["id"], state=state, result=f"result {index}")
+
+    snapshot = DashboardQueryService(home).tasks(selected_job_id=job["id"])
+
+    assert snapshot.visible_tasks_count == 14
+    assert snapshot.pagination.page == 1
+    assert snapshot.pagination.page_count == 2
+    assert len(snapshot.tasks) == 12
+    assert [group.state for group in snapshot.task_groups][:3] == ["running", "blocked", "failed"]
+
+    second_page = DashboardQueryService(home).tasks(selected_job_id=job["id"], selected_page="2")
+
+    assert second_page.pagination.page == 2
+    assert second_page.pagination.page_count == 2
+    assert len(second_page.tasks) == 2
+
+
 def seed_operational_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
     seeded = seed_dashboard_store(home)
     store = TaskStore(home)
@@ -471,6 +533,30 @@ def seed_operational_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
         "task_a3": task_a3,
         "task_b2": task_b2,
     }
+
+
+def seed_dashboard_store_with_many_job_tasks(home: Path) -> dict[str, object]:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="status-stack")
+    seeded_tasks: list[dict[str, str]] = []
+    task_specs = [
+        ("running req 1", "code-agent", "running", "shipping"),
+        ("blocked req 1", "review-agent", "blocked", "waiting"),
+        ("failed req 1", "ops-agent", "failed", "failed once"),
+        ("queued req 1", "qa-agent", None, None),
+        ("done req 1", "code-agent", "done", "complete"),
+        ("running req 2", "quality-agent", "running", "verifying"),
+        ("queued req 2", "review-agent", None, None),
+        ("done req 2", "ops-agent", "done", "closed"),
+    ]
+    for requirement, agent, state, result in task_specs:
+        task = store.create_task(job_id=job["id"], requirement=requirement, assigned_agent=agent)
+        if state is not None:
+            store.update_task(task["id"], job_id=job["id"], state=state, result=result)
+        seeded_tasks.append(store.load_task(task["id"], job_id=job["id"]))
+
+    return {"job": job, "tasks": seeded_tasks}
 
 
 def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> None:
@@ -591,6 +677,20 @@ def test_dashboard_overview_route_renders_live_facts_for_existing_store(home: Pa
     assert 'data-testid="dashboard-overview-empty-state"' not in body
 
 
+def test_dashboard_overview_recent_updates_link_into_job_task_detail(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview")
+
+    assert response.status_code == 200
+    body = response.text
+    assert (
+        f'data-testid="dashboard-overview-recent-task-{seeded["task_a2"]["id"]}"'
+        f' href="/jobs?job={seeded["job_a"]["id"]}&amp;task={seeded["task_a2"]["id"]}#job-task-detail"'
+    ) in body
+
+
 def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     seeded = seed_dashboard_store(home)
 
@@ -601,15 +701,34 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     body = response.text
     assert 'data-testid="dashboard-jobs-page"' in body
     assert 'data-testid="dashboard-jobs-filters"' in body
+    assert 'data-testid="dashboard-jobs-list"' in body
     assert 'data-testid="dashboard-jobs-detail-shell"' in body
     assert 'data-testid="dashboard-jobs-detail"' in body
+    assert 'data-testid="dashboard-jobs-task-groups"' in body
     assert seeded["job_a"]["id"] in body
     assert seeded["job_b"]["id"] in body
     assert "job-a" in body
     assert "queued req" in body
-    assert f"/tasks?job={seeded['job_a']['id']}" in body
-    assert f"/tasks?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}" in body
+    assert f"/tasks?job={seeded['job_a']['id']}#tasks-registry" in body
+    assert f"/jobs?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}#job-task-detail" in body
     assert 'data-testid="dashboard-jobs-empty-state"' not in body
+
+
+def test_dashboard_jobs_route_keeps_task_drilldown_on_jobs_page_and_shows_all_cards(home: Path) -> None:
+    seeded = seed_dashboard_store_with_many_job_tasks(home)
+    selected_task = str(seeded["tasks"][1]["id"])
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/jobs?job={seeded['job']['id']}&task={selected_task}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-jobs-detail-shell"' in body
+    assert 'data-testid="dashboard-jobs-task-detail"' in body
+    assert 'data-testid="dashboard-jobs-task-groups"' in body
+    assert body.count('data-testid="dashboard-jobs-task-card-') == 8
+    assert f"/jobs?job={seeded['job']['id']}&amp;task={selected_task}#job-task-detail" in body
+    assert f"/tasks?job={seeded['job']['id']}&amp;task={selected_task}#tasks-detail" in body
 
 
 def test_dashboard_jobs_route_filters_existing_records_by_view(home: Path) -> None:
@@ -692,6 +811,28 @@ def test_dashboard_tasks_route_shows_filter_empty_state(home: Path) -> None:
     assert "No tasks match these filters" in body
 
 
+def test_dashboard_tasks_route_renders_status_groups_and_pagination(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="paged-route")
+    state_cycle = ["running", "blocked", "failed", "queued", "done"]
+    for index in range(14):
+        task = store.create_task(job_id=job["id"], requirement=f"task {index}", assigned_agent="agent")
+        state = state_cycle[index % len(state_cycle)]
+        if state != "queued":
+            store.update_task(task["id"], job_id=job["id"], state=state, result=f"result {index}")
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/tasks?job={job['id']}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-tasks-group-running"' in body
+    assert 'data-testid="dashboard-tasks-group-blocked"' in body
+    assert 'data-testid="dashboard-tasks-pagination"' in body
+    assert "#tasks-registry" in body
+
+
 def test_dashboard_tasks_route_explicit_empty_state(home: Path) -> None:
     with TestClient(create_dashboard_app(home)) as client:
         response = client.get("/tasks")
@@ -718,7 +859,7 @@ def test_dashboard_worker_queue_route_renders_live_base_page(home: Path) -> None
     assert seeded["task_a1"]["id"] in body
     assert seeded["task_a3"]["id"] in body
     assert "quality-agent" in body
-    assert "Worker queue across agents." in body
+    assert "Worker queue across agents" in body
     assert 'class="queue-layout"' in body
     assert "browse-layout" not in body
     assert "Each card shows the task in progress plus queued work for that agent." in body
@@ -755,6 +896,33 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert "<input" not in body
     assert "<textarea" not in body
     assert "<select" not in body
+
+
+def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="alert-stack")
+    for index in range(10):
+        blocked = store.create_task(job_id=job["id"], requirement=f"blocked {index}", assigned_agent="ops-agent")
+        store.update_task(blocked["id"], job_id=job["id"], state="blocked", result=f"waiting {index}")
+        blocked_record = store.load_task(blocked["id"], job_id=job["id"])
+        blocked_record["_scheduler"]["final_notified_at"] = f"2026-03-19T0{index % 9}:00:00Z"
+        blocked_record["_scheduler"]["leader_followup_due_at"] = f"2026-03-19T1{index % 9}:00:00Z"
+        store.save_task(blocked_record)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/alerts")
+        second_page = client.get("/alerts?risk_page=2&followup_page=2")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-alerts-risk-pagination"' in body
+    assert 'data-testid="dashboard-alerts-followup-pagination"' in body
+    assert "#alerts-risk-list" in body
+    assert "#alerts-followups" in body
+
+    assert second_page.status_code == 200
+    assert 'data-testid="dashboard-alerts-risk-pagination"' in second_page.text
 
 
 def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:

@@ -1,0 +1,18 @@
+{% macro render_pagination(pagination, ui, nav_id) %}
+{% if pagination.page_count > 1 %}
+<nav class="pagination-bar" aria-label="{{ ui.common.pagination_page.format(page=pagination.page, page_count=pagination.page_count) }}" data-testid="{{ nav_id }}">
+  <p class="pagination-summary">
+    {{ ui.common.pagination_range.format(start=pagination.start_index, end=pagination.end_index, total=pagination.total_items) }}
+  </p>
+  <div class="pagination-links">
+    {% if pagination.prev_href %}
+    <a class="route-link pagination-link" href="{{ pagination.prev_href }}">{{ ui.common.pagination_prev }}</a>
+    {% endif %}
+    <span class="pagination-page">{{ ui.common.pagination_page.format(page=pagination.page, page_count=pagination.page_count) }}</span>
+    {% if pagination.next_href %}
+    <a class="route-link pagination-link" href="{{ pagination.next_href }}">{{ ui.common.pagination_next }}</a>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}
+{% endmacro %}

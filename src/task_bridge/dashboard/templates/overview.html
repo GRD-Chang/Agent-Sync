@@ -126,7 +126,7 @@
   {% elif overview.recent_updates %}
   <div class="recent-list">
     {% for item in overview.recent_updates %}
-    <article class="recent-item">
+    <a class="recent-item recent-item-link" data-testid="dashboard-overview-recent-task-{{ item.task_id }}" href="{{ item.detail_href }}">
       <header>
         <div>
           <h3>{{ item.task_id }}</h3>
@@ -138,7 +138,7 @@
         </div>
       </header>
       <p><strong>{{ item.summary_label }}:</strong> {{ item.summary_text }}</p>
-    </article>
+    </a>
     {% endfor %}
   </div>
   {% else %}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import socket
 import sys
@@ -433,6 +434,7 @@ def _dashboard_port_issue(*, host: str, port: int) -> str | None:
 
 def _dashboard_launch_message(*, home: Any, host: str, port: int) -> str:
     local_url = _dashboard_local_url(host=host, port=port)
+    ssh_target = _dashboard_ssh_target()
     return "\n".join(
         [
             "Dashboard 启动中",
@@ -440,7 +442,7 @@ def _dashboard_launch_message(*, home: Any, host: str, port: int) -> str:
             f"监听端口: {port}",
             f"本机访问: {local_url}",
             f"数据目录: {home}",
-            f"SSH 端口转发: ssh -L {port}:127.0.0.1:{port} <remote-host>",
+            f"SSH 端口转发: ssh -L {port}:127.0.0.1:{port} {ssh_target}",
             "浏览器: 当前命令不会自动打开浏览器；如果你在远程或无 GUI 环境，请先建立端口转发，再在本机浏览器打开上面的地址。",
             "停止方式: Ctrl+C",
         ]
@@ -452,6 +454,37 @@ def _dashboard_local_url(*, host: str, port: int) -> str:
     if ":" in access_host and not access_host.startswith("["):
         access_host = f"[{access_host}]"
     return f"http://{access_host}:{port}/overview"
+
+
+def _dashboard_ssh_target() -> str:
+    user = getpass.getuser().strip() or "user"
+    host = _dashboard_detect_ssh_host() or socket.gethostname().strip() or "remote-host"
+    return host if "@" in host else f"{user}@{host}"
+
+
+def _dashboard_detect_ssh_host() -> str | None:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            candidate = sock.getsockname()[0]
+        if candidate and candidate not in {"0.0.0.0", "127.0.0.1"}:
+            return candidate
+    except OSError:
+        pass
+
+    try:
+        hostname = socket.gethostname().strip()
+        if not hostname:
+            return None
+        for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, None):
+            if family == socket.AF_INET:
+                candidate = sockaddr[0]
+                if candidate and candidate not in {"0.0.0.0", "127.0.0.1"}:
+                    return candidate
+    except OSError:
+        pass
+
+    return None
 
 
 def _can_bind_dashboard_port(*, host: str, port: int) -> bool:

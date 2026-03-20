@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% from "_task_detail_panel.html" import render_task_detail %}
 
 {% block content %}
 <section class="hero-panel" aria-labelledby="tasks-title" data-testid="dashboard-tasks-page">
@@ -91,160 +93,21 @@
   {% if tasks.detail_back_link %}
   <a class="inline-back-link" href="{{ tasks.detail_back_link.href }}">{{ tasks.detail_back_link.label }}</a>
   {% endif %}
-  <section class="detail-panel" aria-labelledby="tasks-detail-title" data-testid="dashboard-tasks-detail">
-    <div class="section-heading">
-      <p class="eyebrow">{{ ui.tasks.detail_eyebrow }}</p>
-      <h2 id="tasks-detail-title">{{ ui.tasks.detail_title }}</h2>
-      <p class="section-note">{{ ui.tasks.detail_note }}</p>
-    </div>
-
-    <div class="detail-nav-chips">
-      {% for item in tasks.selected_task.back_links %}
-      <a class="route-link" href="{{ item.href }}">{{ item.label }}</a>
-      {% endfor %}
-    </div>
-
-    <div class="detail-stack">
-      <article class="detail-card">
-        <div class="detail-title-row">
-          <div>
-            <h3>{{ tasks.selected_task.task_id }}</h3>
-            <p>{{ tasks.selected_task.job_id }}</p>
-          </div>
-          <span class="status-pill status-{{ tasks.selected_task.state }}">{{ ui.status[tasks.selected_task.state].label }}</span>
-        </div>
-
-        <dl class="meta-grid">
-          <div>
-            <dt>{{ ui.tasks.task_id }}</dt>
-            <dd>{{ tasks.selected_task.task_id }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.job_id }}</dt>
-            <dd>{{ tasks.selected_task.job_id }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.state }}</dt>
-            <dd>{{ ui.status[tasks.selected_task.state].label }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.assigned_agent }}</dt>
-            <dd>{{ tasks.selected_task.assigned_agent }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.notify_target }}</dt>
-            <dd>{{ tasks.selected_task.notify_target }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.detail_status }}</dt>
-            <dd>{{ tasks.selected_task.detail_status_label }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.created_at }}</dt>
-            <dd>{{ tasks.selected_task.created_at }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.updated_at }}</dt>
-            <dd>{{ tasks.selected_task.updated_at }}</dd>
-          </div>
-          <div class="meta-span-2">
-            <dt>{{ ui.tasks.detail_path }}</dt>
-            <dd>{{ tasks.selected_task.detail_path }}</dd>
-          </div>
-        </dl>
-
-        <div class="detail-callout">
-          <p class="eyebrow">{{ ui.tasks.requirement }}</p>
-          <p>{{ tasks.selected_task.requirement }}</p>
-        </div>
-        <div class="detail-callout">
-          <p class="eyebrow">{{ ui.tasks.result }}</p>
-          <p>{{ tasks.selected_task.result or ui.tasks.result_empty }}</p>
-        </div>
-      </article>
-
-      <article class="detail-card" data-testid="dashboard-tasks-detail-preview">
-        <div class="section-heading">
-          <p class="eyebrow">{{ ui.tasks.detail_preview }}</p>
-          <h3>{{ ui.tasks.detail_preview }}</h3>
-          <p class="section-note">{{ ui.tasks.detail_preview_note }}</p>
-        </div>
-
-        <p class="preview-status">
-          <span class="status-pill">{{ tasks.selected_task.detail_status_label }}</span>
-        </p>
-
-        {% if tasks.selected_task.detail_preview.status == "rendered" %}
-        <div class="markdown-preview" data-testid="dashboard-tasks-detail-preview-rendered">
-          {% for block in tasks.selected_task.detail_preview.blocks %}
-          {% if block.kind == "heading" %}
-          <h4 class="preview-heading preview-heading-{{ block.level }}">{{ block.text }}</h4>
-          {% elif block.kind == "paragraph" %}
-          <p>{{ block.text }}</p>
-          {% elif block.kind == "list" %}
-          <ul>
-            {% for item in block.items %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-          {% elif block.kind == "quote" %}
-          <blockquote>{{ block.text }}</blockquote>
-          {% elif block.kind == "code" %}
-          <pre><code>{{ block.text }}</code></pre>
-          {% endif %}
-          {% endfor %}
-        </div>
-        {% elif tasks.selected_task.detail_preview.status == "missing" %}
-        <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-tasks-detail-preview-missing">
-          <h3>{{ ui.tasks.detail_preview }}</h3>
-          <p>{{ ui.tasks.detail_preview_missing }}</p>
-        </div>
-        {% elif tasks.selected_task.detail_preview.status == "empty" %}
-        <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-tasks-detail-preview-empty">
-          <h3>{{ ui.tasks.detail_preview }}</h3>
-          <p>{{ ui.tasks.detail_preview_empty }}</p>
-        </div>
-        {% else %}
-        <div class="state-panel error-state" role="alert" data-testid="dashboard-tasks-detail-preview-error">
-          <h3>{{ ui.tasks.detail_preview }}</h3>
-          <p>{{ ui.tasks.detail_preview_error }}</p>
-          <p>{{ tasks.selected_task.detail_preview.error_message }}</p>
-        </div>
-        {% endif %}
-
-        {% if tasks.selected_task.detail_preview.is_truncated %}
-        <p class="preview-truncation">
-          {{ ui.tasks.preview_truncated.format(line_limit=tasks.selected_task.detail_preview.line_limit, char_limit=tasks.selected_task.detail_preview.char_limit) }}
-        </p>
-        {% endif %}
-      </article>
-
-      <article class="detail-card" data-testid="dashboard-tasks-timeline">
-        <div class="section-heading">
-          <p class="eyebrow">{{ ui.tasks.timeline }}</p>
-          <h3>{{ ui.tasks.timeline }}</h3>
-          <p class="section-note">{{ ui.tasks.timeline_note }}</p>
-        </div>
-        <div class="timeline-list">
-          {% for item in tasks.selected_task.timeline %}
-          <article class="timeline-item">
-            <div class="timeline-dot" aria-hidden="true"></div>
-            <div class="timeline-copy">
-              <header>
-                <h4>{{ item.title }}</h4>
-                <time datetime="{{ item.timestamp_display }}">{{ item.timestamp_display }}</time>
-              </header>
-              <p>{{ item.note }}</p>
-            </div>
-          </article>
-          {% endfor %}
-        </div>
-      </article>
-    </div>
-  </section>
+  {{ render_task_detail(
+    tasks.selected_task,
+    ui,
+    "tasks-detail",
+    "tasks-detail-title",
+    "dashboard-tasks-detail",
+    "dashboard-tasks-detail-preview",
+    "dashboard-tasks-timeline",
+    ui.tasks.detail_eyebrow,
+    ui.tasks.detail_title,
+    ui.tasks.detail_note
+  ) }}
 </section>
 {% else %}
-<section class="browse-panel tasks-list-shell" aria-labelledby="tasks-list-title" data-testid="dashboard-tasks-list">
+<section id="tasks-registry" class="browse-panel tasks-list-shell" aria-labelledby="tasks-list-title" data-testid="dashboard-tasks-list">
   <div class="section-heading">
     <p class="eyebrow">{{ ui.tasks.list_eyebrow }}</p>
     <h2 id="tasks-list-title">{{ ui.tasks.list_title }}</h2>
@@ -257,41 +120,58 @@
     <p>{{ ui.tasks.filters_empty_body }}</p>
   </div>
   {% else %}
-  <div class="tasks-card-grid item-grid">
-    {% for item in tasks.tasks %}
-    <a
-      class="list-card task-card"
-      data-testid="dashboard-tasks-list-card-{{ item.task_id }}"
-      href="{{ item.detail_href }}"
-    >
-      <div class="list-card-header">
+  <div class="status-group-list">
+    {% for group in tasks.task_groups %}
+    <section class="status-group-card status-group-card--{{ group.state }}" data-testid="dashboard-tasks-group-{{ group.state }}">
+      <header class="status-group-header">
         <div>
-          <h3>{{ item.task_id }}</h3>
-          <p class="list-card-meta">{{ item.job_id }} / {{ item.assigned_agent }}</p>
+          <p class="eyebrow">{{ group.label }}</p>
+          <h3>{{ group.label }}</h3>
         </div>
-        <div class="list-card-badges">
-          <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
+        <div class="status-group-meta">
+          <span class="status-pill status-{{ group.state }}">{{ group.count }}</span>
+          <p>{{ group.description }}</p>
         </div>
+      </header>
+      <div class="tasks-card-grid item-grid">
+        {% for item in group.tasks %}
+        <a
+          class="list-card task-card{% if item.is_selected %} is-selected{% endif %}"
+          data-testid="dashboard-tasks-list-card-{{ item.task_id }}"
+          href="{{ item.detail_href }}"
+        >
+          <div class="list-card-header">
+            <div>
+              <h3>{{ item.task_id }}</h3>
+              <p class="list-card-meta">{{ item.job_id }} / {{ item.assigned_agent }}</p>
+            </div>
+            <div class="list-card-badges">
+              <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
+            </div>
+          </div>
+          <p class="list-card-summary">{{ item.summary_label }}: {{ item.summary_text }}</p>
+          <dl class="list-card-stats">
+            <div>
+              <dt>{{ ui.tasks.created_at }}</dt>
+              <dd>{{ item.created_at }}</dd>
+            </div>
+            <div>
+              <dt>{{ ui.tasks.updated_at }}</dt>
+              <dd>{{ item.updated_at }}</dd>
+            </div>
+            <div>
+              <dt>{{ ui.tasks.detail_status }}</dt>
+              <dd>{{ item.detail_status_label }}</dd>
+            </div>
+          </dl>
+          <p class="list-card-foot">{{ ui.tasks.job_id }}: {{ item.job_id }}</p>
+        </a>
+        {% endfor %}
       </div>
-      <p class="list-card-summary">{{ item.summary_label }}: {{ item.summary_text }}</p>
-      <dl class="list-card-stats">
-        <div>
-          <dt>{{ ui.tasks.created_at }}</dt>
-          <dd>{{ item.created_at }}</dd>
-        </div>
-        <div>
-          <dt>{{ ui.tasks.updated_at }}</dt>
-          <dd>{{ item.updated_at }}</dd>
-        </div>
-        <div>
-          <dt>{{ ui.tasks.detail_status }}</dt>
-          <dd>{{ item.detail_status_label }}</dd>
-        </div>
-      </dl>
-      <p class="list-card-foot">{{ ui.tasks.job_id }}: {{ item.job_id }}</p>
-    </a>
+    </section>
     {% endfor %}
   </div>
+  {{ render_pagination(tasks.pagination, ui, "dashboard-tasks-pagination") }}
   {% endif %}
 </section>
 {% endif %}

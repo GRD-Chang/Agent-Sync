@@ -31,6 +31,11 @@ NAV_ITEMS = [
     NavItem("alerts", "/alerts"),
     NavItem("health", "/health"),
 ]
+FONT_PRESET_ITEMS = (
+    {"key": "editorial"},
+    {"key": "sans"},
+    {"key": "mono"},
+)
 
 templates = Jinja2Templates(directory=str(files("task_bridge.dashboard").joinpath("templates")))
 
@@ -89,6 +94,7 @@ async def jobs_page(request: Request):
     try:
         jobs = _dashboard_service(request).jobs(
             selected_job_id=_query_param_value(request, "job"),
+            selected_task_id=_query_param_value(request, "task"),
             selected_view=_query_param_value(request, "view"),
         )
     except Exception as exc:  # pragma: no cover
@@ -108,8 +114,12 @@ async def jobs_page(request: Request):
         breadcrumbs=_selection_breadcrumbs(
             request,
             context,
-            current_label=jobs.selected_job.title if jobs.selected_job and _query_param_value(request, "job") else None,
-            exclude_query_keys=("job", "lang"),
+            current_label=(
+                jobs.selected_task.task_id
+                if jobs.selected_task and _query_param_value(request, "task")
+                else jobs.selected_job.title if jobs.selected_job and _query_param_value(request, "job") else None
+            ),
+            exclude_query_keys=("job", "task", "lang"),
         ),
     )
     return templates.TemplateResponse(request=request, name="jobs.html", context=context)
@@ -124,6 +134,7 @@ async def tasks_page(request: Request):
             selected_task_id=_query_param_value(request, "task"),
             selected_state=_query_param_value(request, "state"),
             selected_agent=_query_param_value(request, "agent"),
+            selected_page=_query_param_value(request, "page"),
         )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
@@ -173,7 +184,10 @@ async def alerts_page(request: Request):
     context = _base_context(request, "alerts")
     context["page_title"] = context["ui"]["alerts"]["title"]
     try:
-        snapshot = _dashboard_service(request).alerts()
+        snapshot = _dashboard_service(request).alerts(
+            risk_page=_query_param_value(request, "risk_page"),
+            followup_page=_query_param_value(request, "followup_page"),
+        )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
             request,
@@ -263,6 +277,10 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
         ],
         "locale": locale,
         "locale_options": _locale_options(request, locale),
+        "font_options": [
+            {"key": item["key"], "label": ui["shell"]["font_options"][item["key"]]}
+            for item in FONT_PRESET_ITEMS
+        ],
         "page_chrome": _page_chrome_context(
             {
                 "active_page": active_page,

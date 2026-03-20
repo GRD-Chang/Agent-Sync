@@ -14,15 +14,17 @@ from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
 from .i18n import DEFAULT_LOCALE, get_messages, resolve_locale
 
 CORE_TASK_STATES = ["queued", "running", "done", "blocked", "failed"]
+TASK_CARD_STATES = ("running", "blocked", "failed", "queued", "done")
 ACTIVE_TASK_STATES = {"queued", "running"}
 TERMINAL_TASK_STATES = {"done", "blocked", "failed"}
 ALERT_TASK_STATES = {"blocked", "failed"}
 RECENT_UPDATES_LIMIT = 6
-JOB_TASK_PREVIEW_LIMIT = 6
 DETAIL_PREVIEW_LINE_LIMIT = 60
 DETAIL_PREVIEW_CHAR_LIMIT = 5000
 JOB_VIEW_OPTIONS = ("all", "current", "active", "terminal")
 UNASSIGNED_AGENT_FILTER = "__unassigned__"
+TASK_LIST_PAGE_SIZE = 12
+ALERT_LIST_PAGE_SIZE = 8
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,7 @@ class RecentUpdate:
     updated_at: str
     summary_label: str
     summary_text: str
+    detail_href: str
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,16 @@ class JobTaskPreview:
     summary_label: str
     summary_text: str
     detail_href: str
+    is_selected: bool
+
+
+@dataclass(frozen=True)
+class JobTaskGroup:
+    state: str
+    label: str
+    description: str
+    count: int
+    tasks: list[JobTaskPreview]
 
 
 @dataclass(frozen=True)
@@ -142,6 +155,7 @@ class JobDetailSnapshot:
     latest_task_href: str | None
     task_status_metrics: list[TaskStatusMetric]
     task_previews: list[JobTaskPreview]
+    task_groups: list[JobTaskGroup]
 
 
 @dataclass(frozen=True)
@@ -156,6 +170,7 @@ class JobsPageSnapshot:
     view_options: list[LinkOption]
     jobs: list[JobListItem]
     selected_job: JobDetailSnapshot | None
+    selected_task: TaskDetailSnapshot | None
     detail_back_link: DetailBackLink | None
     is_empty: bool
     filtered_empty: bool
@@ -176,6 +191,15 @@ class TaskListItem:
     detail_href: str
     job_href: str
     is_selected: bool
+
+
+@dataclass(frozen=True)
+class TaskListGroup:
+    state: str
+    label: str
+    description: str
+    count: int
+    tasks: list[TaskListItem]
 
 
 @dataclass(frozen=True)
@@ -225,6 +249,18 @@ class TaskDetailSnapshot:
 
 
 @dataclass(frozen=True)
+class PaginationSnapshot:
+    page: int
+    page_count: int
+    per_page: int
+    total_items: int
+    start_index: int
+    end_index: int
+    prev_href: str | None
+    next_href: str | None
+
+
+@dataclass(frozen=True)
 class TasksPageSnapshot:
     home_path: str
     current_job_id: str | None
@@ -236,6 +272,8 @@ class TasksPageSnapshot:
     applied_filters: list[AppliedFilter]
     clear_filters_href: str
     tasks: list[TaskListItem]
+    task_groups: list[TaskListGroup]
+    pagination: PaginationSnapshot
     selected_task: TaskDetailSnapshot | None
     detail_back_link: DetailBackLink | None
     is_empty: bool
@@ -315,6 +353,8 @@ class AlertsSnapshot:
     overdue_followups_count: int
     risk_tasks: list[AlertTaskSnapshot]
     followup_tasks: list[FollowupTaskSnapshot]
+    risk_pagination: PaginationSnapshot
+    followup_pagination: PaginationSnapshot
     has_alerts: bool
 
 
@@ -415,6 +455,7 @@ class DashboardQueryService:
         self,
         *,
         selected_job_id: str | None = None,
+        selected_task_id: str | None = None,
         selected_view: str | None = None,
     ) -> JobsPageSnapshot:
         jobs = self.store.list_jobs()
@@ -433,7 +474,7 @@ class DashboardQueryService:
         detail_back_link = (
             DetailBackLink(
                 label=self._messages["jobs"]["back_to_list"],
-                href=self._jobs_path(view=active_view),
+                href=self._jobs_path(view=active_view) + "#jobs-registry",
             )
             if resolved_job_id
             else None
@@ -448,6 +489,8 @@ class DashboardQueryService:
             for job in ordered_jobs
         ]
         selected_job_raw = next((job for job in ordered_jobs if str(job["id"]) == resolved_job_id), None)
+        selected_job_tasks = tasks_by_job.get(resolved_job_id or "", [])
+        resolved_task, _ = self._resolve_selected_task(selected_job_tasks, selected_task_id, resolved_job_id)
 
         return JobsPageSnapshot(
             home_path=self.home_path,
@@ -462,10 +505,33 @@ class DashboardQueryService:
                 tasks_by_job=tasks_by_job,
                 active_view=active_view,
                 selected_job_id=selected_job_id,
+                selected_task_id=selected_task_id,
             ),
             jobs=job_rows,
-            selected_job=self._build_job_detail(selected_job_raw, tasks_by_job.get(resolved_job_id or "", []))
+            selected_job=self._build_job_detail(
+                selected_job_raw,
+                selected_job_tasks,
+                active_view=active_view,
+                selected_task_id=str(resolved_task["id"]) if resolved_task else None,
+            )
             if selected_job_raw
+            else None,
+            selected_task=self._build_task_detail(
+                resolved_task,
+                selected_job_id=resolved_job_id,
+                back_links=self._build_job_task_back_links(
+                    job_id=resolved_job_id or "",
+                    task_id=str(resolved_task["id"]),
+                    active_view=active_view,
+                ),
+                job_href=self._jobs_path(
+                    job_id=resolved_job_id,
+                    task_id=str(resolved_task["id"]),
+                    view=active_view,
+                )
+                + "#job-task-detail",
+            )
+            if resolved_task is not None and resolved_job_id is not None
             else None,
             detail_back_link=detail_back_link,
             is_empty=not jobs,
@@ -480,17 +546,10 @@ class DashboardQueryService:
         selected_job_id: str | None = None,
         selected_state: str | None = None,
         selected_agent: str | None = None,
+        selected_page: str | None = None,
     ) -> TasksPageSnapshot:
         jobs = self.store.list_jobs()
-        tasks = sorted(
-            self.store.list_tasks(all_jobs=True),
-            key=lambda item: (
-                str(item.get("updatedAt") or item.get("createdAt") or ""),
-                str(item["job_id"]),
-                str(item["id"]),
-            ),
-            reverse=True,
-        )
+        tasks = self._sort_tasks_for_cards(self.store.list_tasks(all_jobs=True))
 
         active_state = selected_state if selected_state in CORE_TASK_STATES else None
         active_agent = selected_agent or None
@@ -504,12 +563,31 @@ class DashboardQueryService:
                 agent=active_agent,
             )
         ]
+        page = _parse_page_number(selected_page)
+        paged_tasks, pagination = self._paginate_items(
+            filtered_tasks,
+            page=page,
+            per_page=TASK_LIST_PAGE_SIZE,
+            href_builder=lambda page_number: self._tasks_path(
+                job_id=selected_job_id,
+                state=active_state,
+                agent=active_agent,
+                page=page_number,
+            )
+            + "#tasks-registry",
+        )
         resolved_task, selection_missing = self._resolve_selected_task(filtered_tasks, selected_task_id, selected_job_id)
         resolved_task_id = str(resolved_task["id"]) if resolved_task else None
         detail_back_link = (
             DetailBackLink(
                 label=self._messages["tasks"]["back_to_list"],
-                href=self._tasks_path(job_id=selected_job_id, state=active_state, agent=active_agent),
+                href=self._tasks_path(
+                    job_id=selected_job_id,
+                    state=active_state,
+                    agent=active_agent,
+                    page=pagination.page,
+                )
+                + "#tasks-registry",
             )
             if resolved_task_id
             else None
@@ -521,8 +599,9 @@ class DashboardQueryService:
                 selected_job_id=selected_job_id,
                 selected_state=active_state,
                 selected_agent=active_agent,
+                selected_page=pagination.page,
             )
-            for task in filtered_tasks
+            for task in paged_tasks
         ]
 
         return TasksPageSnapshot(
@@ -545,13 +624,16 @@ class DashboardQueryService:
                 selected_state=active_state,
                 selected_agent=active_agent,
             ),
-            clear_filters_href=self._tasks_path(),
+            clear_filters_href=self._tasks_path() + "#tasks-registry",
             tasks=task_rows,
+            task_groups=self._build_task_list_groups(task_rows),
+            pagination=pagination,
             selected_task=self._build_task_detail(
                 resolved_task,
                 selected_job_id=selected_job_id,
                 selected_state=active_state,
                 selected_agent=active_agent,
+                selected_page=pagination.page,
             )
             if resolved_task
             else None,
@@ -620,21 +702,20 @@ class DashboardQueryService:
             has_activity=bool(tasks),
         )
 
-    def alerts(self) -> AlertsSnapshot:
+    def alerts(
+        self,
+        *,
+        risk_page: str | None = None,
+        followup_page: str | None = None,
+    ) -> AlertsSnapshot:
         self.store.list_jobs()
         tasks = self.store.list_tasks(all_jobs=True)
         status_counts = Counter(str(task.get("state") or "queued") for task in tasks)
         now_value = _parse_timestamp(self._now_provider())
-        risk_tasks = [
+        risk_tasks_all = [
             self._build_alert_task(task)
-            for task in sorted(
-                [task for task in tasks if str(task.get("state") or "queued") in ALERT_TASK_STATES],
-                key=lambda item: (
-                    str(item.get("updatedAt") or item.get("createdAt") or ""),
-                    str(item["job_id"]),
-                    str(item["id"]),
-                ),
-                reverse=True,
+            for task in self._sort_tasks_for_cards(
+                [task for task in tasks if str(task.get("state") or "queued") in ALERT_TASK_STATES]
             )
         ]
         followup_raw = [
@@ -651,18 +732,40 @@ class DashboardQueryService:
                 str(item["id"]),
             )
         )
-        followups = [self._build_followup_task(task, now_value=now_value) for task in followup_raw]
+        followups_all = [self._build_followup_task(task, now_value=now_value) for task in followup_raw]
+        risk_tasks, risk_pagination = self._paginate_items(
+            risk_tasks_all,
+            page=_parse_page_number(risk_page),
+            per_page=ALERT_LIST_PAGE_SIZE,
+            href_builder=lambda page_number: self._alerts_path(
+                risk_page=page_number,
+                followup_page=_parse_page_number(followup_page),
+            )
+            + "#alerts-risk-list",
+        )
+        followups, followup_pagination = self._paginate_items(
+            followups_all,
+            page=_parse_page_number(followup_page),
+            per_page=ALERT_LIST_PAGE_SIZE,
+            href_builder=lambda page_number: self._alerts_path(
+                risk_page=risk_pagination.page,
+                followup_page=page_number,
+            )
+            + "#alerts-followups",
+        )
         return AlertsSnapshot(
             home_path=self.home_path,
             current_job_id=self.store.get_current_job_id(),
             generated_at=_format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"]),
             blocked_count=status_counts.get("blocked", 0),
             failed_count=status_counts.get("failed", 0),
-            pending_followups_count=len(followups),
-            overdue_followups_count=sum(1 for task in followups if task.is_overdue),
+            pending_followups_count=len(followups_all),
+            overdue_followups_count=sum(1 for task in followups_all if task.is_overdue),
             risk_tasks=risk_tasks,
             followup_tasks=followups,
-            has_alerts=bool(risk_tasks or followups),
+            risk_pagination=risk_pagination,
+            followup_pagination=followup_pagination,
+            has_alerts=bool(risk_tasks_all or followups_all),
         )
 
     def health(self) -> HealthSnapshot:
@@ -740,6 +843,11 @@ class DashboardQueryService:
             ),
             summary_label=summary_label,
             summary_text=summary_text,
+            detail_href=self._jobs_path(
+                job_id=str(task["job_id"]),
+                task_id=str(task["id"]),
+            )
+            + "#job-task-detail",
         )
 
     def _build_job_row(
@@ -769,13 +877,16 @@ class DashboardQueryService:
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
             terminal_task_count=sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES),
-            detail_href=self._jobs_path(job_id=job_id, view=active_view),
+            detail_href=self._jobs_path(job_id=job_id, view=active_view) + "#job-detail",
         )
 
     def _build_job_detail(
         self,
         job: dict[str, object] | None,
         job_tasks: list[dict[str, object]],
+        *,
+        active_view: str,
+        selected_task_id: str | None,
     ) -> JobDetailSnapshot | None:
         if job is None:
             return None
@@ -802,22 +913,17 @@ class DashboardQueryService:
                 ),
                 summary_label=summary_label,
                 summary_text=summary_text,
-                detail_href=self._path_with_locale(
-                    "/tasks",
-                    ("job", str(task["job_id"])),
-                    ("task", str(task["id"])),
-                ),
+                detail_href=self._jobs_path(
+                    job_id=str(task["job_id"]),
+                    task_id=str(task["id"]),
+                    view=active_view,
+                )
+                + "#job-task-detail",
+                is_selected=str(task["id"]) == selected_task_id,
             )
             for task, (summary_label, summary_text) in [
                 (task, self._task_summary(task))
-                for task in sorted(
-                    job_tasks,
-                    key=lambda item: (
-                        str(item.get("updatedAt") or item.get("createdAt") or ""),
-                        str(item["id"]),
-                    ),
-                    reverse=True,
-                )[:JOB_TASK_PREVIEW_LIMIT]
+                for task in self._sort_tasks_for_cards(job_tasks)
             ]
         ]
         latest_task_href = task_previews[0].detail_href if task_previews else None
@@ -838,10 +944,11 @@ class DashboardQueryService:
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
             terminal_task_count=sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES),
-            tasks_href=self._tasks_path(job_id=str(job["id"])),
+            tasks_href=self._tasks_path(job_id=str(job["id"])) + "#tasks-registry",
             latest_task_href=latest_task_href,
             task_status_metrics=status_metrics,
             task_previews=task_previews,
+            task_groups=self._build_job_task_groups(task_previews),
         )
 
     def _build_task_row(
@@ -852,6 +959,7 @@ class DashboardQueryService:
         selected_job_id: str | None,
         selected_state: str | None,
         selected_agent: str | None,
+        selected_page: int,
     ) -> TaskListItem:
         summary_label, summary_text = self._task_summary(task)
         task_id = str(task["id"])
@@ -879,8 +987,10 @@ class DashboardQueryService:
                 task_id=task_id,
                 state=selected_state,
                 agent=selected_agent,
-            ),
-            job_href=self._path_with_locale("/jobs", ("job", job_id)),
+                page=selected_page,
+            )
+            + "#tasks-detail",
+            job_href=self._jobs_path(job_id=job_id, task_id=task_id) + "#job-task-detail",
             is_selected=task_id == resolved_task_id,
         )
 
@@ -889,8 +999,11 @@ class DashboardQueryService:
         task: dict[str, object],
         *,
         selected_job_id: str | None,
-        selected_state: str | None,
-        selected_agent: str | None,
+        selected_state: str | None = None,
+        selected_agent: str | None = None,
+        selected_page: int | None = None,
+        back_links: list[DetailBackLink] | None = None,
+        job_href: str | None = None,
     ) -> TaskDetailSnapshot:
         job_id = str(task["job_id"])
         detail_path = str(task.get("detail_path") or "")
@@ -898,7 +1011,7 @@ class DashboardQueryService:
         return TaskDetailSnapshot(
             task_id=str(task["id"]),
             job_id=job_id,
-            job_href=self._path_with_locale("/jobs", ("job", job_id)),
+            job_href=job_href or self._jobs_path(job_id=job_id, task_id=str(task["id"])) + "#job-task-detail",
             state=str(task.get("state") or "queued"),
             assigned_agent=_optional_text(task.get("assigned_agent"))
             or self._messages["tasks"]["assigned_agent_empty"],
@@ -917,12 +1030,14 @@ class DashboardQueryService:
             detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_preview.status],
             detail_preview=detail_preview,
             timeline=self._build_task_timeline(task),
-            back_links=self._build_task_back_links(
+            back_links=back_links
+            or self._build_task_back_links(
                 task_id=str(task["id"]),
                 job_id=job_id,
                 selected_job_id=selected_job_id,
                 selected_state=selected_state,
                 selected_agent=selected_agent,
+                selected_page=selected_page,
             ),
         )
 
@@ -1120,6 +1235,7 @@ class DashboardQueryService:
         tasks_by_job: dict[str, list[dict[str, object]]],
         active_view: str,
         selected_job_id: str | None,
+        selected_task_id: str | None,
     ) -> list[LinkOption]:
         messages = self._messages["jobs"]
         view_labels = {
@@ -1132,7 +1248,12 @@ class DashboardQueryService:
             LinkOption(
                 key=view_key,
                 label=view_labels[view_key],
-                href=self._jobs_path(job_id=selected_job_id, view=view_key),
+                href=self._jobs_path(
+                    job_id=selected_job_id,
+                    task_id=selected_task_id,
+                    view=view_key,
+                )
+                + "#jobs-registry",
                 is_active=view_key == active_view,
                 count=sum(
                     1
@@ -1176,7 +1297,7 @@ class DashboardQueryService:
             LinkOption(
                 key="all",
                 label=common["all"],
-                href=self._tasks_path(state=selected_state, agent=selected_agent),
+                href=self._tasks_path(state=selected_state, agent=selected_agent) + "#tasks-registry",
                 is_active=selected_job_id is None,
                 count=sum(
                     1
@@ -1191,7 +1312,7 @@ class DashboardQueryService:
                 LinkOption(
                     key=job_id,
                     label=str(job.get("title") or job_id),
-                    href=self._tasks_path(job_id=job_id, state=selected_state, agent=selected_agent),
+                    href=self._tasks_path(job_id=job_id, state=selected_state, agent=selected_agent) + "#tasks-registry",
                     is_active=job_id == selected_job_id,
                     count=sum(
                         1
@@ -1210,7 +1331,7 @@ class DashboardQueryService:
             LinkOption(
                 key="all",
                 label=common["all"],
-                href=self._tasks_path(job_id=selected_job_id, agent=selected_agent),
+                href=self._tasks_path(job_id=selected_job_id, agent=selected_agent) + "#tasks-registry",
                 is_active=selected_state is None,
                 count=sum(
                     1
@@ -1224,7 +1345,7 @@ class DashboardQueryService:
                 LinkOption(
                     key=state,
                     label=self._messages["status"][state]["label"],
-                    href=self._tasks_path(job_id=selected_job_id, state=state, agent=selected_agent),
+                    href=self._tasks_path(job_id=selected_job_id, state=state, agent=selected_agent) + "#tasks-registry",
                     is_active=state == selected_state,
                     count=sum(
                         1
@@ -1243,7 +1364,7 @@ class DashboardQueryService:
             LinkOption(
                 key="all",
                 label=common["all"],
-                href=self._tasks_path(job_id=selected_job_id, state=selected_state),
+                href=self._tasks_path(job_id=selected_job_id, state=selected_state) + "#tasks-registry",
                 is_active=selected_agent is None,
                 count=sum(
                     1
@@ -1271,7 +1392,8 @@ class DashboardQueryService:
                         job_id=selected_job_id,
                         state=selected_state,
                         agent=UNASSIGNED_AGENT_FILTER,
-                    ),
+                    )
+                    + "#tasks-registry",
                     is_active=selected_agent == UNASSIGNED_AGENT_FILTER,
                     count=unassigned_count,
                 )
@@ -1288,7 +1410,7 @@ class DashboardQueryService:
                 LinkOption(
                     key=agent,
                     label=agent,
-                    href=self._tasks_path(job_id=selected_job_id, state=selected_state, agent=agent),
+                    href=self._tasks_path(job_id=selected_job_id, state=selected_state, agent=agent) + "#tasks-registry",
                     is_active=agent == selected_agent,
                     count=sum(
                         1
@@ -1317,22 +1439,41 @@ class DashboardQueryService:
         selected_job_id: str | None,
         selected_state: str | None,
         selected_agent: str | None,
+        selected_page: int | None,
     ) -> list[DetailBackLink]:
         links = [
             DetailBackLink(
                 label=self._messages["tasks"]["back_to_tasks"],
-                href=self._tasks_path(job_id=selected_job_id, state=selected_state, agent=selected_agent),
+                href=self._tasks_path(
+                    job_id=selected_job_id,
+                    state=selected_state,
+                    agent=selected_agent,
+                    page=selected_page,
+                )
+                + "#tasks-registry",
             )
         ]
-        job_link = self._jobs_path(job_id=job_id)
-        if selected_job_id != job_id:
-            job_link = self._path_with_locale(
-                "/jobs",
-                ("job", job_id),
-                ("source_task", task_id),
-            )
+        job_link = self._jobs_path(job_id=job_id, task_id=task_id) + "#job-task-detail"
         links.append(DetailBackLink(label=self._messages["tasks"]["back_to_job"], href=job_link))
         return links
+
+    def _build_job_task_back_links(
+        self,
+        *,
+        job_id: str,
+        task_id: str,
+        active_view: str,
+    ) -> list[DetailBackLink]:
+        return [
+            DetailBackLink(
+                label=self._messages["jobs"]["back_to_task_groups"],
+                href=self._jobs_path(job_id=job_id, view=active_view) + "#job-task-groups",
+            ),
+            DetailBackLink(
+                label=self._messages["jobs"]["open_standalone_task"],
+                href=self._tasks_path(job_id=job_id, task_id=task_id) + "#tasks-detail",
+            ),
+        ]
 
     def _build_task_applied_filters(
         self,
@@ -1349,7 +1490,7 @@ class DashboardQueryService:
                 AppliedFilter(
                     label=self._messages["tasks"]["job_id"],
                     value=str(selected_job.get("title") or selected_job_id) if selected_job else selected_job_id,
-                    clear_href=self._tasks_path(state=selected_state, agent=selected_agent),
+                    clear_href=self._tasks_path(state=selected_state, agent=selected_agent) + "#tasks-registry",
                 )
             )
         if selected_state:
@@ -1357,7 +1498,7 @@ class DashboardQueryService:
                 AppliedFilter(
                     label=self._messages["tasks"]["state"],
                     value=self._messages["status"][selected_state]["label"],
-                    clear_href=self._tasks_path(job_id=selected_job_id, agent=selected_agent),
+                    clear_href=self._tasks_path(job_id=selected_job_id, agent=selected_agent) + "#tasks-registry",
                 )
             )
         if selected_agent:
@@ -1370,15 +1511,22 @@ class DashboardQueryService:
                 AppliedFilter(
                     label=self._messages["tasks"]["assigned_agent"],
                     value=agent_label,
-                    clear_href=self._tasks_path(job_id=selected_job_id, state=selected_state),
+                    clear_href=self._tasks_path(job_id=selected_job_id, state=selected_state) + "#tasks-registry",
                 )
             )
         return applied
 
-    def _jobs_path(self, *, job_id: str | None = None, view: str | None = None) -> str:
+    def _jobs_path(
+        self,
+        *,
+        job_id: str | None = None,
+        task_id: str | None = None,
+        view: str | None = None,
+    ) -> str:
         return self._path_with_locale(
             "/jobs",
             ("job", job_id or ""),
+            ("task", task_id or ""),
             ("view", "" if view in (None, "all") else view),
         )
 
@@ -1389,13 +1537,27 @@ class DashboardQueryService:
         task_id: str | None = None,
         state: str | None = None,
         agent: str | None = None,
+        page: int | None = None,
     ) -> str:
         return self._path_with_locale(
             "/tasks",
             ("job", job_id or ""),
             ("state", state or ""),
             ("agent", agent or ""),
+            ("page", str(page) if page and page > 1 else ""),
             ("task", task_id or ""),
+        )
+
+    def _alerts_path(
+        self,
+        *,
+        risk_page: int | None = None,
+        followup_page: int | None = None,
+    ) -> str:
+        return self._path_with_locale(
+            "/alerts",
+            ("risk_page", str(risk_page) if risk_page and risk_page > 1 else ""),
+            ("followup_page", str(followup_page) if followup_page and followup_page > 1 else ""),
         )
 
     def _build_queue_task(self, task: dict[str, object]) -> QueueTaskSnapshot:
@@ -1459,10 +1621,115 @@ class DashboardQueryService:
             query_items.append(("lang", self._locale))
         return f"{path}?{urlencode(query_items)}" if query_items else path
 
+    def _sort_tasks_for_cards(self, tasks: list[dict[str, object]]) -> list[dict[str, object]]:
+        ordered = sorted(
+            tasks,
+            key=lambda item: (
+                str(item.get("updatedAt") or item.get("createdAt") or ""),
+                str(item["job_id"]),
+                str(item["id"]),
+            ),
+            reverse=True,
+        )
+        ordered.sort(key=lambda item: _task_state_priority(str(item.get("state") or "queued")))
+        return ordered
+
+    def _build_job_task_groups(self, tasks: list[JobTaskPreview]) -> list[JobTaskGroup]:
+        groups: list[JobTaskGroup] = []
+        for state in TASK_CARD_STATES:
+            grouped_tasks = [task for task in tasks if task.state == state]
+            if not grouped_tasks:
+                continue
+            groups.append(
+                JobTaskGroup(
+                    state=state,
+                    label=self._messages["status"][state]["label"],
+                    description=self._messages["status"][state]["description"],
+                    count=len(grouped_tasks),
+                    tasks=grouped_tasks,
+                )
+            )
+        return groups
+
+    def _build_task_list_groups(self, tasks: list[TaskListItem]) -> list[TaskListGroup]:
+        groups: list[TaskListGroup] = []
+        for state in TASK_CARD_STATES:
+            grouped_tasks = [task for task in tasks if task.state == state]
+            if not grouped_tasks:
+                continue
+            groups.append(
+                TaskListGroup(
+                    state=state,
+                    label=self._messages["status"][state]["label"],
+                    description=self._messages["status"][state]["description"],
+                    count=len(grouped_tasks),
+                    tasks=grouped_tasks,
+                )
+            )
+        return groups
+
+    def _paginate_items(
+        self,
+        items: list[object],
+        *,
+        page: int,
+        per_page: int,
+        href_builder: Callable[[int], str],
+    ) -> tuple[list[object], PaginationSnapshot]:
+        total_items = len(items)
+        if total_items == 0:
+            return (
+                [],
+                PaginationSnapshot(
+                    page=1,
+                    page_count=1,
+                    per_page=per_page,
+                    total_items=0,
+                    start_index=0,
+                    end_index=0,
+                    prev_href=None,
+                    next_href=None,
+                ),
+            )
+
+        page_count = max((total_items - 1) // per_page + 1, 1)
+        current_page = min(max(page, 1), page_count)
+        start_index = (current_page - 1) * per_page
+        end_index = min(start_index + per_page, total_items)
+        return (
+            items[start_index:end_index],
+            PaginationSnapshot(
+                page=current_page,
+                page_count=page_count,
+                per_page=per_page,
+                total_items=total_items,
+                start_index=start_index + 1,
+                end_index=end_index,
+                prev_href=href_builder(current_page - 1) if current_page > 1 else None,
+                next_href=href_builder(current_page + 1) if current_page < page_count else None,
+            ),
+        )
+
 
 def _task_scheduler(task: dict[str, object]) -> dict[str, object]:
     scheduler = task.get("_scheduler")
     return scheduler if isinstance(scheduler, dict) else {}
+
+
+def _parse_page_number(value: str | None) -> int:
+    if value is None:
+        return 1
+    try:
+        return max(int(value), 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def _task_state_priority(state: str) -> int:
+    try:
+        return TASK_CARD_STATES.index(state)
+    except ValueError:
+        return len(TASK_CARD_STATES)
 
 
 def _is_overdue(value: str | None, now_value: datetime | None) -> bool:

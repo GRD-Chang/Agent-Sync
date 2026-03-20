@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
 
 {% block content %}
 <div class="ops-page ops-page--alerts">
@@ -91,6 +92,7 @@
         </article>
         {% endfor %}
       </div>
+      {{ render_pagination(alerts.risk_pagination, ui, "dashboard-alerts-risk-pagination") }}
       {% else %}
       <div class="state-panel" role="status" aria-live="polite">
         <h3>{{ ui.alerts.risk_empty_title }}</h3>
@@ -135,6 +137,7 @@
         </article>
         {% endfor %}
       </div>
+      {{ render_pagination(alerts.followup_pagination, ui, "dashboard-alerts-followup-pagination") }}
       {% else %}
       <div class="state-panel" role="status" aria-live="polite">
         <h3>{{ ui.alerts.followup_empty_title }}</h3>
