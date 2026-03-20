@@ -90,6 +90,7 @@ def test_notify_updates_only_for_terminal_tasks_and_only_once(
     job = store.create_job(title="notify-skip")
     task = store.create_task(job_id=job["id"], requirement="req", assigned_agent="code-agent")
     (home / ".env").write_text("TASK_BRIDGE_USER_CHAT_ID=chat-id-123\n", encoding="utf-8")
+    monkeypatch.delenv("TASK_BRIDGE_USER_CHAT_ID", raising=False)
     monkeypatch.chdir(home)
 
     calls: list[tuple[str, str]] = []
@@ -541,6 +542,7 @@ def test_send_due_reminders_respects_intervals_and_updates_state(
         assigned_agent="code-agent",
     )
     (home / ".env").write_text("TASK_BRIDGE_USER_CHAT_ID=chat-id-123\n", encoding="utf-8")
+    monkeypatch.delenv("TASK_BRIDGE_USER_CHAT_ID", raising=False)
     monkeypatch.chdir(home)
     payload = store.load_task(task["id"], job_id=job["id"])
     payload["state"] = "running"
