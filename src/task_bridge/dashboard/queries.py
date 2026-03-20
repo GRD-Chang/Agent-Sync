@@ -1,17 +1,64 @@
 from __future__ import annotations
 
-import re
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
 from task_bridge.runtime import now_iso
 from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
 
+from .detail_preview import (
+    detail_preview_status as _detail_preview_status,
+    load_detail_preview as _load_detail_preview,
+)
+from .formatting import (
+    file_timestamp_iso as _file_timestamp_iso,
+    format_timestamp as _format_timestamp,
+    is_overdue as _is_overdue,
+    optional_display_text as _optional_display_text,
+    optional_text as _optional_text,
+    parse_timestamp as _parse_timestamp,
+    truncate as _truncate,
+)
 from .i18n import DEFAULT_LOCALE, get_messages, resolve_locale
+from .pagination import page_for_task as _page_for_task
+from .pagination import paginate_items
+from .pagination import parse_page_number as _parse_page_number
+from .snapshots import (
+    AlertTaskGroup,
+    AlertTaskSnapshot,
+    AlertsSnapshot,
+    AppliedFilter,
+    DetailBackLink,
+    DetailPreview,
+    FilterGroup,
+    FollowupTaskGroup,
+    FollowupTaskSnapshot,
+    HealthCheck,
+    HealthSnapshot,
+    JobDetailSnapshot,
+    JobListItem,
+    JobsPageSnapshot,
+    JobTaskGroup,
+    JobTaskPreview,
+    LinkOption,
+    OverviewSnapshot,
+    PaginationSnapshot,
+    QueueTaskSnapshot,
+    RecentUpdate,
+    TaskDetailSnapshot,
+    TaskListGroup,
+    TaskListItem,
+    TaskStatusMetric,
+    TasksPageSnapshot,
+    TaskTimelineEvent,
+    WorkerLaneSnapshot,
+    WorkerQueueSnapshot,
+    WorkerSnapshot,
+    WorkPlanSnapshot,
+)
 
 CORE_TASK_STATES = ["queued", "running", "done", "blocked", "failed"]
 TASK_CARD_STATES = ("running", "blocked", "failed", "queued", "done")
@@ -19,406 +66,11 @@ ACTIVE_TASK_STATES = {"queued", "running"}
 TERMINAL_TASK_STATES = {"done", "blocked", "failed"}
 ALERT_TASK_STATES = {"blocked", "failed"}
 RECENT_UPDATES_LIMIT = 6
-DETAIL_PREVIEW_LINE_LIMIT = 60
-DETAIL_PREVIEW_CHAR_LIMIT = 5000
 JOB_VIEW_OPTIONS = ("all", "current", "active", "terminal")
 JOB_DETAIL_VIEW_OPTIONS = ("tasks", "plan")
 UNASSIGNED_AGENT_FILTER = "__unassigned__"
 TASK_LIST_PAGE_SIZE = 12
 ALERT_LIST_PAGE_SIZE = 8
-
-
-@dataclass(frozen=True)
-class TaskStatusMetric:
-    state: str
-    label: str
-    description: str
-    count: int
-
-
-@dataclass(frozen=True)
-class WorkerSnapshot:
-    agent: str
-    status: str
-    running_task_id: str | None
-    queued: int
-    next_queued_task_id: str | None
-    next_queued_job_id: str | None
-
-
-@dataclass(frozen=True)
-class RecentUpdate:
-    task_id: str
-    job_id: str
-    assigned_agent: str
-    state: str
-    updated_at: str
-    summary_label: str
-    summary_text: str
-    detail_href: str
-
-
-@dataclass(frozen=True)
-class OverviewSnapshot:
-    home_path: str
-    current_job_id: str | None
-    generated_at: str
-    jobs_count: int
-    tasks_count: int
-    terminal_count: int
-    worker_count: int
-    busy_workers: int
-    idle_workers: int
-    queued_tasks: int
-    task_status_metrics: list[TaskStatusMetric]
-    workers: list[WorkerSnapshot]
-    recent_updates: list[RecentUpdate]
-    is_empty: bool
-
-
-@dataclass(frozen=True)
-class LinkOption:
-    key: str
-    label: str
-    href: str
-    is_active: bool = False
-    count: int | None = None
-
-
-@dataclass(frozen=True)
-class FilterGroup:
-    key: str
-    label: str
-    options: list[LinkOption]
-
-
-@dataclass(frozen=True)
-class AppliedFilter:
-    label: str
-    value: str
-    clear_href: str
-
-
-@dataclass(frozen=True)
-class JobListItem:
-    job_id: str
-    title: str
-    notify_target: str
-    created_at: str
-    updated_at: str
-    is_current: bool
-    is_selected: bool
-    task_count: int
-    active_task_count: int
-    terminal_task_count: int
-    detail_href: str
-
-
-@dataclass(frozen=True)
-class DetailBackLink:
-    label: str
-    href: str
-
-
-@dataclass(frozen=True)
-class JobTaskPreview:
-    task_id: str
-    state: str
-    assigned_agent: str
-    updated_at: str
-    summary_label: str
-    summary_text: str
-    detail_href: str
-    is_selected: bool
-
-
-@dataclass(frozen=True)
-class JobTaskGroup:
-    state: str
-    label: str
-    description: str
-    count: int
-    tasks: list[JobTaskPreview]
-
-
-@dataclass(frozen=True)
-class WorkPlanSnapshot:
-    path: str
-    updated_at: str
-    status_label: str
-    detail_preview: DetailPreview
-
-
-@dataclass(frozen=True)
-class JobDetailSnapshot:
-    job_id: str
-    title: str
-    notify_target: str
-    created_at: str
-    updated_at: str
-    is_current: bool
-    task_count: int
-    active_task_count: int
-    terminal_task_count: int
-    tasks_href: str
-    latest_task_href: str | None
-    task_status_metrics: list[TaskStatusMetric]
-    task_previews: list[JobTaskPreview]
-    detail_view: str
-    detail_view_options: list[LinkOption]
-    task_groups: list[JobTaskGroup]
-    work_plan: WorkPlanSnapshot | None
-
-
-@dataclass(frozen=True)
-class JobsPageSnapshot:
-    home_path: str
-    current_job_id: str | None
-    generated_at: str
-    jobs_count: int
-    tasks_count: int
-    visible_jobs_count: int
-    active_view: str
-    view_options: list[LinkOption]
-    jobs: list[JobListItem]
-    selected_job: JobDetailSnapshot | None
-    selected_task: TaskDetailSnapshot | None
-    detail_back_link: DetailBackLink | None
-    is_empty: bool
-    filtered_empty: bool
-    selection_missing: bool
-
-
-@dataclass(frozen=True)
-class TaskListItem:
-    task_id: str
-    job_id: str
-    state: str
-    assigned_agent: str
-    created_at: str
-    updated_at: str
-    summary_label: str
-    summary_text: str
-    detail_status_label: str
-    detail_href: str
-    job_href: str
-    is_selected: bool
-
-
-@dataclass(frozen=True)
-class TaskListGroup:
-    state: str
-    label: str
-    description: str
-    count: int
-    tasks: list[TaskListItem]
-
-
-@dataclass(frozen=True)
-class DetailPreviewBlock:
-    kind: str
-    text: str = ""
-    level: int = 0
-    items: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class DetailPreview:
-    status: str
-    path: str
-    blocks: tuple[DetailPreviewBlock, ...] = ()
-    is_truncated: bool = False
-    error_message: str | None = None
-    line_limit: int = DETAIL_PREVIEW_LINE_LIMIT
-    char_limit: int = DETAIL_PREVIEW_CHAR_LIMIT
-
-
-@dataclass(frozen=True)
-class TaskTimelineEvent:
-    key: str
-    title: str
-    timestamp_display: str
-    note: str
-
-
-@dataclass(frozen=True)
-class TaskDetailSnapshot:
-    task_id: str
-    job_id: str
-    job_href: str
-    state: str
-    assigned_agent: str
-    notify_target: str
-    created_at: str
-    updated_at: str
-    requirement: str
-    result: str | None
-    detail_path: str
-    detail_status_label: str
-    detail_preview: DetailPreview
-    timeline: list[TaskTimelineEvent]
-    back_links: list[DetailBackLink]
-
-
-@dataclass(frozen=True)
-class PaginationSnapshot:
-    page: int
-    page_count: int
-    per_page: int
-    total_items: int
-    start_index: int
-    end_index: int
-    prev_href: str | None
-    next_href: str | None
-    page_links: list["PaginationLink"]
-
-
-@dataclass(frozen=True)
-class PaginationLink:
-    label: str
-    page: int | None
-    href: str | None
-    is_current: bool = False
-    is_gap: bool = False
-
-
-@dataclass(frozen=True)
-class TasksPageSnapshot:
-    home_path: str
-    current_job_id: str | None
-    generated_at: str
-    jobs_count: int
-    tasks_count: int
-    visible_tasks_count: int
-    filter_groups: list[FilterGroup]
-    applied_filters: list[AppliedFilter]
-    clear_filters_href: str
-    tasks: list[TaskListItem]
-    task_groups: list[TaskListGroup]
-    visible_status_metrics: list[TaskStatusMetric]
-    pagination: PaginationSnapshot
-    selected_task: TaskDetailSnapshot | None
-    detail_back_link: DetailBackLink | None
-    is_empty: bool
-    filtered_empty: bool
-    selection_missing: bool
-
-
-@dataclass(frozen=True)
-class QueueTaskSnapshot:
-    task_id: str
-    job_id: str
-    assigned_agent: str
-    state: str
-    updated_at: str
-    summary_label: str
-    summary_text: str
-
-
-@dataclass(frozen=True)
-class WorkerLaneSnapshot:
-    agent: str
-    status: str
-    running_task_id: str | None
-    running_summary_label: str | None
-    running_summary_text: str | None
-    queued_tasks: list[QueueTaskSnapshot]
-
-
-@dataclass(frozen=True)
-class WorkerQueueSnapshot:
-    home_path: str
-    current_job_id: str | None
-    generated_at: str
-    worker_count: int
-    busy_workers: int
-    idle_workers: int
-    running_tasks: int
-    assigned_queue_depth: int
-    unassigned_queue_depth: int
-    lanes: list[WorkerLaneSnapshot]
-    unassigned_queued_tasks: list[QueueTaskSnapshot]
-    has_activity: bool
-
-
-@dataclass(frozen=True)
-class AlertTaskSnapshot:
-    task_id: str
-    job_id: str
-    assigned_agent: str
-    state: str
-    updated_at: str
-    summary_label: str
-    summary_text: str
-
-
-@dataclass(frozen=True)
-class FollowupTaskSnapshot:
-    task_id: str
-    job_id: str
-    state: str
-    notify_target: str
-    final_notified_at: str
-    due_at: str
-    is_overdue: bool
-    summary_label: str
-    summary_text: str
-
-
-@dataclass(frozen=True)
-class AlertsSnapshot:
-    home_path: str
-    current_job_id: str | None
-    generated_at: str
-    blocked_count: int
-    failed_count: int
-    pending_followups_count: int
-    overdue_followups_count: int
-    risk_tasks: list[AlertTaskSnapshot]
-    risk_groups: list["AlertTaskGroup"]
-    followup_tasks: list[FollowupTaskSnapshot]
-    followup_groups: list["FollowupTaskGroup"]
-    risk_pagination: PaginationSnapshot
-    followup_pagination: PaginationSnapshot
-    has_alerts: bool
-
-
-@dataclass(frozen=True)
-class AlertTaskGroup:
-    state: str
-    label: str
-    description: str
-    count: int
-    tasks: list[AlertTaskSnapshot]
-
-
-@dataclass(frozen=True)
-class FollowupTaskGroup:
-    state: str
-    label: str
-    description: str
-    count: int
-    tasks: list[FollowupTaskSnapshot]
-
-
-@dataclass(frozen=True)
-class HealthCheck:
-    key: str
-    label: str
-    status: str
-    detail: str
-
-
-@dataclass(frozen=True)
-class HealthSnapshot:
-    home_path: str
-    current_job_id: str | None
-    generated_at: str
-    jobs_count: int
-    tasks_count: int
-    worker_prompt_entries: int
-    leader_last_running_notice_at: str
-    checks: list[HealthCheck]
 
 
 class DashboardQueryService:
@@ -615,7 +267,7 @@ class DashboardQueryService:
         page = _parse_page_number(selected_page)
         if resolved_task is not None:
             page = _page_for_task(filtered_tasks, str(resolved_task["id"]), per_page=TASK_LIST_PAGE_SIZE)
-        paged_tasks, pagination = self._paginate_items(
+        paged_tasks, pagination = paginate_items(
             filtered_tasks,
             page=page,
             per_page=TASK_LIST_PAGE_SIZE,
@@ -784,7 +436,7 @@ class DashboardQueryService:
             )
         )
         followups_all = [self._build_followup_task(task, now_value=now_value) for task in followup_raw]
-        risk_tasks, risk_pagination = self._paginate_items(
+        risk_tasks, risk_pagination = paginate_items(
             risk_tasks_all,
             page=_parse_page_number(risk_page),
             per_page=ALERT_LIST_PAGE_SIZE,
@@ -794,7 +446,7 @@ class DashboardQueryService:
             )
             + "#alerts-risk-list",
         )
-        followups, followup_pagination = self._paginate_items(
+        followups, followup_pagination = paginate_items(
             followups_all,
             page=_parse_page_number(followup_page),
             per_page=ALERT_LIST_PAGE_SIZE,
@@ -1848,56 +1500,8 @@ class DashboardQueryService:
                     count=len(grouped_tasks),
                     tasks=grouped_tasks,
                 )
-            )
+        )
         return groups
-
-    def _paginate_items(
-        self,
-        items: list[object],
-        *,
-        page: int,
-        per_page: int,
-        href_builder: Callable[[int], str],
-    ) -> tuple[list[object], PaginationSnapshot]:
-        total_items = len(items)
-        if total_items == 0:
-            return (
-                [],
-                PaginationSnapshot(
-                    page=1,
-                    page_count=1,
-                per_page=per_page,
-                total_items=0,
-                start_index=0,
-                end_index=0,
-                prev_href=None,
-                next_href=None,
-                page_links=[],
-            ),
-        )
-
-        page_count = max((total_items - 1) // per_page + 1, 1)
-        current_page = min(max(page, 1), page_count)
-        start_index = (current_page - 1) * per_page
-        end_index = min(start_index + per_page, total_items)
-        return (
-            items[start_index:end_index],
-            PaginationSnapshot(
-                page=current_page,
-                page_count=page_count,
-                per_page=per_page,
-                total_items=total_items,
-                start_index=start_index + 1,
-                end_index=end_index,
-                prev_href=href_builder(current_page - 1) if current_page > 1 else None,
-                next_href=href_builder(current_page + 1) if current_page < page_count else None,
-                page_links=_build_pagination_links(
-                    page_count=page_count,
-                    current_page=current_page,
-                    href_builder=href_builder,
-                ),
-            ),
-        )
 
 
 def _task_scheduler(task: dict[str, object]) -> dict[str, object]:
@@ -1905,274 +1509,8 @@ def _task_scheduler(task: dict[str, object]) -> dict[str, object]:
     return scheduler if isinstance(scheduler, dict) else {}
 
 
-def _parse_page_number(value: str | None) -> int:
-    if value is None:
-        return 1
-    try:
-        return max(int(value), 1)
-    except (TypeError, ValueError):
-        return 1
-
-
 def _task_state_priority(state: str) -> int:
     try:
         return TASK_CARD_STATES.index(state)
     except ValueError:
         return len(TASK_CARD_STATES)
-
-
-def _page_for_task(tasks: list[dict[str, object]], task_id: str, *, per_page: int) -> int:
-    for index, task in enumerate(tasks):
-        if str(task["id"]) == task_id:
-            return index // per_page + 1
-    return 1
-
-
-def _build_pagination_links(
-    *,
-    page_count: int,
-    current_page: int,
-    href_builder: Callable[[int], str],
-) -> list[PaginationLink]:
-    if page_count <= 1:
-        return []
-
-    if page_count <= 7:
-        pages = list(range(1, page_count + 1))
-    else:
-        pages = sorted(
-            {
-                1,
-                2,
-                page_count - 1,
-                page_count,
-                max(current_page - 1, 1),
-                current_page,
-                min(current_page + 1, page_count),
-            }
-        )
-
-    links: list[PaginationLink] = []
-    previous_page = 0
-    for page in pages:
-        if page - previous_page > 1:
-            links.append(PaginationLink(label="...", page=None, href=None, is_gap=True))
-        links.append(
-            PaginationLink(
-                label=str(page),
-                page=page,
-                href=None if page == current_page else href_builder(page),
-                is_current=page == current_page,
-            )
-        )
-        previous_page = page
-    return links
-
-
-def _is_overdue(value: str | None, now_value: datetime | None) -> bool:
-    if not value or now_value is None:
-        return False
-    due_at = _parse_timestamp(value)
-    return bool(due_at and due_at <= now_value)
-
-
-def _parse_timestamp(value: str) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
-    except ValueError:
-        return None
-
-
-def _optional_text(value: object) -> str | None:
-    text = str(value).strip() if value is not None else ""
-    return text or None
-
-
-def _optional_display_text(value: object) -> str | None:
-    text = _optional_text(value)
-    return _normalize_display_text(text) if text is not None else None
-
-
-def _normalize_display_text(value: str) -> str:
-    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
-    if "\\n" not in normalized and "\\r" not in normalized:
-        return normalized
-    return normalized.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
-
-
-def _truncate(value: str, limit: int) -> str:
-    return value if len(value) <= limit else value[: limit - 3].rstrip() + "..."
-
-
-def _format_timestamp(value: str, *, fallback: str) -> str:
-    if not value:
-        return fallback
-    parsed = _parse_timestamp(value)
-    if parsed is None:
-        return value
-    return parsed.strftime("%Y-%m-%d %H:%M UTC")
-
-
-def _file_timestamp_iso(path: Path) -> str | None:
-    try:
-        timestamp = path.stat().st_mtime
-    except OSError:
-        return None
-    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _detail_preview_status(path_value: str) -> str:
-    if not path_value:
-        return "missing"
-
-    path = Path(path_value)
-    if not path.is_file():
-        return "missing"
-
-    try:
-        raw_text = path.read_text(encoding="utf-8")
-    except Exception:  # pragma: no cover
-        return "error"
-
-    return "empty" if not raw_text.strip() else "rendered"
-
-
-def _load_detail_preview(path_value: str) -> DetailPreview:
-    if not path_value:
-        return DetailPreview(status="missing", path=path_value)
-
-    path = Path(path_value)
-    if not path.is_file():
-        return DetailPreview(status="missing", path=path_value)
-
-    try:
-        raw_text = path.read_text(encoding="utf-8")
-    except Exception as exc:  # pragma: no cover
-        return DetailPreview(status="error", path=path_value, error_message=str(exc))
-
-    if not raw_text.strip():
-        return DetailPreview(status="empty", path=path_value)
-
-    preview_text, is_truncated = _clamp_preview_text(raw_text)
-    blocks = _parse_markdown_blocks(preview_text)
-    if not blocks:
-        return DetailPreview(status="empty", path=path_value, is_truncated=is_truncated)
-
-    return DetailPreview(
-        status="rendered",
-        path=path_value,
-        blocks=tuple(blocks),
-        is_truncated=is_truncated,
-    )
-
-
-def _clamp_preview_text(text: str) -> tuple[str, bool]:
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    lines = normalized.split("\n")
-    is_truncated = False
-    if len(lines) > DETAIL_PREVIEW_LINE_LIMIT:
-        lines = lines[:DETAIL_PREVIEW_LINE_LIMIT]
-        is_truncated = True
-    limited = "\n".join(lines)
-    if len(limited) > DETAIL_PREVIEW_CHAR_LIMIT:
-        limited = limited[:DETAIL_PREVIEW_CHAR_LIMIT].rstrip()
-        is_truncated = True
-    return limited.strip(), is_truncated
-
-
-def _parse_markdown_blocks(text: str) -> list[DetailPreviewBlock]:
-    if not text:
-        return []
-
-    blocks: list[DetailPreviewBlock] = []
-    paragraph_lines: list[str] = []
-    list_items: list[str] = []
-    quote_lines: list[str] = []
-    code_lines: list[str] = []
-    in_code = False
-
-    def flush_paragraph() -> None:
-        nonlocal paragraph_lines
-        if paragraph_lines:
-            blocks.append(DetailPreviewBlock(kind="paragraph", text=" ".join(paragraph_lines).strip()))
-            paragraph_lines = []
-
-    def flush_list() -> None:
-        nonlocal list_items
-        if list_items:
-            blocks.append(DetailPreviewBlock(kind="list", items=tuple(list_items)))
-            list_items = []
-
-    def flush_quote() -> None:
-        nonlocal quote_lines
-        if quote_lines:
-            blocks.append(DetailPreviewBlock(kind="quote", text=" ".join(quote_lines).strip()))
-            quote_lines = []
-
-    def flush_code() -> None:
-        nonlocal code_lines
-        if code_lines:
-            blocks.append(DetailPreviewBlock(kind="code", text="\n".join(code_lines).rstrip()))
-            code_lines = []
-
-    for raw_line in text.splitlines():
-        line = raw_line.rstrip()
-        if in_code:
-            if line.startswith("```"):
-                flush_code()
-                in_code = False
-                continue
-            code_lines.append(raw_line)
-            continue
-
-        if line.startswith("```"):
-            flush_paragraph()
-            flush_list()
-            flush_quote()
-            in_code = True
-            continue
-
-        heading = re.match(r"^(#{1,3})\s+(.+)$", line)
-        if heading:
-            flush_paragraph()
-            flush_list()
-            flush_quote()
-            blocks.append(
-                DetailPreviewBlock(
-                    kind="heading",
-                    text=heading.group(2).strip(),
-                    level=len(heading.group(1)),
-                )
-            )
-            continue
-
-        list_item = re.match(r"^[-*]\s+(.+)$", line)
-        if list_item:
-            flush_paragraph()
-            flush_quote()
-            list_items.append(list_item.group(1).strip())
-            continue
-
-        quote = re.match(r"^>\s?(.*)$", line)
-        if quote and quote.group(1).strip():
-            flush_paragraph()
-            flush_list()
-            quote_lines.append(quote.group(1).strip())
-            continue
-
-        if not line.strip():
-            flush_paragraph()
-            flush_list()
-            flush_quote()
-            continue
-
-        paragraph_lines.append(line.strip())
-
-    flush_paragraph()
-    flush_list()
-    flush_quote()
-    if in_code:
-        flush_code()
-    return blocks
