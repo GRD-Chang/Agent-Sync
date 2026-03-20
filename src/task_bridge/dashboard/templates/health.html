@@ -1,80 +1,83 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero-panel" aria-labelledby="health-title" data-testid="dashboard-health-hero">
-  <div class="hero-copy">
-    <p class="eyebrow">{{ ui.health.eyebrow }}</p>
-    <h2 id="health-title" data-testid="dashboard-page-title">{{ ui.health.title }}</h2>
-    <p class="hero-text">{{ ui.health.intro }}</p>
-  </div>
-  <dl class="hero-stats" aria-label="{{ ui.health.stats_label }}">
-    <div>
-      <dt>{{ ui.health.current_job }}</dt>
-      <dd>{{ health.current_job_id or ui.overview.current_job_empty }}</dd>
+<div class="ops-page ops-page--health">
+  <section class="hero-panel" aria-labelledby="health-title" data-testid="dashboard-health-hero">
+    <div class="hero-copy">
+      <p class="eyebrow">{{ ui.health.eyebrow }}</p>
+      <h2 id="health-title" data-testid="dashboard-page-title">{{ ui.health.title }}</h2>
+      <p class="hero-text">{{ ui.health.intro }}</p>
     </div>
-    <div>
-      <dt>{{ ui.health.generated_at }}</dt>
-      <dd>{{ health.generated_at }}</dd>
-    </div>
-    <div>
-      <dt>{{ ui.health.daemon_state_path }}</dt>
-      <dd>{{ health.home_path }}/daemon_state.json</dd>
-    </div>
-    <div class="hero-home">
-      <dt>{{ ui.health.store_home }}</dt>
-      <dd>{{ health.home_path }}</dd>
-    </div>
-  </dl>
-</section>
+    <dl class="hero-stats" aria-label="{{ ui.health.stats_label }}">
+      <div>
+        <dt>{{ ui.health.current_job }}</dt>
+        <dd>{{ health.current_job_id or ui.overview.current_job_empty }}</dd>
+      </div>
+      <div>
+        <dt>{{ ui.health.generated_at }}</dt>
+        <dd>{{ health.generated_at }}</dd>
+      </div>
+      <div>
+        <dt>{{ ui.health.daemon_state_path }}</dt>
+        <dd>{{ health.home_path }}/daemon_state.json</dd>
+      </div>
+      <div class="hero-home">
+        <dt>{{ ui.health.store_home }}</dt>
+        <dd>{{ health.home_path }}</dd>
+      </div>
+    </dl>
+  </section>
 
-<section class="section-block" aria-labelledby="health-summary-title" data-testid="dashboard-health-summary">
-  <div class="section-heading">
-    <p class="eyebrow">{{ ui.health.summary_eyebrow }}</p>
-    <h2 id="health-summary-title">{{ ui.health.summary_title }}</h2>
-  </div>
-  <div class="util-grid">
-    <article class="util-card">
-      <p class="summary-label">{{ ui.health.jobs_tracked }}</p>
-      <p class="summary-value">{{ health.jobs_count }}</p>
-    </article>
-    <article class="util-card">
-      <p class="summary-label">{{ ui.health.tasks_tracked }}</p>
-      <p class="summary-value">{{ health.tasks_count }}</p>
-    </article>
-    <article class="util-card">
-      <p class="summary-label">{{ ui.health.worker_prompt_entries }}</p>
-      <p class="summary-value">{{ health.worker_prompt_entries }}</p>
-    </article>
-    <article class="util-card">
-      <p class="summary-label">{{ ui.health.leader_running_notice }}</p>
-      <p class="summary-value">{{ health.leader_last_running_notice_at }}</p>
-    </article>
-  </div>
-</section>
+  <section class="section-block" aria-labelledby="health-summary-title" data-testid="dashboard-health-summary">
+    <div class="section-heading">
+      <p class="eyebrow">{{ ui.health.summary_eyebrow }}</p>
+      <h2 id="health-summary-title">{{ ui.health.summary_title }}</h2>
+    </div>
+    <div class="util-grid">
+      <article class="util-card">
+        <p class="summary-label">{{ ui.health.jobs_tracked }}</p>
+        <p class="summary-value">{{ health.jobs_count }}</p>
+      </article>
+      <article class="util-card">
+        <p class="summary-label">{{ ui.health.tasks_tracked }}</p>
+        <p class="summary-value">{{ health.tasks_count }}</p>
+      </article>
+      <article class="util-card">
+        <p class="summary-label">{{ ui.health.worker_prompt_entries }}</p>
+        <p class="summary-value">{{ health.worker_prompt_entries }}</p>
+      </article>
+      <article class="util-card">
+        <p class="summary-label">{{ ui.health.leader_running_notice }}</p>
+        <p class="summary-value">{{ health.leader_last_running_notice_at }}</p>
+      </article>
+    </div>
+  </section>
 
-<section class="section-block" aria-labelledby="health-checks-title" data-testid="dashboard-health-checks">
-  <div class="section-heading">
-    <p class="eyebrow">{{ ui.health.checks_eyebrow }}</p>
-    <h2 id="health-checks-title">{{ ui.health.checks_title }}</h2>
-  </div>
-  <div class="item-list">
-    {% for check in health.checks %}
-    <article class="detail-card">
-      <div class="detail-title-row">
-        <div>
-          <h3>{{ check.label }}</h3>
-          <p>{{ check.key }}</p>
+  <section class="section-block" aria-labelledby="health-checks-title" data-testid="dashboard-health-checks">
+    <div class="section-heading">
+      <p class="eyebrow">{{ ui.health.checks_eyebrow }}</p>
+      <h2 id="health-checks-title">{{ ui.health.checks_title }}</h2>
+      <p class="section-note">{{ ui.health.checks_note }}</p>
+    </div>
+    <div class="item-list health-check-grid">
+      {% for check in health.checks %}
+      <article class="detail-card health-check-card health-check-card--{{ check.status }}">
+        <div class="detail-title-row">
+          <div class="detail-title-copy">
+            <h3>{{ check.label }}</h3>
+            <p>{{ check.key }}</p>
+          </div>
+          <span class="status-pill status-{{ 'done' if check.status == 'ok' else 'blocked' }}">
+            {{ ui.health.status_labels[check.status] }}
+          </span>
         </div>
-        <span class="status-pill status-{{ 'done' if check.status == 'ok' else 'blocked' }}">
-          {{ ui.health.status_labels[check.status] }}
-        </span>
-      </div>
-      <div class="detail-callout">
-        <p class="eyebrow">{{ check.label }}</p>
-        <p>{{ check.detail }}</p>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-</section>
+        <div class="detail-callout">
+          <p class="eyebrow">{{ check.label }}</p>
+          <p>{{ check.detail }}</p>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
 {% endblock %}

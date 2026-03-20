@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import sys
 import time
 from typing import Any
@@ -224,12 +225,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     dashboard = subparsers.add_parser(
         "dashboard",
-        help="启动只读 dashboard Web 界面",
+        help="启动 dashboard Web 界面",
         description=(
-            "启动 task-bridge 的只读 dashboard。"
-            "Overview / Jobs / Tasks / Worker & Queue / Alerts / Health 为只读 MVP 页面；"
+            "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Worker Queue / Alerts / Health。"
             "支持通过页面内切换器在 en / zh-CN 之间切换界面语言；"
-            "Worker & Queue / Alerts / Health 保持基础只读范围。"
+            "启动后会输出访问地址、数据目录和远程 SSH 端口转发提示。"
         ),
         formatter_class=HelpFormatter,
     )
@@ -403,9 +403,75 @@ def _run_daemon(
 
 
 def _run_dashboard_command(*, home: Any, host: str, port: int) -> None:
+    port_issue = _dashboard_port_issue(host=host, port=port)
+    if port_issue:
+        raise ValueError(port_issue)
+
+    print(_dashboard_launch_message(home=home, host=host, port=port))
+    sys.stdout.flush()
+
     from .dashboard import run_dashboard
 
     run_dashboard(home=home, host=host, port=port)
+
+
+def _dashboard_port_issue(*, host: str, port: int) -> str | None:
+    if not 0 < port < 65536:
+        return f"Dashboard 无法启动：端口 {port} 超出有效范围，请使用 1 到 65535 之间的端口。"
+    if _can_bind_dashboard_port(host=host, port=port):
+        return None
+
+    suggestion = _find_available_dashboard_port(host=host, start_port=port + 1)
+    lines = [
+        f"Dashboard 无法启动：{host}:{port} 已被占用。",
+        "请释放当前端口，或改用其他未占用端口。",
+    ]
+    if suggestion is not None:
+        lines.append(f"可改用：task-bridge dashboard --host {host} --port {suggestion}")
+    return "\n".join(lines)
+
+
+def _dashboard_launch_message(*, home: Any, host: str, port: int) -> str:
+    local_url = _dashboard_local_url(host=host, port=port)
+    return "\n".join(
+        [
+            "Dashboard 启动中",
+            f"监听地址: {host}",
+            f"监听端口: {port}",
+            f"本机访问: {local_url}",
+            f"数据目录: {home}",
+            f"SSH 端口转发: ssh -L {port}:127.0.0.1:{port} <remote-host>",
+            "浏览器: 当前命令不会自动打开浏览器；如果你在远程或无 GUI 环境，请先建立端口转发，再在本机浏览器打开上面的地址。",
+            "停止方式: Ctrl+C",
+        ]
+    )
+
+
+def _dashboard_local_url(*, host: str, port: int) -> str:
+    access_host = "127.0.0.1" if host in {"0.0.0.0", "::", "[::]", "localhost"} else host
+    if ":" in access_host and not access_host.startswith("["):
+        access_host = f"[{access_host}]"
+    return f"http://{access_host}:{port}/overview"
+
+
+def _can_bind_dashboard_port(*, host: str, port: int) -> bool:
+    family = socket.AF_INET6 if ":" in host and "." not in host else socket.AF_INET
+    sock = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+    except OSError:
+        return False
+    finally:
+        sock.close()
+    return True
+
+
+def _find_available_dashboard_port(*, host: str, start_port: int, attempts: int = 20) -> int | None:
+    for candidate in range(max(start_port, 1), max(start_port, 1) + attempts):
+        if _can_bind_dashboard_port(host=host, port=candidate):
+            return candidate
+    return None
 
 
 def _print_payload(payload: Any, *, as_json: bool) -> int:

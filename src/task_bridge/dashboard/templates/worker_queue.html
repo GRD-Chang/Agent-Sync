@@ -1,161 +1,164 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero-panel" aria-labelledby="worker-queue-title" data-testid="dashboard-worker-queue-hero">
-  <div class="hero-copy">
-    <p class="eyebrow">{{ ui.worker_queue.eyebrow }}</p>
-    <h2 id="worker-queue-title" data-testid="dashboard-page-title">{{ ui.worker_queue.title }}</h2>
-    <p class="hero-text">{{ ui.worker_queue.intro }}</p>
-  </div>
-  <dl class="hero-stats" aria-label="{{ ui.worker_queue.stats_label }}">
-    <div>
-      <dt>{{ ui.worker_queue.current_job }}</dt>
-      <dd>{{ worker_queue.current_job_id or ui.overview.current_job_empty }}</dd>
+<div class="ops-page ops-page--worker-queue">
+  <section class="hero-panel" aria-labelledby="worker-queue-title" data-testid="dashboard-worker-queue-hero">
+    <div class="hero-copy">
+      <p class="eyebrow">{{ ui.worker_queue.eyebrow }}</p>
+      <h2 id="worker-queue-title" data-testid="dashboard-page-title">{{ ui.worker_queue.title }}</h2>
+      <p class="hero-text">{{ ui.worker_queue.intro }}</p>
     </div>
-    <div>
-      <dt>{{ ui.worker_queue.generated_at }}</dt>
-      <dd>{{ worker_queue.generated_at }}</dd>
-    </div>
-    <div>
-      <dt>{{ ui.worker_queue.workers_tracked }}</dt>
-      <dd>{{ worker_queue.worker_count }}</dd>
-    </div>
-    <div class="hero-home">
-      <dt>{{ ui.worker_queue.store_home }}</dt>
-      <dd>{{ worker_queue.home_path }}</dd>
-    </div>
-  </dl>
-</section>
+    <dl class="hero-stats" aria-label="{{ ui.worker_queue.stats_label }}">
+      <div>
+        <dt>{{ ui.worker_queue.current_job }}</dt>
+        <dd>{{ worker_queue.current_job_id or ui.overview.current_job_empty }}</dd>
+      </div>
+      <div>
+        <dt>{{ ui.worker_queue.generated_at }}</dt>
+        <dd>{{ worker_queue.generated_at }}</dd>
+      </div>
+      <div>
+        <dt>{{ ui.worker_queue.workers_tracked }}</dt>
+        <dd>{{ worker_queue.worker_count }}</dd>
+      </div>
+      <div class="hero-home">
+        <dt>{{ ui.worker_queue.store_home }}</dt>
+        <dd>{{ worker_queue.home_path }}</dd>
+      </div>
+    </dl>
+  </section>
 
-<section class="section-block" aria-labelledby="worker-queue-summary-title" data-testid="dashboard-worker-queue-summary">
-  <div class="section-heading">
-    <p class="eyebrow">{{ ui.worker_queue.summary_eyebrow }}</p>
-    <h2 id="worker-queue-summary-title">{{ ui.worker_queue.summary_title }}</h2>
-  </div>
-  <div class="util-grid">
-    <article class="util-card">
-      <p class="summary-label">{{ ui.worker_queue.running_tasks }}</p>
-      <p class="summary-value">{{ worker_queue.running_tasks }}</p>
-    </article>
-    <article class="util-card">
-      <p class="summary-label">{{ ui.worker_queue.busy_workers }}</p>
-      <p class="summary-value">{{ worker_queue.busy_workers }} / {{ worker_queue.worker_count }}</p>
-    </article>
-    <article class="util-card">
-      <p class="summary-label">{{ ui.worker_queue.assigned_queue_depth }}</p>
-      <p class="summary-value">{{ worker_queue.assigned_queue_depth }}</p>
-    </article>
-    <article class="util-card">
-      <p class="summary-label">{{ ui.worker_queue.unassigned_queue_depth }}</p>
-      <p class="summary-value">{{ worker_queue.unassigned_queue_depth }}</p>
-    </article>
-  </div>
-</section>
-
-{% if worker_queue.has_activity %}
-<div class="browse-layout">
-  <section class="browse-panel" aria-labelledby="worker-queue-lanes-title" data-testid="dashboard-worker-queue-lanes">
+  <section class="section-block" aria-labelledby="worker-queue-summary-title" data-testid="dashboard-worker-queue-summary">
     <div class="section-heading">
-      <p class="eyebrow">{{ ui.worker_queue.lane_eyebrow }}</p>
-      <h2 id="worker-queue-lanes-title">{{ ui.worker_queue.lane_title }}</h2>
+      <p class="eyebrow">{{ ui.worker_queue.summary_eyebrow }}</p>
+      <h2 id="worker-queue-summary-title">{{ ui.worker_queue.summary_title }}</h2>
     </div>
-    <div class="item-list">
-      {% for lane in worker_queue.lanes %}
-      <article class="detail-card">
-        <div class="detail-title-row">
-          <div>
-            <h3>{{ lane.agent }}</h3>
-            <p>{{ ui.worker_queue.lane_running }}: {{ lane.running_task_id or ui.common.none }}</p>
-          </div>
-          <span class="status-pill status-{{ lane.status }}">{{ ui.worker_status[lane.status] }}</span>
-        </div>
-        <dl class="meta-grid">
-          <div>
-            <dt>{{ ui.worker_queue.lane_backlog }}</dt>
-            <dd>{{ lane.queued_tasks|length }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.worker_queue.lane_running }}</dt>
-            <dd>{{ lane.running_task_id or ui.common.none }}</dd>
-          </div>
-        </dl>
-        {% if lane.running_summary_text %}
-        <div class="detail-callout">
-          <p class="eyebrow">{{ lane.running_summary_label }}</p>
-          <p>{{ lane.running_summary_text }}</p>
-        </div>
-        {% endif %}
-        {% if lane.queued_tasks %}
-        <div class="task-preview-list">
-          {% for task in lane.queued_tasks %}
-          <article class="task-preview-card">
-            <div class="task-preview-header">
-              <div>
-                <h4>{{ task.task_id }}</h4>
-                <p>{{ task.summary_label }}: {{ task.summary_text }}</p>
-              </div>
-              <div class="task-preview-meta">
-                <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
-                <span>{{ task.updated_at }}</span>
-              </div>
+    <div class="util-grid">
+      <article class="util-card">
+        <p class="summary-label">{{ ui.worker_queue.running_tasks }}</p>
+        <p class="summary-value">{{ worker_queue.running_tasks }}</p>
+      </article>
+      <article class="util-card">
+        <p class="summary-label">{{ ui.worker_queue.busy_workers }}</p>
+        <p class="summary-value">{{ worker_queue.busy_workers }} / {{ worker_queue.worker_count }}</p>
+      </article>
+      <article class="util-card">
+        <p class="summary-label">{{ ui.worker_queue.assigned_queue_depth }}</p>
+        <p class="summary-value">{{ worker_queue.assigned_queue_depth }}</p>
+      </article>
+      <article class="util-card">
+        <p class="summary-label">{{ ui.worker_queue.unassigned_queue_depth }}</p>
+        <p class="summary-value">{{ worker_queue.unassigned_queue_depth }}</p>
+      </article>
+    </div>
+  </section>
+
+  {% if worker_queue.has_activity %}
+  <div class="queue-layout">
+    <section class="section-block queue-panel queue-panel--lanes" aria-labelledby="worker-queue-lanes-title" data-testid="dashboard-worker-queue-lanes">
+      <div class="section-heading">
+        <p class="eyebrow">{{ ui.worker_queue.lane_eyebrow }}</p>
+        <h2 id="worker-queue-lanes-title">{{ ui.worker_queue.lane_title }}</h2>
+        <p class="section-note">{{ ui.worker_queue.lane_note }}</p>
+      </div>
+      <div class="lane-grid">
+        {% for lane in worker_queue.lanes %}
+        <article class="detail-card lane-card lane-card--{{ lane.status }}">
+          <div class="detail-title-row">
+            <div class="detail-title-copy">
+              <h3>{{ lane.agent }}</h3>
+              <p>{{ ui.worker_queue.lane_running }}: {{ lane.running_task_id or ui.common.none }}</p>
             </div>
-          </article>
-          {% endfor %}
-        </div>
-        {% else %}
-        <p class="list-card-foot">{{ ui.worker_queue.lane_empty }}</p>
-        {% endif %}
-      </article>
-      {% endfor %}
-    </div>
-  </section>
+            <span class="status-pill status-{{ lane.status }}">{{ ui.worker_status[lane.status] }}</span>
+          </div>
+          <dl class="meta-grid">
+            <div>
+              <dt>{{ ui.worker_queue.lane_backlog }}</dt>
+              <dd>{{ lane.queued_tasks|length }}</dd>
+            </div>
+            <div>
+              <dt>{{ ui.worker_queue.lane_running }}</dt>
+              <dd>{{ lane.running_task_id or ui.common.none }}</dd>
+            </div>
+          </dl>
+          {% if lane.running_summary_text %}
+          <div class="detail-callout">
+            <p class="eyebrow">{{ lane.running_summary_label }}</p>
+            <p>{{ lane.running_summary_text }}</p>
+          </div>
+          {% endif %}
+          {% if lane.queued_tasks %}
+          <div class="task-preview-list task-preview-list--queue">
+            {% for task in lane.queued_tasks %}
+            <article class="task-preview-card">
+              <div class="task-preview-header">
+                <div class="detail-title-copy">
+                  <h4>{{ task.task_id }}</h4>
+                  <p>{{ task.summary_label }}: {{ task.summary_text }}</p>
+                </div>
+                <div class="task-preview-meta">
+                  <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
+                  <span>{{ task.updated_at }}</span>
+                </div>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="list-card-foot">{{ ui.worker_queue.lane_empty }}</p>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </section>
 
-  <section class="detail-panel" aria-labelledby="worker-queue-unassigned-title" data-testid="dashboard-worker-queue-unassigned">
-    <div class="section-heading">
-      <p class="eyebrow">{{ ui.worker_queue.unassigned_eyebrow }}</p>
-      <h2 id="worker-queue-unassigned-title">{{ ui.worker_queue.unassigned_title }}</h2>
-      <p class="section-note">{{ ui.worker_queue.unassigned_note }}</p>
-    </div>
-    {% if worker_queue.unassigned_queued_tasks %}
-    <div class="detail-stack">
-      {% for task in worker_queue.unassigned_queued_tasks %}
-      <article class="detail-card">
-        <div class="detail-title-row">
-          <div>
-            <h3>{{ task.task_id }}</h3>
-            <p>{{ task.job_id }}</p>
+    <section class="section-block queue-panel queue-panel--unassigned" aria-labelledby="worker-queue-unassigned-title" data-testid="dashboard-worker-queue-unassigned">
+      <div class="section-heading">
+        <p class="eyebrow">{{ ui.worker_queue.unassigned_eyebrow }}</p>
+        <h2 id="worker-queue-unassigned-title">{{ ui.worker_queue.unassigned_title }}</h2>
+        <p class="section-note">{{ ui.worker_queue.unassigned_note }}</p>
+      </div>
+      {% if worker_queue.unassigned_queued_tasks %}
+      <div class="detail-stack">
+        {% for task in worker_queue.unassigned_queued_tasks %}
+        <article class="detail-card signal-card signal-card--queued">
+          <div class="detail-title-row">
+            <div class="detail-title-copy">
+              <h3>{{ task.task_id }}</h3>
+              <p>{{ task.job_id }}</p>
+            </div>
+            <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
           </div>
-          <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
-        </div>
-        <dl class="meta-grid">
-          <div>
-            <dt>{{ ui.tasks.assigned_agent }}</dt>
-            <dd>{{ task.assigned_agent }}</dd>
+          <dl class="meta-grid">
+            <div>
+              <dt>{{ ui.tasks.assigned_agent }}</dt>
+              <dd>{{ task.assigned_agent }}</dd>
+            </div>
+            <div>
+              <dt>{{ ui.jobs.updated_at }}</dt>
+              <dd>{{ task.updated_at }}</dd>
+            </div>
+          </dl>
+          <div class="detail-callout">
+            <p class="eyebrow">{{ task.summary_label }}</p>
+            <p>{{ task.summary_text }}</p>
           </div>
-          <div>
-            <dt>{{ ui.jobs.updated_at }}</dt>
-            <dd>{{ task.updated_at }}</dd>
-          </div>
-        </dl>
-        <div class="detail-callout">
-          <p class="eyebrow">{{ task.summary_label }}</p>
-          <p>{{ task.summary_text }}</p>
-        </div>
-      </article>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="state-panel" role="status" aria-live="polite">
-      <h3>{{ ui.worker_queue.unassigned_empty_title }}</h3>
-      <p>{{ ui.worker_queue.unassigned_empty_body }}</p>
-    </div>
-    {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="state-panel" role="status" aria-live="polite">
+        <h3>{{ ui.worker_queue.unassigned_empty_title }}</h3>
+        <p>{{ ui.worker_queue.unassigned_empty_body }}</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+  {% else %}
+  <section class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-worker-queue-empty-state">
+    <h3>{{ ui.worker_queue.no_activity_title }}</h3>
+    <p>{{ ui.worker_queue.no_activity_body }}</p>
   </section>
+  {% endif %}
 </div>
-{% else %}
-<section class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-worker-queue-empty-state">
-  <h3>{{ ui.worker_queue.no_activity_title }}</h3>
-  <p>{{ ui.worker_queue.no_activity_body }}</p>
-</section>
-{% endif %}
 {% endblock %}
