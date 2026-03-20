@@ -22,6 +22,7 @@ RECENT_UPDATES_LIMIT = 6
 DETAIL_PREVIEW_LINE_LIMIT = 60
 DETAIL_PREVIEW_CHAR_LIMIT = 5000
 JOB_VIEW_OPTIONS = ("all", "current", "active", "terminal")
+JOB_DETAIL_VIEW_OPTIONS = ("tasks", "plan")
 UNASSIGNED_AGENT_FILTER = "__unassigned__"
 TASK_LIST_PAGE_SIZE = 12
 ALERT_LIST_PAGE_SIZE = 8
@@ -141,6 +142,14 @@ class JobTaskGroup:
 
 
 @dataclass(frozen=True)
+class WorkPlanSnapshot:
+    path: str
+    updated_at: str
+    status_label: str
+    detail_preview: DetailPreview
+
+
+@dataclass(frozen=True)
 class JobDetailSnapshot:
     job_id: str
     title: str
@@ -155,7 +164,10 @@ class JobDetailSnapshot:
     latest_task_href: str | None
     task_status_metrics: list[TaskStatusMetric]
     task_previews: list[JobTaskPreview]
+    detail_view: str
+    detail_view_options: list[LinkOption]
     task_groups: list[JobTaskGroup]
+    work_plan: WorkPlanSnapshot | None
 
 
 @dataclass(frozen=True)
@@ -457,6 +469,7 @@ class DashboardQueryService:
         selected_job_id: str | None = None,
         selected_task_id: str | None = None,
         selected_view: str | None = None,
+        selected_detail_view: str | None = None,
     ) -> JobsPageSnapshot:
         jobs = self.store.list_jobs()
         tasks = self.store.list_tasks(all_jobs=True)
@@ -490,7 +503,10 @@ class DashboardQueryService:
         ]
         selected_job_raw = next((job for job in ordered_jobs if str(job["id"]) == resolved_job_id), None)
         selected_job_tasks = tasks_by_job.get(resolved_job_id or "", [])
-        resolved_task, _ = self._resolve_selected_task(selected_job_tasks, selected_task_id, resolved_job_id)
+        active_detail_view = self._resolve_job_detail_view(selected_job_raw, selected_detail_view)
+        resolved_task = None
+        if active_detail_view == "tasks":
+            resolved_task, _ = self._resolve_selected_task(selected_job_tasks, selected_task_id, resolved_job_id)
 
         return JobsPageSnapshot(
             home_path=self.home_path,
@@ -512,6 +528,7 @@ class DashboardQueryService:
                 selected_job_raw,
                 selected_job_tasks,
                 active_view=active_view,
+                active_detail_view=active_detail_view,
                 selected_task_id=str(resolved_task["id"]) if resolved_task else None,
             )
             if selected_job_raw
@@ -886,6 +903,7 @@ class DashboardQueryService:
         job_tasks: list[dict[str, object]],
         *,
         active_view: str,
+        active_detail_view: str,
         selected_task_id: str | None,
     ) -> JobDetailSnapshot | None:
         if job is None:
@@ -927,6 +945,8 @@ class DashboardQueryService:
             ]
         ]
         latest_task_href = task_previews[0].detail_href if task_previews else None
+        is_current = bool(job.get("is_current"))
+        work_plan = self._build_current_job_work_plan() if is_current else None
 
         return JobDetailSnapshot(
             job_id=str(job["id"]),
@@ -940,7 +960,7 @@ class DashboardQueryService:
                 str(job.get("updatedAt") or job.get("createdAt") or ""),
                 fallback=self._messages["common"]["unknown"],
             ),
-            is_current=bool(job.get("is_current")),
+            is_current=is_current,
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
             terminal_task_count=sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES),
@@ -948,7 +968,17 @@ class DashboardQueryService:
             latest_task_href=latest_task_href,
             task_status_metrics=status_metrics,
             task_previews=task_previews,
+            detail_view=active_detail_view,
+            detail_view_options=self._build_job_detail_view_options(
+                job_id=str(job["id"]),
+                active_view=active_view,
+                active_detail_view=active_detail_view,
+                selected_task_id=selected_task_id,
+            )
+            if is_current
+            else [],
             task_groups=self._build_job_task_groups(task_previews),
+            work_plan=work_plan,
         )
 
     def _build_task_row(
@@ -1264,6 +1294,52 @@ class DashboardQueryService:
             for view_key in JOB_VIEW_OPTIONS
         ]
 
+    @staticmethod
+    def _resolve_job_detail_view(
+        job: dict[str, object] | None,
+        selected_detail_view: str | None,
+    ) -> str:
+        if job is None or not bool(job.get("is_current")):
+            return "tasks"
+        if selected_detail_view in JOB_DETAIL_VIEW_OPTIONS:
+            return selected_detail_view
+        return "tasks"
+
+    def _build_job_detail_view_options(
+        self,
+        *,
+        job_id: str,
+        active_view: str,
+        active_detail_view: str,
+        selected_task_id: str | None,
+    ) -> list[LinkOption]:
+        messages = self._messages["jobs"]
+        return [
+            LinkOption(
+                key="tasks",
+                label=messages["detail_view_tasks"],
+                href=self._jobs_path(
+                    job_id=job_id,
+                    task_id=selected_task_id,
+                    view=active_view,
+                    detail_view="tasks",
+                )
+                + "#job-task-groups",
+                is_active=active_detail_view == "tasks",
+            ),
+            LinkOption(
+                key="plan",
+                label=messages["detail_view_plan"],
+                href=self._jobs_path(
+                    job_id=job_id,
+                    view=active_view,
+                    detail_view="plan",
+                )
+                + "#job-work-plan",
+                is_active=active_detail_view == "plan",
+            ),
+        ]
+
     def _task_matches_filters(
         self,
         task: dict[str, object],
@@ -1522,12 +1598,14 @@ class DashboardQueryService:
         job_id: str | None = None,
         task_id: str | None = None,
         view: str | None = None,
+        detail_view: str | None = None,
     ) -> str:
         return self._path_with_locale(
             "/jobs",
             ("job", job_id or ""),
             ("task", task_id or ""),
             ("view", "" if view in (None, "all") else view),
+            ("detail_view", "" if detail_view in (None, "tasks") else detail_view),
         )
 
     def _tasks_path(
@@ -1620,6 +1698,21 @@ class DashboardQueryService:
         if self._locale != DEFAULT_LOCALE:
             query_items.append(("lang", self._locale))
         return f"{path}?{urlencode(query_items)}" if query_items else path
+
+    def _build_current_job_work_plan(self) -> WorkPlanSnapshot:
+        work_plan_path = Path.home() / ".openclaw" / "agents" / "team-leader" / "memory" / "work-plan.md"
+        path_value = str(work_plan_path)
+        preview = _load_detail_preview(path_value)
+        updated_at = _format_timestamp(
+            _file_timestamp_iso(work_plan_path) or "",
+            fallback=self._messages["common"]["unknown"],
+        )
+        return WorkPlanSnapshot(
+            path=path_value,
+            updated_at=updated_at,
+            status_label=self._messages["tasks"]["detail_status_labels"][preview.status],
+            detail_preview=preview,
+        )
 
     def _sort_tasks_for_cards(self, tasks: list[dict[str, object]]) -> list[dict[str, object]]:
         ordered = sorted(
@@ -1776,6 +1869,14 @@ def _format_timestamp(value: str, *, fallback: str) -> str:
     if parsed is None:
         return value
     return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _file_timestamp_iso(path: Path) -> str | None:
+    try:
+        timestamp = path.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _detail_preview_status(path_value: str) -> str:

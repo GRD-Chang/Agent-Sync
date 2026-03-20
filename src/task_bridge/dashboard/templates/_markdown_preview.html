@@ -1,0 +1,43 @@
+{% macro render_markdown_preview(preview, preview_testid, heading, missing_copy, empty_copy, error_copy, truncation_copy) %}
+  {% if preview.status == "rendered" %}
+  <div class="markdown-preview" data-testid="{{ preview_testid }}-rendered">
+    {% for block in preview.blocks %}
+    {% if block.kind == "heading" %}
+    <h4 class="preview-heading preview-heading-{{ block.level }}">{{ block.text }}</h4>
+    {% elif block.kind == "paragraph" %}
+    <p>{{ block.text }}</p>
+    {% elif block.kind == "list" %}
+    <ul>
+      {% for item in block.items %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+    {% elif block.kind == "quote" %}
+    <blockquote>{{ block.text }}</blockquote>
+    {% elif block.kind == "code" %}
+    <pre><code>{{ block.text }}</code></pre>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% elif preview.status == "missing" %}
+  <div class="state-panel" role="status" aria-live="polite" data-testid="{{ preview_testid }}-missing">
+    <h3>{{ heading }}</h3>
+    <p>{{ missing_copy }}</p>
+  </div>
+  {% elif preview.status == "empty" %}
+  <div class="state-panel" role="status" aria-live="polite" data-testid="{{ preview_testid }}-empty">
+    <h3>{{ heading }}</h3>
+    <p>{{ empty_copy }}</p>
+  </div>
+  {% else %}
+  <div class="state-panel error-state" role="alert" data-testid="{{ preview_testid }}-error">
+    <h3>{{ heading }}</h3>
+    <p>{{ error_copy }}</p>
+    <p>{{ preview.error_message }}</p>
+  </div>
+  {% endif %}
+
+  {% if preview.is_truncated %}
+  <p class="preview-truncation">{{ truncation_copy }}</p>
+  {% endif %}
+{% endmacro %}

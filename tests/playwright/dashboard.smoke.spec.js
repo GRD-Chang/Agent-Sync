@@ -28,6 +28,7 @@ async function startDashboard(homeDir, port) {
         ...process.env,
         PYTHONPATH: path.join(repoRoot, "src"),
         TASK_BRIDGE_HOME: homeDir,
+        HOME: homeDir,
         PYTHONUNBUFFERED: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -106,6 +107,7 @@ function bridgeEnv(homeDir) {
     ...process.env,
     PYTHONPATH: path.join(repoRoot, "src"),
     TASK_BRIDGE_HOME: homeDir,
+    HOME: homeDir,
     PYTHONUNBUFFERED: "1",
   };
 }
@@ -186,6 +188,21 @@ async function seedLiveDashboard(homeDir) {
   taskB2Payload._scheduler.final_notified_at = "2026-03-20T08:00:00Z";
   await fs.writeFile(taskB2JsonPath, `${JSON.stringify(taskB2Payload, null, 2)}\n`, "utf-8");
 
+  const workPlanPath = path.join(
+    homeDir,
+    ".openclaw",
+    "agents",
+    "team-leader",
+    "memory",
+    "work-plan.md",
+  );
+  await fs.mkdir(path.dirname(workPlanPath), { recursive: true });
+  await fs.writeFile(
+    workPlanPath,
+    "# Live work plan\n\n- clear blocked review path\n- queue the next follow-up\n",
+    "utf-8",
+  );
+
   await fs.writeFile(
     path.join(homeDir, "daemon_state.json"),
     `${JSON.stringify(
@@ -203,7 +220,7 @@ async function seedLiveDashboard(homeDir) {
     "utf-8",
   );
 
-  return { jobA, taskA1, taskA2, taskA3, jobB, taskB1, taskB2 };
+  return { jobA, taskA1, taskA2, taskA3, jobB, taskB1, taskB2, workPlanPath };
 }
 
 test("overview renders the live happy path shell", async ({ page }) => {
@@ -229,7 +246,7 @@ test("overview renders the live happy path shell", async ({ page }) => {
     }
     await expect(page.getByTestId("dashboard-nav-overview")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Live dispatch posture for the current task bridge.",
+      "Live dispatch posture for the current task bridge",
     );
     await expect(page.getByTestId("dashboard-overview-hero")).toBeVisible();
     await expect(page.getByTestId("dashboard-overview-task-status")).toContainText(
@@ -257,7 +274,7 @@ test("dashboard startup logs expose access guidance", async () => {
     await expect.poll(() => server.getLogs()).toContain("监听地址: 127.0.0.1");
     await expect.poll(() => server.getLogs()).toContain("监听端口: 4182");
     await expect.poll(() => server.getLogs()).toContain("本机访问: http://127.0.0.1:4182/overview");
-    await expect.poll(() => server.getLogs()).toContain("SSH 端口转发: ssh -L 4182:127.0.0.1:4182 <remote-host>");
+    await expect.poll(() => server.getLogs()).toContain("SSH 端口转发: ssh -L 4182:127.0.0.1:4182 ");
     await expect.poll(() => server.getLogs()).toContain("当前命令不会自动打开浏览器");
     await expect.poll(() => server.getLogs()).toContain("停止方式: Ctrl+C");
   } finally {
@@ -297,13 +314,28 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-jobs-detail")).toHaveCount(0);
 
     await page.getByTestId(`dashboard-jobs-list-card-${seeded.jobA.id}`).click();
-    await expect(page).toHaveURL(new RegExp(`/jobs\\?(?:job=${seeded.jobA.id}&view=active|view=active&job=${seeded.jobA.id})$`));
-    await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("Open latest task detail");
+    await expect(page).toHaveURL(
+      new RegExp(`/jobs\\?(?:job=${seeded.jobA.id}&view=active|view=active&job=${seeded.jobA.id})#job-detail$`),
+    );
+    await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("Open latest task here");
     await expect(page.getByText("Back to job cards")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
     );
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+
+    await page.goto(`${server.baseUrl}/jobs?job=${seeded.jobB.id}&detail_view=plan`);
+    await expect(page.getByTestId("dashboard-jobs-detail-view-switch")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-detail-view-plan")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("dashboard-jobs-work-plan")).toContainText("Live work plan");
+    await expect(page.getByTestId("dashboard-jobs-work-plan")).toContainText("clear blocked review path");
+    await expect(page.getByTestId("dashboard-jobs-task-groups")).toHaveCount(0);
+    await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+
+    await page.getByTestId("dashboard-jobs-detail-view-tasks").click();
+    await expect(page).toHaveURL(new RegExp(`/jobs\\?job=${seeded.jobB.id}(?:#job-task-groups)?$`));
+    await expect(page.getByTestId("dashboard-jobs-task-groups")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-work-plan")).toHaveCount(0);
 
     await page.goto(
       `${server.baseUrl}/tasks?job=${seeded.jobA.id}&state=running&agent=quality-agent`,
@@ -345,14 +377,14 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
   try {
     await page.goto(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
     await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Task register with detail preview.",
+      "Task register with detail preview",
     );
     await page.getByTestId("dashboard-locale-zh-cn").click();
     await expect(page).toHaveURL(
       `${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}&lang=zh-CN`,
     );
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
-    await expect(page.getByTestId("dashboard-page-title")).toHaveText("任务总表与详情预览。");
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("任务总表与详情预览");
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("进行中");
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "集中浏览现有存储中的作业、任务、队列、告警与健康信息。",
@@ -363,7 +395,7 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
     await expect(page).toHaveURL(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Task register with detail preview.",
+      "Task register with detail preview",
     );
   } finally {
     await stopDashboard(server);

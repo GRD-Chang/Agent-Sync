@@ -1,3 +1,4 @@
+{% from "_markdown_preview.html" import render_markdown_preview %}
 {% macro render_task_detail(task, ui, section_id, heading_id, panel_testid, preview_testid, timeline_testid, eyebrow, title, note) %}
 <section id="{{ section_id }}" class="detail-panel task-detail-panel" aria-labelledby="{{ heading_id }}" data-testid="{{ panel_testid }}">
   <div class="section-heading">
@@ -84,49 +85,15 @@
         <span class="status-pill">{{ task.detail_status_label }}</span>
       </p>
 
-      {% if task.detail_preview.status == "rendered" %}
-      <div class="markdown-preview" data-testid="{{ preview_testid }}-rendered">
-        {% for block in task.detail_preview.blocks %}
-        {% if block.kind == "heading" %}
-        <h4 class="preview-heading preview-heading-{{ block.level }}">{{ block.text }}</h4>
-        {% elif block.kind == "paragraph" %}
-        <p>{{ block.text }}</p>
-        {% elif block.kind == "list" %}
-        <ul>
-          {% for item in block.items %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-        {% elif block.kind == "quote" %}
-        <blockquote>{{ block.text }}</blockquote>
-        {% elif block.kind == "code" %}
-        <pre><code>{{ block.text }}</code></pre>
-        {% endif %}
-        {% endfor %}
-      </div>
-      {% elif task.detail_preview.status == "missing" %}
-      <div class="state-panel" role="status" aria-live="polite" data-testid="{{ preview_testid }}-missing">
-        <h3>{{ ui.tasks.detail_preview }}</h3>
-        <p>{{ ui.tasks.detail_preview_missing }}</p>
-      </div>
-      {% elif task.detail_preview.status == "empty" %}
-      <div class="state-panel" role="status" aria-live="polite" data-testid="{{ preview_testid }}-empty">
-        <h3>{{ ui.tasks.detail_preview }}</h3>
-        <p>{{ ui.tasks.detail_preview_empty }}</p>
-      </div>
-      {% else %}
-      <div class="state-panel error-state" role="alert" data-testid="{{ preview_testid }}-error">
-        <h3>{{ ui.tasks.detail_preview }}</h3>
-        <p>{{ ui.tasks.detail_preview_error }}</p>
-        <p>{{ task.detail_preview.error_message }}</p>
-      </div>
-      {% endif %}
-
-      {% if task.detail_preview.is_truncated %}
-      <p class="preview-truncation">
-        {{ ui.tasks.preview_truncated.format(line_limit=task.detail_preview.line_limit, char_limit=task.detail_preview.char_limit) }}
-      </p>
-      {% endif %}
+      {{ render_markdown_preview(
+        task.detail_preview,
+        preview_testid,
+        ui.tasks.detail_preview,
+        ui.tasks.detail_preview_missing,
+        ui.tasks.detail_preview_empty,
+        ui.tasks.detail_preview_error,
+        ui.tasks.preview_truncated.format(line_limit=task.detail_preview.line_limit, char_limit=task.detail_preview.char_limit),
+      ) }}
     </article>
 
     <article class="detail-card" data-testid="{{ timeline_testid }}">

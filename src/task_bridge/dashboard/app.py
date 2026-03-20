@@ -96,6 +96,7 @@ async def jobs_page(request: Request):
             selected_job_id=_query_param_value(request, "job"),
             selected_task_id=_query_param_value(request, "task"),
             selected_view=_query_param_value(request, "view"),
+            selected_detail_view=_query_param_value(request, "detail_view"),
         )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
@@ -119,7 +120,7 @@ async def jobs_page(request: Request):
                 if jobs.selected_task and _query_param_value(request, "task")
                 else jobs.selected_job.title if jobs.selected_job and _query_param_value(request, "job") else None
             ),
-            exclude_query_keys=("job", "task", "lang"),
+            exclude_query_keys=("job", "task", "detail_view", "lang"),
         ),
     )
     return templates.TemplateResponse(request=request, name="jobs.html", context=context)

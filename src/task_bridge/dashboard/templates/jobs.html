@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_markdown_preview.html" import render_markdown_preview %}
 {% from "_task_detail_panel.html" import render_task_detail %}
 
 {% block content %}
@@ -210,6 +211,74 @@
         </div>
       </article>
 
+      {% if jobs.selected_job.detail_view_options %}
+      <article class="detail-card detail-subview-card" data-testid="dashboard-jobs-detail-view-switch">
+        <div class="section-heading">
+          <p class="eyebrow">{{ ui.jobs.detail_view_eyebrow }}</p>
+          <h3>{{ ui.jobs.detail_view_title }}</h3>
+          <p class="section-note">{{ ui.jobs.detail_view_note }}</p>
+        </div>
+        <nav class="detail-segmented" aria-label="{{ ui.jobs.detail_view_title }}">
+          {% for option in jobs.selected_job.detail_view_options %}
+          <a
+            class="detail-segment{% if option.is_active %} is-active{% endif %}"
+            href="{{ option.href }}"
+            data-testid="dashboard-jobs-detail-view-{{ option.key }}"
+            {% if option.is_active %}aria-current="page"{% endif %}
+          >
+            {{ option.label }}
+          </a>
+          {% endfor %}
+        </nav>
+      </article>
+      {% endif %}
+
+      {% if jobs.selected_job.detail_view == "plan" and jobs.selected_job.work_plan %}
+      <article id="job-work-plan" class="detail-card" data-testid="dashboard-jobs-work-plan">
+        <div class="section-heading">
+          <p class="eyebrow">{{ ui.jobs.work_plan }}</p>
+          <h3>{{ ui.jobs.work_plan }}</h3>
+          <p class="section-note">{{ ui.jobs.work_plan_note }}</p>
+        </div>
+
+        <dl class="meta-grid">
+          <div class="meta-span-2">
+            <dt>{{ ui.jobs.work_plan_path }}</dt>
+            <dd>{{ jobs.selected_job.work_plan.path }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.work_plan_updated_at }}</dt>
+            <dd>{{ jobs.selected_job.work_plan.updated_at }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.tasks.detail_status }}</dt>
+            <dd>{{ jobs.selected_job.work_plan.status_label }}</dd>
+          </div>
+        </dl>
+
+        <div class="detail-callout">
+          <p class="eyebrow">{{ ui.jobs.work_plan_source }}</p>
+          <p>{{ ui.jobs.work_plan_source_note }}</p>
+        </div>
+
+        <p class="preview-status">
+          <span class="status-pill">{{ jobs.selected_job.work_plan.status_label }}</span>
+        </p>
+
+        {{ render_markdown_preview(
+          jobs.selected_job.work_plan.detail_preview,
+          "dashboard-jobs-work-plan",
+          ui.jobs.work_plan,
+          ui.jobs.work_plan_missing,
+          ui.jobs.work_plan_empty,
+          ui.jobs.work_plan_error,
+          ui.tasks.preview_truncated.format(
+            line_limit=jobs.selected_job.work_plan.detail_preview.line_limit,
+            char_limit=jobs.selected_job.work_plan.detail_preview.char_limit,
+          ),
+        ) }}
+      </article>
+      {% else %}
       <article id="job-task-groups" class="detail-card" data-testid="dashboard-jobs-task-groups">
         <div class="section-heading">
           <p class="eyebrow">{{ ui.jobs.task_preview }}</p>
@@ -258,6 +327,7 @@
         </div>
         {% endif %}
       </article>
+      {% endif %}
     </div>
   </section>
 

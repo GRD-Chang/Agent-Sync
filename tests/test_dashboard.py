@@ -16,7 +16,15 @@ from task_bridge.store import TaskStore
 @pytest.fixture()
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("TASK_BRIDGE_HOME", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
     return tmp_path
+
+
+def write_team_leader_work_plan(home: Path, content: str) -> Path:
+    path = home / ".openclaw" / "agents" / "team-leader" / "memory" / "work-plan.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
 
 
 def seed_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
@@ -312,6 +320,9 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
     assert jobs.selected_job.task_count == 2
     assert jobs.selected_job.active_task_count == 2
     assert jobs.selected_job.terminal_task_count == 0
+    assert jobs.selected_job.detail_view == "tasks"
+    assert jobs.selected_job.detail_view_options == []
+    assert jobs.selected_job.work_plan is None
     assert jobs.selected_job.tasks_href.endswith(f"/tasks?job={seeded['job_a']['id']}#tasks-registry")
     assert jobs.selected_job.latest_task_href is not None
     assert [item.task_id for item in jobs.selected_job.task_previews] == [
@@ -322,6 +333,49 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
     assert jobs.selected_job.task_previews[0].detail_href.endswith(
         f"/jobs?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}#job-task-detail"
     )
+
+
+def test_dashboard_jobs_query_surfaces_current_job_work_plan_view(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+    work_plan_path = write_team_leader_work_plan(
+        home,
+        "# Live work plan\n\n- clear blocked review path\n- queue the next follow-up\n",
+    )
+
+    jobs = DashboardQueryService(home).jobs(
+        selected_job_id=seeded["job_b"]["id"],
+        selected_detail_view="plan",
+    )
+
+    assert jobs.selected_job is not None
+    assert jobs.selected_job.is_current is True
+    assert jobs.selected_job.detail_view == "plan"
+    assert jobs.selected_task is None
+    assert [option.key for option in jobs.selected_job.detail_view_options] == ["tasks", "plan"]
+    assert jobs.selected_job.detail_view_options[1].is_active is True
+    assert jobs.selected_job.detail_view_options[1].href.endswith(
+        f"/jobs?job={seeded['job_b']['id']}&detail_view=plan#job-work-plan"
+    )
+    assert jobs.selected_job.work_plan is not None
+    assert jobs.selected_job.work_plan.path == str(work_plan_path)
+    assert jobs.selected_job.work_plan.status_label == "Preview ready"
+    assert [block.kind for block in jobs.selected_job.work_plan.detail_preview.blocks] == ["heading", "list"]
+
+
+def test_dashboard_jobs_query_ignores_work_plan_view_for_non_current_job(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+    write_team_leader_work_plan(home, "# Live work plan\n\n- current only\n")
+
+    jobs = DashboardQueryService(home).jobs(
+        selected_job_id=seeded["job_a"]["id"],
+        selected_detail_view="plan",
+    )
+
+    assert jobs.selected_job is not None
+    assert jobs.selected_job.is_current is False
+    assert jobs.selected_job.detail_view == "tasks"
+    assert jobs.selected_job.detail_view_options == []
+    assert jobs.selected_job.work_plan is None
 
 
 def test_dashboard_jobs_query_filters_by_active_view(home: Path) -> None:
@@ -705,6 +759,8 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert 'data-testid="dashboard-jobs-detail-shell"' in body
     assert 'data-testid="dashboard-jobs-detail"' in body
     assert 'data-testid="dashboard-jobs-task-groups"' in body
+    assert 'data-testid="dashboard-jobs-detail-view-switch"' not in body
+    assert 'data-testid="dashboard-jobs-work-plan"' not in body
     assert seeded["job_a"]["id"] in body
     assert seeded["job_b"]["id"] in body
     assert "job-a" in body
@@ -729,6 +785,31 @@ def test_dashboard_jobs_route_keeps_task_drilldown_on_jobs_page_and_shows_all_ca
     assert body.count('data-testid="dashboard-jobs-task-card-') == 8
     assert f"/jobs?job={seeded['job']['id']}&amp;task={selected_task}#job-task-detail" in body
     assert f"/tasks?job={seeded['job']['id']}&amp;task={selected_task}#tasks-detail" in body
+
+
+def test_dashboard_jobs_route_renders_current_job_work_plan_toggle(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+    work_plan_path = write_team_leader_work_plan(
+        home,
+        "# Live work plan\n\n- clear blocked review path\n- queue the next follow-up\n",
+    )
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/jobs?job={seeded['job_b']['id']}&detail_view=plan")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-jobs-detail-view-switch"' in body
+    assert 'data-testid="dashboard-jobs-detail-view-tasks"' in body
+    assert 'data-testid="dashboard-jobs-detail-view-plan"' in body
+    assert re.search(r'data-testid="dashboard-jobs-detail-view-plan"[^>]*aria-current="page"', body)
+    assert 'data-testid="dashboard-jobs-work-plan"' in body
+    assert 'data-testid="dashboard-jobs-work-plan-rendered"' in body
+    assert 'data-testid="dashboard-jobs-task-groups"' not in body
+    assert str(work_plan_path) in body
+    assert "Live work plan" in body
+    assert "clear blocked review path" in body
+    assert f'/jobs?job={seeded["job_b"]["id"]}#job-task-groups' in body
 
 
 def test_dashboard_jobs_route_filters_existing_records_by_view(home: Path) -> None:
