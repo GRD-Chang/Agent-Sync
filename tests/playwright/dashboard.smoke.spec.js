@@ -196,10 +196,12 @@ test("overview renders the live happy path shell", async ({ page }) => {
     await expect(page.getByTestId("dashboard-shell")).toBeVisible();
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
     await expect(page.getByTestId("dashboard-locale-switch")).toBeVisible();
+    await expect(page.getByTestId("dashboard-page-chrome")).toBeVisible();
+    await expect(page.getByTestId("dashboard-breadcrumbs")).toBeVisible();
     await expect(page.getByTestId("dashboard-locale-en")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-locale-zh-cn")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
+      "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
     );
     for (const item of navItems) {
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveText(item.label);
@@ -245,16 +247,18 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
   const server = await startDashboard(homeDir, 4175);
 
   try {
-    await page.goto(`${server.baseUrl}/jobs?view=active`);
+    await page.goto(`${server.baseUrl}/jobs?view=active&job=${seeded.jobA.id}`);
     await expect(page.getByTestId("dashboard-nav-jobs")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-jobs-page")).toBeVisible();
     await expect(page.getByTestId("dashboard-jobs-filters")).toBeVisible();
+    await expect(page.getByTestId("dashboard-page-chrome")).toBeVisible();
+    await expect(page.getByTestId("dashboard-back-link")).toContainText("Back to Jobs");
     await expect(page.getByTestId("dashboard-jobs-view-active")).toHaveClass(/is-active/);
     await expect(page.getByTestId(`dashboard-jobs-list-card-${seeded.jobA.id}`)).toBeVisible();
     await expect(page.getByTestId(`dashboard-jobs-list-card-${seeded.jobB.id}`)).toHaveCount(0);
     await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("Open latest task detail");
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
+      "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
     );
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
 
@@ -264,6 +268,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-nav-tasks")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-tasks-page")).toBeVisible();
     await expect(page.getByTestId("dashboard-tasks-filters")).toBeVisible();
+    await expect(page.getByTestId("dashboard-back-link")).toContainText("Back to Tasks");
     await expect(page.getByTestId(`dashboard-tasks-list-card-${seeded.taskA2.id}`)).toBeVisible();
     await expect(page.getByTestId(`dashboard-tasks-list-card-${seeded.taskA1.id}`)).toHaveCount(0);
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("actively working");
@@ -292,17 +297,17 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
   try {
     await page.goto(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
     await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Read-only task register with detail preview.",
+      "Task register with detail preview.",
     );
     await page.getByTestId("dashboard-locale-zh-cn").click();
     await expect(page).toHaveURL(
       `${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}&lang=zh-CN`,
     );
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
-    await expect(page.getByTestId("dashboard-page-title")).toHaveText("带详情预览的只读任务登记。");
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("任务总表与详情预览。");
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("进行中");
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "六个主页面都已上线且保持只读。代理与队列、告警、健康页面继续限定在 MVP 基础范围内。",
+      "集中浏览现有存储中的作业、任务、队列、告警与健康信息。",
     );
     await expect(page.getByTestId("dashboard-locale-zh-cn")).toHaveAttribute("aria-current", "page");
 
@@ -310,7 +315,7 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
     await expect(page).toHaveURL(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Read-only task register with detail preview.",
+      "Task register with detail preview.",
     );
   } finally {
     await stopDashboard(server);
@@ -343,7 +348,7 @@ test("worker queue, alerts, and health render live read-only base pages", async 
       await page.goto(`${server.baseUrl}${item.route}`);
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-        "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
+        "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
       );
       await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
     }

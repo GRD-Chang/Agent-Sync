@@ -81,13 +81,17 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert "<html lang=\"en\">" in body
     assert "Live dispatch posture for the current task bridge." in body
     assert "Recent updates" in body
-    assert "MVP scope" in body
+    assert "Current view" in body
     assert "Task status summary" in body
-    assert "Dashboard foundation" in body
-    assert "All six primary pages are live and read-only." in body
+    assert "Dispatch dashboard" in body
+    assert "A single place to review the live picture across jobs, tasks, queues, alerts, and health." in body
     assert 'data-testid="dashboard-locale-switch"' in body
+    assert 'data-testid="dashboard-page-chrome"' in body
+    assert 'data-testid="dashboard-breadcrumbs"' in body
     assert 'data-testid="dashboard-locale-en"' in body
     assert 'data-testid="dashboard-locale-zh-cn"' in body
+    assert "MVP scope" not in body
+    assert "read-only" not in body
 
 
 def test_dashboard_i18n_catalogs_cover_same_surface() -> None:
@@ -114,8 +118,9 @@ def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> 
     assert zh_response.status_code == 200
     zh_body = zh_response.text
     assert "<html lang=\"zh-CN\">" in zh_body
-    assert "带详情预览的只读任务登记。" in zh_body
+    assert "任务总表与详情预览。" in zh_body
     assert "进行中" in zh_body
+    assert 'data-testid="dashboard-back-link"' in zh_body
     assert re.search(
         rf'data-testid="dashboard-locale-en"[^>]*href="/tasks\?job={seeded["job_a"]["id"]}&amp;task={seeded["task_a2"]["id"]}"',
         zh_body,
@@ -131,7 +136,7 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
         (
             f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}&lang=zh-CN",
             "dashboard-tasks-page",
-            "时间线框架",
+            "时间线",
         ),
         ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "代理占用与队列深度"),
         ("/alerts?lang=zh-CN", "dashboard-alerts-hero", "终态与跟进汇总"),
@@ -146,8 +151,9 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
             assert response.status_code == 200
             assert "<html lang=\"zh-CN\">" in body
             assert 'data-testid="dashboard-locale-switch"' in body
+            assert 'data-testid="dashboard-page-chrome"' in body
             assert re.search(r'data-testid="dashboard-locale-zh-cn"[^>]*aria-current="page"', body)
-            assert "六个主页面都已上线且保持只读。" in body
+            assert "集中浏览现有存储中的作业、任务、队列、告警与健康信息。" in body
             assert "总览" in body
             assert "作业" in body
             assert "任务" in body
@@ -156,6 +162,7 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
             assert "健康" in body
             assert f'data-testid="{testid}"' in body
             assert expected_copy in body
+            assert "只读" not in body
 
 
 @pytest.mark.parametrize(
@@ -290,6 +297,68 @@ def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
     assert [block.kind for block in tasks.selected_task.detail_preview.blocks] == ["heading", "list"]
     assert [event.key for event in tasks.selected_task.timeline] == ["created", "updated", "dispatch"]
     assert tasks.selected_task.result == "actively working"
+
+
+def test_dashboard_jobs_page_chrome_exposes_breadcrumbs_and_back_link(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/jobs?view=active&job={seeded['job_a']['id']}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-page-chrome"' in body
+    assert 'data-testid="dashboard-breadcrumbs"' in body
+    assert 'data-testid="dashboard-back-link"' in body
+    assert "Back to Jobs" in body
+    assert "job-a" in body
+    assert re.search(r'data-testid="dashboard-back-link"[^>]*href="/jobs\?view=active"', body)
+
+
+def test_dashboard_tasks_page_chrome_preserves_filters_in_back_link(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(
+            f"/tasks?job={seeded['job_a']['id']}&state=running&agent=quality-agent&task={seeded['task_a2']['id']}"
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-page-chrome"' in body
+    assert 'data-testid="dashboard-breadcrumbs"' in body
+    assert 'data-testid="dashboard-back-link"' in body
+    assert "Back to Tasks" in body
+    assert seeded["task_a2"]["id"] in body
+    assert re.search(
+        rf'data-testid="dashboard-back-link"[^>]*href="/tasks\?job={seeded["job_a"]["id"]}&amp;state=running&amp;agent=quality-agent"',
+        body,
+    )
+
+
+def test_dashboard_tasks_query_normalizes_escaped_newlines(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="multiline")
+    task = store.create_task(job_id=job["id"], requirement="line one\\nline two", assigned_agent="code-agent")
+    store.update_task(task["id"], job_id=job["id"], state="done", result="alpha\\n beta")
+
+    snapshot = DashboardQueryService(home).tasks(selected_job_id=job["id"], selected_task_id=task["id"])
+
+    assert snapshot.selected_task is not None
+    assert snapshot.selected_task.requirement == "line one\nline two"
+    assert snapshot.selected_task.result == "alpha\n beta"
+    assert snapshot.tasks[0].summary_text == "alpha\n beta"
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/tasks?job={job['id']}&task={task['id']}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "line one\nline two" in body
+    assert "alpha\n beta" in body
+    assert "line one\\nline two" not in body
+    assert "alpha\\n beta" not in body
 
 
 def test_dashboard_tasks_query_filters_by_job_state_and_agent(home: Path) -> None:
@@ -428,6 +497,8 @@ def test_dashboard_overview_route_exposes_frozen_read_only_selectors(home: Path)
     body = response.text
     assert 'data-testid="dashboard-shell"' in body
     assert 'data-testid="dashboard-primary-nav"' in body
+    assert 'data-testid="dashboard-page-chrome"' in body
+    assert 'data-testid="dashboard-breadcrumbs"' in body
     assert body.count('data-testid="dashboard-nav-') == 6
     assert 'data-testid="dashboard-page-title"' in body
     assert 'data-testid="dashboard-overview-hero"' in body

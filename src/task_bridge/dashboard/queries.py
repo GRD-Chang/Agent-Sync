@@ -884,8 +884,8 @@ class DashboardQueryService:
                 str(task.get("updatedAt") or task.get("createdAt") or ""),
                 fallback=self._messages["common"]["unknown"],
             ),
-            requirement=_optional_text(task.get("requirement")) or self._messages["common"]["unknown"],
-            result=_optional_text(task.get("result")),
+            requirement=_optional_display_text(task.get("requirement")) or self._messages["common"]["unknown"],
+            result=_optional_display_text(task.get("result")),
             detail_path=detail_path,
             detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_preview.status],
             detail_preview=detail_preview,
@@ -917,7 +917,7 @@ class DashboardQueryService:
                         ),
                         note=tasks_messages["timeline_created_note"].format(
                             summary=_truncate(
-                                _optional_text(task.get("requirement")) or self._messages["common"]["unknown"],
+                                _optional_display_text(task.get("requirement")) or self._messages["common"]["unknown"],
                                 140,
                             )
                         ),
@@ -1392,8 +1392,8 @@ class DashboardQueryService:
         )
 
     def _task_summary(self, task: dict[str, object]) -> tuple[str, str]:
-        result_text = _optional_text(task.get("result"))
-        requirement_text = _optional_text(task.get("requirement"))
+        result_text = _optional_display_text(task.get("result"))
+        requirement_text = _optional_display_text(task.get("requirement"))
         if result_text:
             return self._messages["recent_update"]["result"], _truncate(result_text, 180)
         if requirement_text:
@@ -1431,6 +1431,18 @@ def _parse_timestamp(value: str) -> datetime | None:
 def _optional_text(value: object) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _optional_display_text(value: object) -> str | None:
+    text = _optional_text(value)
+    return _normalize_display_text(text) if text is not None else None
+
+
+def _normalize_display_text(value: str) -> str:
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    if "\\n" not in normalized and "\\r" not in normalized:
+        return normalized
+    return normalized.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
 
 
 def _truncate(value: str, limit: int) -> str:

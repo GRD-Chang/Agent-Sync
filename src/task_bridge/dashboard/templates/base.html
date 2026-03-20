@@ -6,7 +6,7 @@
     <title>{{ page_title }} | task-bridge</title>
     <link rel="stylesheet" href="{{ request.url_for('static', path='/dashboard.css') }}">
   </head>
-  <body>
+  <body data-dashboard-page="{{ active_page }}">
     <a class="skip-link" href="#content">{{ ui.shell.skip_link }}</a>
     <div class="page-shell" data-testid="dashboard-shell">
       <header class="masthead">
@@ -47,7 +47,30 @@
         </ul>
       </nav>
 
-      <main id="content">
+      <main id="content" class="dashboard-main">
+        <section class="page-chrome" aria-label="{{ page_chrome.label }}" data-testid="dashboard-page-chrome">
+          <div class="page-chrome-row">
+            <nav class="breadcrumb-nav" aria-label="{{ page_chrome.label }}" data-testid="dashboard-breadcrumbs">
+              <ol class="breadcrumb-list">
+                {% for item in page_chrome.breadcrumbs %}
+                <li>
+                  {% if item.href and not item.is_current %}
+                  <a class="breadcrumb-link" href="{{ item.href }}">{{ item.label }}</a>
+                  {% else %}
+                  <span class="breadcrumb-current"{% if item.is_current %} aria-current="page"{% endif %}>{{ item.label }}</span>
+                  {% endif %}
+                  {% if not loop.last %}
+                  <span class="breadcrumb-separator" aria-hidden="true">/</span>
+                  {% endif %}
+                </li>
+                {% endfor %}
+              </ol>
+            </nav>
+            {% if page_chrome.back_href and page_chrome.back_label %}
+            <a class="back-link" data-testid="dashboard-back-link" href="{{ page_chrome.back_href }}">{{ page_chrome.back_label }}</a>
+            {% endif %}
+          </div>
+        </section>
         {% block content %}{% endblock %}
       </main>
     </div>

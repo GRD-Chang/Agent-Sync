@@ -103,6 +103,15 @@ async def jobs_page(request: Request):
         )
 
     context["jobs"] = jobs
+    context["page_chrome"] = _page_chrome_context(
+        context,
+        breadcrumbs=_selection_breadcrumbs(
+            request,
+            context,
+            current_label=jobs.selected_job.title if jobs.selected_job and _query_param_value(request, "job") else None,
+            exclude_query_keys=("job", "lang"),
+        ),
+    )
     return templates.TemplateResponse(request=request, name="jobs.html", context=context)
 
 
@@ -128,6 +137,15 @@ async def tasks_page(request: Request):
         )
 
     context["tasks"] = tasks
+    context["page_chrome"] = _page_chrome_context(
+        context,
+        breadcrumbs=_selection_breadcrumbs(
+            request,
+            context,
+            current_label=tasks.selected_task.task_id if tasks.selected_task and _query_param_value(request, "task") else None,
+            exclude_query_keys=("task", "lang"),
+        ),
+    )
     return templates.TemplateResponse(request=request, name="tasks.html", context=context)
 
 
@@ -245,6 +263,13 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
         ],
         "locale": locale,
         "locale_options": _locale_options(request, locale),
+        "page_chrome": _page_chrome_context(
+            {
+                "active_page": active_page,
+                "locale": locale,
+                "ui": ui,
+            }
+        ),
         "ui": ui,
         "html_lang": ui["html_lang"],
     }
@@ -267,11 +292,7 @@ def _request_locale(request: Request) -> str:
 
 
 def _locale_options(request: Request, active_locale: str) -> list[dict[str, object]]:
-    base_params = [
-        (key, value)
-        for key, value in request.query_params.multi_items()
-        if key != "lang" and value.strip()
-    ]
+    base_params = _request_query_pairs(request, exclude_keys=("lang",))
     return [
         {
             **item,
@@ -279,6 +300,56 @@ def _locale_options(request: Request, active_locale: str) -> list[dict[str, obje
             "is_active": str(item["code"]) == active_locale,
         }
         for item in LOCALE_SWITCH_ITEMS
+    ]
+
+
+def _page_chrome_context(
+    context: dict[str, object],
+    *,
+    breadcrumbs: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    ui = context["ui"]
+    active_page = str(context["active_page"])
+    breadcrumb_items = breadcrumbs or [{"label": ui["nav"][active_page], "href": None, "is_current": True}]
+    root_label = str(breadcrumb_items[0]["label"])
+    root_href = breadcrumb_items[0].get("href")
+    return {
+        "label": ui["shell"]["breadcrumb_label"],
+        "breadcrumbs": breadcrumb_items,
+        "back_href": root_href,
+        "back_label": ui["shell"]["back_to_section"].format(section=root_label) if root_href else None,
+    }
+
+
+def _selection_breadcrumbs(
+    request: Request,
+    context: dict[str, object],
+    *,
+    current_label: str | None,
+    exclude_query_keys: tuple[str, ...],
+) -> list[dict[str, object]]:
+    ui = context["ui"]
+    active_page = str(context["active_page"])
+    locale = str(context["locale"])
+    root_pairs = _request_query_pairs(request, exclude_keys=exclude_query_keys)
+    root_href = _path_with_locale(request.url.path, root_pairs, locale)
+    breadcrumbs = [
+        {
+            "label": ui["nav"][active_page],
+            "href": root_href if current_label else None,
+            "is_current": current_label is None,
+        }
+    ]
+    if current_label:
+        breadcrumbs.append({"label": current_label, "href": None, "is_current": True})
+    return breadcrumbs
+
+
+def _request_query_pairs(request: Request, *, exclude_keys: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    return [
+        (key, value.strip())
+        for key, value in request.query_params.multi_items()
+        if key not in exclude_keys and value.strip()
     ]
 
 
