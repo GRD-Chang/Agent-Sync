@@ -89,6 +89,7 @@ async def jobs_page(request: Request):
     try:
         jobs = _dashboard_service(request).jobs(
             selected_job_id=_query_param_value(request, "job"),
+            selected_view=_query_param_value(request, "view"),
         )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
@@ -112,6 +113,8 @@ async def tasks_page(request: Request):
         tasks = _dashboard_service(request).tasks(
             selected_job_id=_query_param_value(request, "job"),
             selected_task_id=_query_param_value(request, "task"),
+            selected_state=_query_param_value(request, "state"),
+            selected_agent=_query_param_value(request, "agent"),
         )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(

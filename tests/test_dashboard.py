@@ -237,13 +237,18 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
 
     assert jobs.jobs_count == 2
     assert jobs.tasks_count == 3
+    assert jobs.visible_jobs_count == 2
+    assert jobs.active_view == "all"
     assert jobs.is_empty is False
+    assert jobs.filtered_empty is False
     assert jobs.selection_missing is False
     assert jobs.selected_job is not None
     assert jobs.selected_job.job_id == seeded["job_a"]["id"]
     assert jobs.selected_job.task_count == 2
     assert jobs.selected_job.active_task_count == 2
     assert jobs.selected_job.terminal_task_count == 0
+    assert jobs.selected_job.tasks_href.endswith(f"/tasks?job={seeded['job_a']['id']}")
+    assert jobs.selected_job.latest_task_href is not None
     assert [item.task_id for item in jobs.selected_job.task_previews] == [
         seeded["task_a2"]["id"],
         seeded["task_a1"]["id"],
@@ -251,6 +256,18 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
     assert jobs.selected_job.task_previews[0].detail_href.endswith(
         f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}"
     )
+
+
+def test_dashboard_jobs_query_filters_by_active_view(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    jobs = DashboardQueryService(home).jobs(selected_view="active")
+
+    assert jobs.visible_jobs_count == 1
+    assert jobs.filtered_empty is False
+    assert [item.job_id for item in jobs.jobs] == [seeded["job_a"]["id"]]
+    assert jobs.selected_job is not None
+    assert jobs.selected_job.job_id == seeded["job_a"]["id"]
 
 
 def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
@@ -262,14 +279,36 @@ def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
     )
 
     assert tasks.tasks_count == 3
+    assert tasks.visible_tasks_count == 2
     assert tasks.is_empty is False
+    assert tasks.filtered_empty is False
     assert tasks.selection_missing is False
     assert tasks.selected_task is not None
     assert tasks.selected_task.task_id == seeded["task_a2"]["id"]
+    assert tasks.selected_task.detail_status_label == "Preview ready"
     assert tasks.selected_task.detail_preview.status == "rendered"
     assert [block.kind for block in tasks.selected_task.detail_preview.blocks] == ["heading", "list"]
     assert [event.key for event in tasks.selected_task.timeline] == ["created", "updated", "dispatch"]
     assert tasks.selected_task.result == "actively working"
+
+
+def test_dashboard_tasks_query_filters_by_job_state_and_agent(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    tasks = DashboardQueryService(home).tasks(
+        selected_job_id=seeded["job_a"]["id"],
+        selected_state="running",
+        selected_agent="quality-agent",
+    )
+
+    assert tasks.visible_tasks_count == 1
+    assert tasks.filtered_empty is False
+    assert [item.task_id for item in tasks.tasks] == [seeded["task_a2"]["id"]]
+    assert {item.label: item.value for item in tasks.applied_filters} == {
+        "Job": "job-a",
+        "State": "Running",
+        "Assigned agent": "quality-agent",
+    }
 
 
 def seed_operational_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
@@ -432,14 +471,29 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert response.status_code == 200
     body = response.text
     assert 'data-testid="dashboard-jobs-page"' in body
+    assert 'data-testid="dashboard-jobs-filters"' in body
     assert 'data-testid="dashboard-jobs-list"' in body
     assert 'data-testid="dashboard-jobs-detail"' in body
     assert seeded["job_a"]["id"] in body
     assert seeded["job_b"]["id"] in body
     assert "job-a" in body
     assert "queued req" in body
+    assert f"/tasks?job={seeded['job_a']['id']}" in body
     assert f"/tasks?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}" in body
     assert 'data-testid="dashboard-jobs-empty-state"' not in body
+
+
+def test_dashboard_jobs_route_filters_existing_records_by_view(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/jobs?view=active")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-jobs-view-active"' in body
+    assert 'data-testid="dashboard-jobs-list-card-{}"'.format(seeded["job_a"]["id"]) in body
+    assert 'data-testid="dashboard-jobs-list-card-{}"'.format(seeded["job_b"]["id"]) not in body
 
 
 def test_dashboard_jobs_route_explicit_empty_state(home: Path) -> None:
@@ -462,17 +516,48 @@ def test_dashboard_tasks_route_renders_live_list_detail_preview_and_timeline(hom
     assert response.status_code == 200
     body = response.text
     assert 'data-testid="dashboard-tasks-page"' in body
+    assert 'data-testid="dashboard-tasks-filters"' in body
     assert 'data-testid="dashboard-tasks-list"' in body
     assert 'data-testid="dashboard-tasks-detail"' in body
     assert 'data-testid="dashboard-tasks-detail-preview"' in body
+    assert 'data-testid="dashboard-tasks-detail-preview-rendered"' in body
     assert 'data-testid="dashboard-tasks-timeline"' in body
     assert seeded["task_a2"]["id"] in body
+    assert "Preview ready" in body
     assert "Runbook" in body
     assert "capture logs" in body
     assert "Task created" in body
     assert "Last dispatch recorded" in body
     assert f"/jobs?job={seeded['job_a']['id']}" in body
     assert 'data-testid="dashboard-tasks-empty-state"' not in body
+
+
+def test_dashboard_tasks_route_filters_and_handles_missing_detail(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(
+            f"/tasks?job={seeded['job_a']['id']}&state=queued&agent=code-agent&task={seeded['task_a1']['id']}"
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-tasks-list-card-{}"'.format(seeded["task_a1"]["id"]) in body
+    assert 'data-testid="dashboard-tasks-list-card-{}"'.format(seeded["task_a2"]["id"]) not in body
+    assert 'data-testid="dashboard-tasks-detail-preview-missing"' in body
+    assert "File missing" in body
+
+
+def test_dashboard_tasks_route_shows_filter_empty_state(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/tasks?job={seeded['job_a']['id']}&state=done")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-tasks-filter-empty"' in body
+    assert "No tasks match these filters" in body
 
 
 def test_dashboard_tasks_route_explicit_empty_state(home: Path) -> None:

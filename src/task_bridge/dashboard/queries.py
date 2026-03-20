@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 from task_bridge.runtime import now_iso
 from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
@@ -20,6 +21,8 @@ RECENT_UPDATES_LIMIT = 6
 JOB_TASK_PREVIEW_LIMIT = 6
 DETAIL_PREVIEW_LINE_LIMIT = 60
 DETAIL_PREVIEW_CHAR_LIMIT = 5000
+JOB_VIEW_OPTIONS = ("all", "current", "active", "terminal")
+UNASSIGNED_AGENT_FILTER = "__unassigned__"
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,29 @@ class OverviewSnapshot:
 
 
 @dataclass(frozen=True)
+class LinkOption:
+    key: str
+    label: str
+    href: str
+    is_active: bool = False
+    count: int | None = None
+
+
+@dataclass(frozen=True)
+class FilterGroup:
+    key: str
+    label: str
+    options: list[LinkOption]
+
+
+@dataclass(frozen=True)
+class AppliedFilter:
+    label: str
+    value: str
+    clear_href: str
+
+
+@dataclass(frozen=True)
 class JobListItem:
     job_id: str
     title: str
@@ -106,6 +132,8 @@ class JobDetailSnapshot:
     task_count: int
     active_task_count: int
     terminal_task_count: int
+    tasks_href: str
+    latest_task_href: str | None
     task_status_metrics: list[TaskStatusMetric]
     task_previews: list[JobTaskPreview]
 
@@ -117,9 +145,13 @@ class JobsPageSnapshot:
     generated_at: str
     jobs_count: int
     tasks_count: int
+    visible_jobs_count: int
+    active_view: str
+    view_options: list[LinkOption]
     jobs: list[JobListItem]
     selected_job: JobDetailSnapshot | None
     is_empty: bool
+    filtered_empty: bool
     selection_missing: bool
 
 
@@ -133,6 +165,7 @@ class TaskListItem:
     updated_at: str
     summary_label: str
     summary_text: str
+    detail_status_label: str
     detail_href: str
     job_href: str
     is_selected: bool
@@ -178,6 +211,7 @@ class TaskDetailSnapshot:
     requirement: str
     result: str | None
     detail_path: str
+    detail_status_label: str
     detail_preview: DetailPreview
     timeline: list[TaskTimelineEvent]
 
@@ -189,9 +223,14 @@ class TasksPageSnapshot:
     generated_at: str
     jobs_count: int
     tasks_count: int
+    visible_tasks_count: int
+    filter_groups: list[FilterGroup]
+    applied_filters: list[AppliedFilter]
+    clear_filters_href: str
     tasks: list[TaskListItem]
     selected_task: TaskDetailSnapshot | None
     is_empty: bool
+    filtered_empty: bool
     selection_missing: bool
 
 
@@ -363,24 +402,35 @@ class DashboardQueryService:
             is_empty=not jobs and not tasks,
         )
 
-    def jobs(self, *, selected_job_id: str | None = None) -> JobsPageSnapshot:
+    def jobs(
+        self,
+        *,
+        selected_job_id: str | None = None,
+        selected_view: str | None = None,
+    ) -> JobsPageSnapshot:
         jobs = self.store.list_jobs()
         tasks = self.store.list_tasks(all_jobs=True)
         tasks_by_job: dict[str, list[dict[str, object]]] = defaultdict(list)
         for task in tasks:
             tasks_by_job[str(task["job_id"])].append(task)
 
-        resolved_job_id, selection_missing = self._resolve_selected_job_id(jobs, selected_job_id)
-        ordered_jobs = list(reversed(jobs))
+        active_view = selected_view if selected_view in JOB_VIEW_OPTIONS else "all"
+        ordered_jobs = [
+            job
+            for job in reversed(jobs)
+            if self._job_matches_view(job, tasks_by_job.get(str(job["id"]), []), active_view)
+        ]
+        resolved_job_id, selection_missing = self._resolve_selected_job_id(ordered_jobs, selected_job_id)
         job_rows = [
             self._build_job_row(
                 job,
                 job_tasks=tasks_by_job.get(str(job["id"]), []),
                 selected_job_id=resolved_job_id,
+                active_view=active_view,
             )
             for job in ordered_jobs
         ]
-        selected_job_raw = next((job for job in jobs if str(job["id"]) == resolved_job_id), None)
+        selected_job_raw = next((job for job in ordered_jobs if str(job["id"]) == resolved_job_id), None)
 
         return JobsPageSnapshot(
             home_path=self.home_path,
@@ -388,11 +438,20 @@ class DashboardQueryService:
             generated_at=_format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"]),
             jobs_count=len(jobs),
             tasks_count=len(tasks),
+            visible_jobs_count=len(ordered_jobs),
+            active_view=active_view,
+            view_options=self._build_job_view_options(
+                jobs,
+                tasks_by_job=tasks_by_job,
+                active_view=active_view,
+                selected_job_id=selected_job_id,
+            ),
             jobs=job_rows,
             selected_job=self._build_job_detail(selected_job_raw, tasks_by_job.get(resolved_job_id or "", []))
             if selected_job_raw
             else None,
             is_empty=not jobs,
+            filtered_empty=bool(jobs and not ordered_jobs),
             selection_missing=selection_missing,
         )
 
@@ -401,6 +460,8 @@ class DashboardQueryService:
         *,
         selected_task_id: str | None = None,
         selected_job_id: str | None = None,
+        selected_state: str | None = None,
+        selected_agent: str | None = None,
     ) -> TasksPageSnapshot:
         jobs = self.store.list_jobs()
         tasks = sorted(
@@ -413,9 +474,30 @@ class DashboardQueryService:
             reverse=True,
         )
 
-        resolved_task, selection_missing = self._resolve_selected_task(tasks, selected_task_id, selected_job_id)
+        active_state = selected_state if selected_state in CORE_TASK_STATES else None
+        active_agent = selected_agent or None
+        filtered_tasks = [
+            task
+            for task in tasks
+            if self._task_matches_filters(
+                task,
+                job_id=selected_job_id,
+                state=active_state,
+                agent=active_agent,
+            )
+        ]
+        resolved_task, selection_missing = self._resolve_selected_task(filtered_tasks, selected_task_id, selected_job_id)
         resolved_task_id = str(resolved_task["id"]) if resolved_task else None
-        task_rows = [self._build_task_row(task, resolved_task_id=resolved_task_id) for task in tasks]
+        task_rows = [
+            self._build_task_row(
+                task,
+                resolved_task_id=resolved_task_id,
+                selected_job_id=selected_job_id,
+                selected_state=active_state,
+                selected_agent=active_agent,
+            )
+            for task in filtered_tasks
+        ]
 
         return TasksPageSnapshot(
             home_path=self.home_path,
@@ -423,9 +505,32 @@ class DashboardQueryService:
             generated_at=_format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"]),
             jobs_count=len(jobs),
             tasks_count=len(tasks),
+            visible_tasks_count=len(filtered_tasks),
+            filter_groups=self._build_task_filter_groups(
+                tasks=tasks,
+                jobs=jobs,
+                selected_job_id=selected_job_id,
+                selected_state=active_state,
+                selected_agent=active_agent,
+            ),
+            applied_filters=self._build_task_applied_filters(
+                jobs,
+                selected_job_id=selected_job_id,
+                selected_state=active_state,
+                selected_agent=active_agent,
+            ),
+            clear_filters_href=self._tasks_path(),
             tasks=task_rows,
-            selected_task=self._build_task_detail(resolved_task) if resolved_task else None,
+            selected_task=self._build_task_detail(
+                resolved_task,
+                selected_job_id=selected_job_id,
+                selected_state=active_state,
+                selected_agent=active_agent,
+            )
+            if resolved_task
+            else None,
             is_empty=not tasks,
+            filtered_empty=bool(tasks and not filtered_tasks),
             selection_missing=selection_missing,
         )
 
@@ -616,6 +721,7 @@ class DashboardQueryService:
         *,
         job_tasks: list[dict[str, object]],
         selected_job_id: str | None,
+        active_view: str,
     ) -> JobListItem:
         counts = Counter(str(task.get("state") or "queued") for task in job_tasks)
         job_id = str(job["id"])
@@ -636,7 +742,7 @@ class DashboardQueryService:
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
             terminal_task_count=sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES),
-            detail_href=self._path_with_locale("/jobs", ("job", job_id)),
+            detail_href=self._jobs_path(job_id=job_id, view=active_view),
         )
 
     def _build_job_detail(
@@ -687,6 +793,7 @@ class DashboardQueryService:
                 )[:JOB_TASK_PREVIEW_LIMIT]
             ]
         ]
+        latest_task_href = task_previews[0].detail_href if task_previews else None
 
         return JobDetailSnapshot(
             job_id=str(job["id"]),
@@ -704,14 +811,25 @@ class DashboardQueryService:
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
             terminal_task_count=sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES),
+            tasks_href=self._tasks_path(job_id=str(job["id"])),
+            latest_task_href=latest_task_href,
             task_status_metrics=status_metrics,
             task_previews=task_previews,
         )
 
-    def _build_task_row(self, task: dict[str, object], *, resolved_task_id: str | None) -> TaskListItem:
+    def _build_task_row(
+        self,
+        task: dict[str, object],
+        *,
+        resolved_task_id: str | None,
+        selected_job_id: str | None,
+        selected_state: str | None,
+        selected_agent: str | None,
+    ) -> TaskListItem:
         summary_label, summary_text = self._task_summary(task)
         task_id = str(task["id"])
         job_id = str(task["job_id"])
+        detail_status = _detail_preview_status(str(task.get("detail_path") or ""))
         return TaskListItem(
             task_id=task_id,
             job_id=job_id,
@@ -728,14 +846,28 @@ class DashboardQueryService:
             ),
             summary_label=summary_label,
             summary_text=summary_text,
-            detail_href=self._path_with_locale("/tasks", ("job", job_id), ("task", task_id)),
+            detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_status],
+            detail_href=self._tasks_path(
+                job_id=selected_job_id or job_id,
+                task_id=task_id,
+                state=selected_state,
+                agent=selected_agent,
+            ),
             job_href=self._path_with_locale("/jobs", ("job", job_id)),
             is_selected=task_id == resolved_task_id,
         )
 
-    def _build_task_detail(self, task: dict[str, object]) -> TaskDetailSnapshot:
+    def _build_task_detail(
+        self,
+        task: dict[str, object],
+        *,
+        selected_job_id: str | None,
+        selected_state: str | None,
+        selected_agent: str | None,
+    ) -> TaskDetailSnapshot:
         job_id = str(task["job_id"])
         detail_path = str(task.get("detail_path") or "")
+        detail_preview = _load_detail_preview(detail_path)
         return TaskDetailSnapshot(
             task_id=str(task["id"]),
             job_id=job_id,
@@ -755,7 +887,8 @@ class DashboardQueryService:
             requirement=_optional_text(task.get("requirement")) or self._messages["common"]["unknown"],
             result=_optional_text(task.get("result")),
             detail_path=detail_path,
-            detail_preview=_load_detail_preview(detail_path),
+            detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_preview.status],
+            detail_preview=detail_preview,
             timeline=self._build_task_timeline(task),
         )
 
@@ -937,6 +1070,281 @@ class DashboardQueryService:
 
         return tasks[0], bool(requested_task_id)
 
+    def _job_matches_view(
+        self,
+        job: dict[str, object],
+        job_tasks: list[dict[str, object]],
+        selected_view: str,
+    ) -> bool:
+        counts = Counter(str(task.get("state") or "queued") for task in job_tasks)
+        if selected_view == "current":
+            return bool(job.get("is_current"))
+        if selected_view == "active":
+            return sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES) > 0
+        if selected_view == "terminal":
+            return sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES) > 0
+        return True
+
+    def _build_job_view_options(
+        self,
+        jobs: list[dict[str, object]],
+        *,
+        tasks_by_job: dict[str, list[dict[str, object]]],
+        active_view: str,
+        selected_job_id: str | None,
+    ) -> list[LinkOption]:
+        messages = self._messages["jobs"]
+        view_labels = {
+            "all": messages["view_all"],
+            "current": messages["view_current"],
+            "active": messages["view_active"],
+            "terminal": messages["view_terminal"],
+        }
+        return [
+            LinkOption(
+                key=view_key,
+                label=view_labels[view_key],
+                href=self._jobs_path(job_id=selected_job_id, view=view_key),
+                is_active=view_key == active_view,
+                count=sum(
+                    1
+                    for job in jobs
+                    if self._job_matches_view(job, tasks_by_job.get(str(job["id"]), []), view_key)
+                ),
+            )
+            for view_key in JOB_VIEW_OPTIONS
+        ]
+
+    def _task_matches_filters(
+        self,
+        task: dict[str, object],
+        *,
+        job_id: str | None = None,
+        state: str | None = None,
+        agent: str | None = None,
+    ) -> bool:
+        if job_id and str(task["job_id"]) != job_id:
+            return False
+        if state and str(task.get("state") or "queued") != state:
+            return False
+        if agent == UNASSIGNED_AGENT_FILTER:
+            return _optional_text(task.get("assigned_agent")) is None
+        if agent and _optional_text(task.get("assigned_agent")) != agent:
+            return False
+        return True
+
+    def _build_task_filter_groups(
+        self,
+        *,
+        tasks: list[dict[str, object]],
+        jobs: list[dict[str, object]],
+        selected_job_id: str | None,
+        selected_state: str | None,
+        selected_agent: str | None,
+    ) -> list[FilterGroup]:
+        common = self._messages["common"]
+        task_messages = self._messages["tasks"]
+        job_options = [
+            LinkOption(
+                key="all",
+                label=common["all"],
+                href=self._tasks_path(state=selected_state, agent=selected_agent),
+                is_active=selected_job_id is None,
+                count=sum(
+                    1
+                    for task in tasks
+                    if self._task_matches_filters(task, state=selected_state, agent=selected_agent)
+                ),
+            )
+        ]
+        for job in reversed(jobs):
+            job_id = str(job["id"])
+            job_options.append(
+                LinkOption(
+                    key=job_id,
+                    label=str(job.get("title") or job_id),
+                    href=self._tasks_path(job_id=job_id, state=selected_state, agent=selected_agent),
+                    is_active=job_id == selected_job_id,
+                    count=sum(
+                        1
+                        for task in tasks
+                        if self._task_matches_filters(
+                            task,
+                            job_id=job_id,
+                            state=selected_state,
+                            agent=selected_agent,
+                        )
+                    ),
+                )
+            )
+
+        state_options = [
+            LinkOption(
+                key="all",
+                label=common["all"],
+                href=self._tasks_path(job_id=selected_job_id, agent=selected_agent),
+                is_active=selected_state is None,
+                count=sum(
+                    1
+                    for task in tasks
+                    if self._task_matches_filters(task, job_id=selected_job_id, agent=selected_agent)
+                ),
+            )
+        ]
+        for state in CORE_TASK_STATES:
+            state_options.append(
+                LinkOption(
+                    key=state,
+                    label=self._messages["status"][state]["label"],
+                    href=self._tasks_path(job_id=selected_job_id, state=state, agent=selected_agent),
+                    is_active=state == selected_state,
+                    count=sum(
+                        1
+                        for task in tasks
+                        if self._task_matches_filters(
+                            task,
+                            job_id=selected_job_id,
+                            state=state,
+                            agent=selected_agent,
+                        )
+                    ),
+                )
+            )
+
+        agent_options = [
+            LinkOption(
+                key="all",
+                label=common["all"],
+                href=self._tasks_path(job_id=selected_job_id, state=selected_state),
+                is_active=selected_agent is None,
+                count=sum(
+                    1
+                    for task in tasks
+                    if self._task_matches_filters(task, job_id=selected_job_id, state=selected_state)
+                ),
+            )
+        ]
+        unassigned_count = sum(
+            1
+            for task in tasks
+            if self._task_matches_filters(
+                task,
+                job_id=selected_job_id,
+                state=selected_state,
+                agent=UNASSIGNED_AGENT_FILTER,
+            )
+        )
+        if unassigned_count or selected_agent == UNASSIGNED_AGENT_FILTER:
+            agent_options.append(
+                LinkOption(
+                    key="unassigned",
+                    label=task_messages["assigned_agent_empty"],
+                    href=self._tasks_path(
+                        job_id=selected_job_id,
+                        state=selected_state,
+                        agent=UNASSIGNED_AGENT_FILTER,
+                    ),
+                    is_active=selected_agent == UNASSIGNED_AGENT_FILTER,
+                    count=unassigned_count,
+                )
+            )
+        known_agents = sorted(
+            {
+                agent
+                for agent in (_optional_text(task.get("assigned_agent")) for task in tasks)
+                if agent
+            }
+        )
+        for agent in known_agents:
+            agent_options.append(
+                LinkOption(
+                    key=agent,
+                    label=agent,
+                    href=self._tasks_path(job_id=selected_job_id, state=selected_state, agent=agent),
+                    is_active=agent == selected_agent,
+                    count=sum(
+                        1
+                        for task in tasks
+                        if self._task_matches_filters(
+                            task,
+                            job_id=selected_job_id,
+                            state=selected_state,
+                            agent=agent,
+                        )
+                    ),
+                )
+            )
+
+        return [
+            FilterGroup(key="job", label=task_messages["filter_group_job"], options=job_options),
+            FilterGroup(key="state", label=task_messages["filter_group_state"], options=state_options),
+            FilterGroup(key="agent", label=task_messages["filter_group_agent"], options=agent_options),
+        ]
+
+    def _build_task_applied_filters(
+        self,
+        jobs: list[dict[str, object]],
+        *,
+        selected_job_id: str | None,
+        selected_state: str | None,
+        selected_agent: str | None,
+    ) -> list[AppliedFilter]:
+        applied: list[AppliedFilter] = []
+        if selected_job_id:
+            selected_job = next((job for job in jobs if str(job["id"]) == selected_job_id), None)
+            applied.append(
+                AppliedFilter(
+                    label=self._messages["tasks"]["job_id"],
+                    value=str(selected_job.get("title") or selected_job_id) if selected_job else selected_job_id,
+                    clear_href=self._tasks_path(state=selected_state, agent=selected_agent),
+                )
+            )
+        if selected_state:
+            applied.append(
+                AppliedFilter(
+                    label=self._messages["tasks"]["state"],
+                    value=self._messages["status"][selected_state]["label"],
+                    clear_href=self._tasks_path(job_id=selected_job_id, agent=selected_agent),
+                )
+            )
+        if selected_agent:
+            agent_label = (
+                self._messages["tasks"]["assigned_agent_empty"]
+                if selected_agent == UNASSIGNED_AGENT_FILTER
+                else selected_agent
+            )
+            applied.append(
+                AppliedFilter(
+                    label=self._messages["tasks"]["assigned_agent"],
+                    value=agent_label,
+                    clear_href=self._tasks_path(job_id=selected_job_id, state=selected_state),
+                )
+            )
+        return applied
+
+    def _jobs_path(self, *, job_id: str | None = None, view: str | None = None) -> str:
+        return self._path_with_locale(
+            "/jobs",
+            ("job", job_id or ""),
+            ("view", "" if view in (None, "all") else view),
+        )
+
+    def _tasks_path(
+        self,
+        *,
+        job_id: str | None = None,
+        task_id: str | None = None,
+        state: str | None = None,
+        agent: str | None = None,
+    ) -> str:
+        return self._path_with_locale(
+            "/tasks",
+            ("job", job_id or ""),
+            ("state", state or ""),
+            ("agent", agent or ""),
+            ("task", task_id or ""),
+        )
+
     def _build_queue_task(self, task: dict[str, object]) -> QueueTaskSnapshot:
         summary_label, summary_text = self._task_summary(task)
         return QueueTaskSnapshot(
@@ -993,10 +1401,10 @@ class DashboardQueryService:
         return self._messages["recent_update"]["update"], self._messages["recent_update"]["no_detail"]
 
     def _path_with_locale(self, path: str, *pairs: tuple[str, str]) -> str:
-        query = "&".join(f"{key}={value}" for key, value in pairs if value)
+        query_items = [(key, value) for key, value in pairs if value]
         if self._locale != DEFAULT_LOCALE:
-            query = f"{query}&lang={self._locale}" if query else f"lang={self._locale}"
-        return f"{path}?{query}" if query else path
+            query_items.append(("lang", self._locale))
+        return f"{path}?{urlencode(query_items)}" if query_items else path
 
 
 def _task_scheduler(task: dict[str, object]) -> dict[str, object]:
@@ -1036,6 +1444,22 @@ def _format_timestamp(value: str, *, fallback: str) -> str:
     if parsed is None:
         return value
     return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _detail_preview_status(path_value: str) -> str:
+    if not path_value:
+        return "missing"
+
+    path = Path(path_value)
+    if not path.is_file():
+        return "missing"
+
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except Exception:  # pragma: no cover
+        return "error"
+
+    return "empty" if not raw_text.strip() else "rendered"
 
 
 def _load_detail_preview(path_value: str) -> DetailPreview:

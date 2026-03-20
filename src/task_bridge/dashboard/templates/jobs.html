@@ -44,6 +44,35 @@
   <p>{{ ui.jobs.empty_body }}</p>
 </section>
 {% else %}
+<section class="route-panel" aria-labelledby="jobs-filters-title" data-testid="dashboard-jobs-filters">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.jobs.view_eyebrow }}</p>
+    <h2 id="jobs-filters-title">{{ ui.jobs.view_title }}</h2>
+    <p class="section-note">{{ ui.jobs.view_note }}</p>
+  </div>
+  <div class="route-groups">
+    <article class="route-group">
+      <p class="route-group-note">{{ ui.jobs.view_match_count.format(visible_jobs_count=jobs.visible_jobs_count) }}</p>
+      <div class="filter-chip-group">
+        {% for option in jobs.view_options %}
+        <a
+          class="filter-chip{% if option.is_active %} is-active{% endif %}"
+          data-testid="dashboard-jobs-view-{{ option.key }}"
+          href="{{ option.href }}"
+        >
+          <span>{{ option.label }}</span>
+          <strong>{{ option.count }}</strong>
+        </a>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="route-group route-group-boundary">
+      <p class="eyebrow">{{ ui.jobs.read_only_boundary }}</p>
+      <p class="section-note">{{ ui.jobs.read_only_boundary_note }}</p>
+    </article>
+  </div>
+</section>
+
 <div class="browse-layout">
   <section class="browse-panel" aria-labelledby="jobs-list-title" data-testid="dashboard-jobs-list">
     <div class="section-heading">
@@ -51,9 +80,20 @@
       <h2 id="jobs-list-title">{{ ui.jobs.list_title }}</h2>
       <p class="section-note">{{ ui.jobs.list_note }}</p>
     </div>
+
+    {% if jobs.filtered_empty %}
+    <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-jobs-filter-empty">
+      <h3>{{ ui.jobs.view_empty_title }}</h3>
+      <p>{{ ui.jobs.view_empty_body }}</p>
+    </div>
+    {% else %}
     <div class="item-list">
       {% for item in jobs.jobs %}
-      <a class="list-card{% if item.is_selected %} is-selected{% endif %}" href="{{ item.detail_href }}">
+      <a
+        class="list-card{% if item.is_selected %} is-selected{% endif %}"
+        data-testid="dashboard-jobs-list-card-{{ item.job_id }}"
+        href="{{ item.detail_href }}"
+      >
         <div class="list-card-header">
           <div>
             <h3>{{ item.title }}</h3>
@@ -84,6 +124,7 @@
       </a>
       {% endfor %}
     </div>
+    {% endif %}
   </section>
 
   <section class="detail-panel" aria-labelledby="jobs-detail-title" data-testid="dashboard-jobs-detail">
@@ -137,6 +178,19 @@
           </div>
         </dl>
 
+        <div class="detail-callout route-callout">
+          <p class="eyebrow">{{ ui.jobs.view_paths }}</p>
+          <p>{{ ui.jobs.view_paths_note }}</p>
+          <div class="route-link-list">
+            <a class="route-link" href="{{ jobs.selected_job.tasks_href }}">{{ ui.jobs.open_tasks }}</a>
+            {% if jobs.selected_job.latest_task_href %}
+            <a class="route-link" href="{{ jobs.selected_job.latest_task_href }}">{{ ui.jobs.open_latest_task }}</a>
+            {% else %}
+            <p class="section-note">{{ ui.jobs.latest_task_empty }}</p>
+            {% endif %}
+          </div>
+        </div>
+
         <div class="detail-callout compact-grid">
           <p class="eyebrow">{{ ui.jobs.status_section }}</p>
           <p>{{ ui.jobs.status_note }}</p>
@@ -184,6 +238,11 @@
         </div>
         {% endif %}
       </article>
+    </div>
+    {% else %}
+    <div class="state-panel" role="status" aria-live="polite">
+      <h3>{{ ui.jobs.detail_title }}</h3>
+      <p>{{ ui.jobs.view_empty_body }}</p>
     </div>
     {% endif %}
   </section>

@@ -239,30 +239,45 @@ test("overview renders the explicit empty state", async ({ page }) => {
   }
 });
 
-test("jobs and tasks render live read-only pages", async ({ page }) => {
+test("jobs and tasks render filtered read-only pages", async ({ page }) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-live-slice-b-"));
   const seeded = await seedLiveDashboard(homeDir);
   const server = await startDashboard(homeDir, 4175);
 
   try {
-    await page.goto(`${server.baseUrl}/jobs?job=${seeded.jobA.id}`);
+    await page.goto(`${server.baseUrl}/jobs?view=active`);
     await expect(page.getByTestId("dashboard-nav-jobs")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-jobs-page")).toBeVisible();
-    await expect(page.getByTestId("dashboard-jobs-list")).toContainText("job-a");
-    await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("queued req");
+    await expect(page.getByTestId("dashboard-jobs-filters")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-view-active")).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`dashboard-jobs-list-card-${seeded.jobA.id}`)).toBeVisible();
+    await expect(page.getByTestId(`dashboard-jobs-list-card-${seeded.jobB.id}`)).toHaveCount(0);
+    await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("Open latest task detail");
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
     );
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
 
-    await page.goto(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
+    await page.goto(
+      `${server.baseUrl}/tasks?job=${seeded.jobA.id}&state=running&agent=quality-agent&task=${seeded.taskA2.id}`,
+    );
     await expect(page.getByTestId("dashboard-nav-tasks")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-tasks-page")).toBeVisible();
-    await expect(page.getByTestId("dashboard-tasks-list")).toContainText(seeded.taskA2.id);
+    await expect(page.getByTestId("dashboard-tasks-filters")).toBeVisible();
+    await expect(page.getByTestId(`dashboard-tasks-list-card-${seeded.taskA2.id}`)).toBeVisible();
+    await expect(page.getByTestId(`dashboard-tasks-list-card-${seeded.taskA1.id}`)).toHaveCount(0);
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("actively working");
+    await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("Preview ready");
     await expect(page.getByTestId("dashboard-tasks-detail-preview")).toContainText("Runbook");
     await expect(page.getByTestId("dashboard-tasks-timeline")).toContainText("Last dispatch recorded");
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+
+    await page.goto(
+      `${server.baseUrl}/tasks?job=${seeded.jobA.id}&state=queued&agent=code-agent&task=${seeded.taskA1.id}`,
+    );
+    await expect(page.getByTestId("dashboard-tasks-detail-preview-missing")).toContainText(
+      "No detail.md file exists at the recorded path yet.",
+    );
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
