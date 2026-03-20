@@ -246,6 +246,25 @@ def test_dashboard_i18n_catalogs_cover_same_surface() -> None:
     assert chinese_keys == english_keys
 
 
+@pytest.mark.parametrize(
+    ("requested_locale", "expected_html_lang"),
+    [
+        ("en", "en"),
+        ("en-US", "en"),
+        ("zh", "zh-CN"),
+        ("zh-Hans", "zh-CN"),
+        ("zh-CN", "zh-CN"),
+        ("unexpected-locale", "en"),
+        ("", "en"),
+    ],
+)
+def test_dashboard_i18n_facade_resolves_supported_aliases(
+    requested_locale: str,
+    expected_html_lang: str,
+) -> None:
+    assert str(get_messages(requested_locale)["html_lang"]) == expected_html_lang
+
+
 def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> None:
     seeded = seed_dashboard_store(home)
 
