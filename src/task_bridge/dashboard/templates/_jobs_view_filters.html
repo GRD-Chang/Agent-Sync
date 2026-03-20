@@ -1,0 +1,28 @@
+<section class="route-panel" aria-labelledby="jobs-filters-title" data-testid="dashboard-jobs-filters">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.jobs.view_eyebrow }}</p>
+    <h2 id="jobs-filters-title">{{ ui.jobs.view_title }}</h2>
+    <p class="section-note">{{ ui.jobs.view_note }}</p>
+  </div>
+  <div class="route-groups">
+    <article class="route-group">
+      <p class="route-group-note">{{ ui.jobs.view_match_count.format(visible_jobs_count=jobs.visible_jobs_count) }}</p>
+      <div class="filter-chip-group">
+        {% for option in jobs.view_options %}
+        <a
+          class="filter-chip{% if option.is_active %} is-active{% endif %}"
+          data-testid="dashboard-jobs-view-{{ option.key }}"
+          href="{{ option.href }}"
+        >
+          <span>{{ option.label }}</span>
+          <strong>{{ option.count }}</strong>
+        </a>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="route-group route-group-boundary">
+      <p class="eyebrow">{{ ui.jobs.read_only_boundary }}</p>
+      <p class="section-note">{{ ui.jobs.read_only_boundary_note }}</p>
+    </article>
+  </div>
+</section>

@@ -1,0 +1,52 @@
+<section id="jobs-registry" class="browse-panel jobs-list-shell" aria-labelledby="jobs-list-title" data-testid="dashboard-jobs-list">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.jobs.list_eyebrow }}</p>
+    <h2 id="jobs-list-title">{{ ui.jobs.list_title }}</h2>
+    <p class="section-note">{{ ui.jobs.list_note }}</p>
+  </div>
+
+  {% if jobs.filtered_empty %}
+  <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-jobs-filter-empty">
+    <h3>{{ ui.jobs.view_empty_title }}</h3>
+    <p>{{ ui.jobs.view_empty_body }}</p>
+  </div>
+  {% else %}
+  <div class="jobs-card-grid item-grid">
+    {% for item in jobs.jobs %}
+    <a
+      class="list-card job-card{% if item.is_selected %} is-selected{% endif %}"
+      data-testid="dashboard-jobs-list-card-{{ item.job_id }}"
+      href="{{ item.detail_href }}"
+    >
+      <div class="list-card-header">
+        <div>
+          <h3>{{ item.title }}</h3>
+          <p class="list-card-meta">{{ item.job_id }}</p>
+        </div>
+        <div class="list-card-badges">
+          {% if item.is_current %}
+          <span class="status-pill status-current">{{ ui.jobs.current_badge }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <p class="list-card-summary">{{ ui.jobs.notify_target }}: {{ item.notify_target }}</p>
+      <dl class="list-card-stats">
+        <div>
+          <dt>{{ ui.jobs.tasks_total }}</dt>
+          <dd>{{ item.task_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.jobs.tasks_active }}</dt>
+          <dd>{{ item.active_task_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.jobs.tasks_terminal }}</dt>
+          <dd>{{ item.terminal_task_count }}</dd>
+        </div>
+      </dl>
+      <p class="list-card-foot">{{ ui.jobs.updated_at }}: {{ item.updated_at }}</p>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>

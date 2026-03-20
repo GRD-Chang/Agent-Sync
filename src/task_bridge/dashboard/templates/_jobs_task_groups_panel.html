@@ -1,0 +1,48 @@
+<article id="job-task-groups" class="detail-card" data-testid="dashboard-jobs-task-groups">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.jobs.task_preview }}</p>
+    <h3>{{ ui.jobs.task_preview }}</h3>
+    <p class="section-note">{{ ui.jobs.task_preview_note }}</p>
+  </div>
+
+  {% if selected_job.task_groups %}
+  <div class="status-group-list">
+    {% for group in selected_job.task_groups %}
+    <section class="status-group-card status-group-card--{{ group.state }}" data-testid="dashboard-jobs-task-group-{{ group.state }}">
+      <header class="status-group-header">
+        <div>
+          <p class="eyebrow">{{ group.label }}</p>
+          <h4>{{ group.label }}</h4>
+        </div>
+        <div class="status-group-meta">
+          <span class="status-pill status-{{ group.state }}">{{ group.count }}</span>
+          <p>{{ group.description }}</p>
+        </div>
+      </header>
+      <div class="task-preview-grid">
+        {% for item in group.tasks %}
+        <a class="task-preview-card{% if item.is_selected %} is-selected{% endif %}" data-testid="dashboard-jobs-task-card-{{ item.task_id }}" href="{{ item.detail_href }}">
+          <div class="task-preview-header">
+            <div>
+              <h4>{{ item.task_id }}</h4>
+              <p>{{ item.summary_label }}: {{ item.summary_text }}</p>
+            </div>
+            <div class="task-preview-meta">
+              <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
+              <span>{{ item.assigned_agent }}</span>
+              <span>{{ item.updated_at }}</span>
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="state-panel" role="status" aria-live="polite">
+    <h3>{{ ui.jobs.task_preview }}</h3>
+    <p>{{ ui.jobs.task_preview_empty }}</p>
+  </div>
+  {% endif %}
+</article>

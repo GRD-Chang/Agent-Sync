@@ -1,0 +1,46 @@
+{% from "_markdown_preview.html" import render_markdown_preview %}
+
+<article id="job-work-plan" class="detail-card" data-testid="dashboard-jobs-work-plan">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.jobs.work_plan }}</p>
+    <h3>{{ ui.jobs.work_plan }}</h3>
+    <p class="section-note">{{ ui.jobs.work_plan_note }}</p>
+  </div>
+
+  <dl class="meta-grid">
+    <div class="meta-span-2">
+      <dt>{{ ui.jobs.work_plan_path }}</dt>
+      <dd>{{ selected_job.work_plan.path }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.jobs.work_plan_updated_at }}</dt>
+      <dd>{{ selected_job.work_plan.updated_at }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.tasks.detail_status }}</dt>
+      <dd>{{ selected_job.work_plan.status_label }}</dd>
+    </div>
+  </dl>
+
+  <div class="detail-callout">
+    <p class="eyebrow">{{ ui.jobs.work_plan_source }}</p>
+    <p>{{ ui.jobs.work_plan_source_note }}</p>
+  </div>
+
+  <p class="preview-status">
+    <span class="status-pill">{{ selected_job.work_plan.status_label }}</span>
+  </p>
+
+  {{ render_markdown_preview(
+    selected_job.work_plan.detail_preview,
+    "dashboard-jobs-work-plan",
+    ui.jobs.work_plan,
+    ui.jobs.work_plan_missing,
+    ui.jobs.work_plan_empty,
+    ui.jobs.work_plan_error,
+    ui.tasks.preview_truncated.format(
+      line_limit=selected_job.work_plan.detail_preview.line_limit,
+      char_limit=selected_job.work_plan.detail_preview.char_limit,
+    ),
+  ) }}
+</article>

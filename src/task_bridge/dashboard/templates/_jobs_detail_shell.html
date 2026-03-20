@@ -1,0 +1,39 @@
+{% from "_task_detail_panel.html" import render_task_detail %}
+{% set selected_job = jobs.selected_job %}
+
+<section class="detail-shell" aria-labelledby="jobs-detail-title" data-testid="dashboard-jobs-detail-shell">
+  {% if jobs.detail_back_link %}
+  <a class="inline-back-link" href="{{ jobs.detail_back_link.href }}">{{ jobs.detail_back_link.label }}</a>
+  {% endif %}
+  <section id="job-detail" class="detail-panel" aria-labelledby="jobs-detail-title" data-testid="dashboard-jobs-detail">
+    <div class="section-heading">
+      <p class="eyebrow">{{ ui.jobs.detail_eyebrow }}</p>
+      <h2 id="jobs-detail-title">{{ ui.jobs.detail_title }}</h2>
+      <p class="section-note">{{ ui.jobs.detail_note }}</p>
+    </div>
+
+    <div class="detail-stack">
+      {% include "_jobs_detail_main.html" %}
+      {% if selected_job.detail_view == "plan" and selected_job.work_plan %}
+      {% include "_jobs_work_plan_panel.html" %}
+      {% else %}
+      {% include "_jobs_task_groups_panel.html" %}
+      {% endif %}
+    </div>
+  </section>
+
+  {% if jobs.selected_task %}
+  {{ render_task_detail(
+    jobs.selected_task,
+    ui,
+    "job-task-detail",
+    "job-task-detail-title",
+    "dashboard-jobs-task-detail",
+    "dashboard-jobs-task-detail-preview",
+    "dashboard-jobs-task-timeline",
+    ui.tasks.detail_eyebrow,
+    ui.tasks.detail_title,
+    ui.tasks.detail_note
+  ) }}
+  {% endif %}
+</section>
