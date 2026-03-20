@@ -8,7 +8,26 @@
     {% if pagination.prev_href %}
     <a class="route-link pagination-link" href="{{ pagination.prev_href }}">{{ ui.common.pagination_prev }}</a>
     {% endif %}
-    <span class="pagination-page">{{ ui.common.pagination_page.format(page=pagination.page, page_count=pagination.page_count) }}</span>
+    <div class="pagination-pages">
+      {% for item in pagination.page_links %}
+      {% if item.is_gap %}
+      <span class="pagination-gap" aria-hidden="true">{{ item.label }}</span>
+      {% elif item.is_current %}
+      <span
+        class="pagination-page pagination-page-current"
+        data-testid="{{ nav_id }}-page-{{ item.page }}"
+        aria-current="page"
+      >{{ item.label }}</span>
+      {% else %}
+      <a
+        class="route-link pagination-link pagination-page"
+        data-testid="{{ nav_id }}-page-{{ item.page }}"
+        href="{{ item.href }}"
+        aria-label="{{ ui.common.pagination_page.format(page=item.page, page_count=pagination.page_count) }}"
+      >{{ item.label }}</a>
+      {% endif %}
+      {% endfor %}
+    </div>
     {% if pagination.next_href %}
     <a class="route-link pagination-link" href="{{ pagination.next_href }}">{{ ui.common.pagination_next }}</a>
     {% endif %}

@@ -223,6 +223,79 @@ async function seedLiveDashboard(homeDir) {
   return { jobA, taskA1, taskA2, taskA3, jobB, taskB1, taskB2, workPlanPath };
 }
 
+async function seedDenseDashboard(homeDir) {
+  const job = runBridgeJson(homeDir, ["create-job", "--title", "dense bilingual register"]);
+  const tasksByState = {
+    running: [],
+    blocked: [],
+    failed: [],
+    queued: [],
+    done: [],
+  };
+  const stateCounts = {
+    running: 6,
+    blocked: 6,
+    failed: 4,
+    queued: 6,
+    done: 4,
+  };
+  const followupDueAt = [
+    "2026-03-19T08:00:00Z",
+    "2026-03-19T09:00:00Z",
+    "2026-03-19T10:00:00Z",
+    "2026-03-19T11:00:00Z",
+    "2026-03-19T12:00:00Z",
+    "2026-03-21T08:00:00Z",
+    "2026-03-21T09:00:00Z",
+    "2026-03-21T10:00:00Z",
+    "2026-03-21T11:00:00Z",
+    "2026-03-21T12:00:00Z",
+  ];
+  let followupIndex = 0;
+
+  for (const [state, count] of Object.entries(stateCounts)) {
+    for (let index = 0; index < count; index += 1) {
+      const requirement =
+        `${state} bilingual task ${index} 中文 English coordination note ` +
+        "to stress wrapping across denser dashboard cards.";
+      const task = runBridgeJson(homeDir, [
+        "create-task",
+        "--job",
+        job.id,
+        "--requirement",
+        requirement,
+        "--assign",
+        `${state}-agent-${index % 3}`,
+      ]);
+      const result =
+        `${state} result ${index} 中文 English detail for scanability ` +
+        "and overflow resilience under dense cards.";
+      if (state === "running") {
+        runBridgeJson(homeDir, ["start", task.id, "--job", job.id, "--result", result]);
+      } else if (state === "blocked") {
+        runBridgeJson(homeDir, ["block", task.id, "--job", job.id, "--result", result]);
+      } else if (state === "failed") {
+        runBridgeJson(homeDir, ["fail", task.id, "--job", job.id, "--result", result]);
+      } else if (state === "done") {
+        runBridgeJson(homeDir, ["complete", task.id, "--job", job.id, "--result", result]);
+      }
+
+      if (state === "blocked" || state === "failed") {
+        const taskJsonPath = path.join(homeDir, "jobs", job.id, "tasks", `${task.id}.json`);
+        const payload = JSON.parse(await fs.readFile(taskJsonPath, "utf-8"));
+        payload._scheduler.final_notified_at = `2026-03-19T0${index % 9}:15:00Z`;
+        payload._scheduler.leader_followup_due_at = followupDueAt[followupIndex];
+        followupIndex += 1;
+        await fs.writeFile(taskJsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+      }
+
+      tasksByState[state].push(task);
+    }
+  }
+
+  return { job, tasksByState };
+}
+
 test("overview renders the live happy path shell", async ({ page }) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-happy-"));
   await seedLiveDashboard(homeDir);
@@ -482,6 +555,90 @@ test("worker queue, alerts, and health stay within the viewport on desktop width
       await expect(page.getByTestId("dashboard-health-checks")).toBeVisible();
       await expectNoHorizontalOverflow(page);
     }
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("dense tasks and alerts keep pagination, anchors, and priority visibility stable", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-dense-"));
+  const seeded = await seedDenseDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4184);
+
+  try {
+    await page.setViewportSize({ width: 1280, height: 960 });
+
+    await page.goto(`${server.baseUrl}/tasks?job=${seeded.job.id}`);
+    await expect(page.getByTestId("dashboard-tasks-status-ribbon")).toBeVisible();
+    await expect(page.getByTestId("dashboard-tasks-pagination")).toBeVisible();
+    await expect(page.getByTestId("dashboard-tasks-pagination-page-2")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    const firstTaskGroups = await page.locator('[data-testid^="dashboard-tasks-group-"]').evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("data-testid")),
+    );
+    expect(firstTaskGroups).toEqual([
+      "dashboard-tasks-group-running",
+      "dashboard-tasks-group-blocked",
+    ]);
+
+    await page.getByTestId("dashboard-tasks-pagination-page-2").click();
+    await expect(page).toHaveURL(new RegExp(`/tasks\\?(?=.*job=${seeded.job.id})(?=.*page=2).*#tasks-registry$`));
+    const tasksRegistryTop = await page.locator("#tasks-registry").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    expect(tasksRegistryTop).toBeLessThan(180);
+    await expectNoHorizontalOverflow(page);
+
+    const secondTaskGroups = await page.locator('[data-testid^="dashboard-tasks-group-"]').evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("data-testid")),
+    );
+    expect(secondTaskGroups).toEqual([
+      "dashboard-tasks-group-failed",
+      "dashboard-tasks-group-queued",
+      "dashboard-tasks-group-done",
+    ]);
+
+    await page.getByTestId(`dashboard-tasks-list-card-${seeded.tasksByState.failed[0].id}`).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/tasks\\?(?=.*job=${seeded.job.id})(?=.*page=2)(?=.*task=${seeded.tasksByState.failed[0].id}).*#tasks-detail$`,
+      ),
+    );
+    await expect(page.locator("a.inline-back-link")).toHaveAttribute(
+      "href",
+      `/tasks?job=${seeded.job.id}&page=2#tasks-registry`,
+    );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoHorizontalOverflow(page);
+
+    await page.goto(`${server.baseUrl}/alerts`);
+    await expect(page.getByTestId("dashboard-alerts-risk-group-blocked")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-followup-group-due")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-followup-group-scheduled")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-risk-pagination-page-2")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-followup-pagination-page-2")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByTestId("dashboard-alerts-risk-pagination-page-2").click();
+    await expect(page).toHaveURL(new RegExp("/alerts\\?(?=.*risk_page=2).*#alerts-risk-list$"));
+    const riskTop = await page.locator("#alerts-risk-list").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    expect(riskTop).toBeLessThan(180);
+    await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
+
+    await page.getByTestId("dashboard-alerts-followup-pagination-page-2").click();
+    await expect(page).toHaveURL(new RegExp("/alerts\\?(?=.*risk_page=2)(?=.*followup_page=2).*#alerts-followups$"));
+    const followupsTop = await page.locator("#alerts-followups").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    expect(followupsTop).toBeLessThan(180);
+    await expect(page.getByTestId("dashboard-alerts-followup-group-scheduled")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

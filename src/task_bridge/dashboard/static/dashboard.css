@@ -532,6 +532,13 @@ main {
   gap: 0.75rem;
 }
 
+.list-card-header > *,
+.task-preview-header > *,
+.detail-title-row > *,
+.status-group-header > * {
+  min-width: 0;
+}
+
 .worker-card h3,
 .recent-item h3,
 .state-panel h3,
@@ -629,7 +636,7 @@ main {
 .task-preview-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 }
 
 .inline-back-link {
@@ -835,7 +842,7 @@ main {
 }
 
 .signal-card-grid {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 }
 
 .health-check-grid {
@@ -1110,6 +1117,72 @@ main {
   margin-top: 1rem;
 }
 
+.status-group-list--dense {
+  gap: 0.85rem;
+}
+
+.status-ribbon {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+}
+
+.status-summary-card {
+  position: relative;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(30, 26, 22, 0.12);
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.status-summary-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+}
+
+.status-summary-card--running::before {
+  background: rgba(44, 109, 112, 0.8);
+}
+
+.status-summary-card--blocked::before,
+.status-group-card--due::before {
+  background: rgba(185, 138, 42, 0.82);
+}
+
+.status-summary-card--failed::before {
+  background: rgba(122, 56, 56, 0.82);
+}
+
+.status-summary-card--queued::before,
+.status-group-card--scheduled::before {
+  background: rgba(217, 106, 50, 0.78);
+}
+
+.status-summary-card--done::before {
+  background: rgba(97, 114, 57, 0.78);
+}
+
+.status-summary-value,
+.status-summary-note {
+  margin: 0;
+}
+
+.status-summary-value {
+  font-family: var(--font-mono);
+  font-size: clamp(1.4rem, 2vw, 1.9rem);
+  line-height: 1;
+}
+
+.status-summary-note {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .status-group-card {
   position: relative;
   display: grid;
@@ -1272,10 +1345,9 @@ main {
 }
 
 .pagination-bar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 0.85rem;
   margin-top: 1rem;
   padding-top: 1rem;
@@ -1283,7 +1355,8 @@ main {
 }
 
 .pagination-summary,
-.pagination-page {
+.pagination-page,
+.pagination-gap {
   margin: 0;
   font-family: var(--font-mono);
   font-size: 0.78rem;
@@ -1295,17 +1368,37 @@ main {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.65rem;
+}
+
+.pagination-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .pagination-page {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 2.7rem;
+  min-width: 2.7rem;
   padding: 0.7rem 0.9rem;
   border-radius: 0.85rem;
   border: 1px solid rgba(30, 26, 22, 0.16);
   background: rgba(255, 255, 255, 0.52);
+}
+
+.pagination-page-current {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+
+.pagination-gap {
+  color: var(--muted);
 }
 
 .timeline-list {
@@ -1380,12 +1473,17 @@ main {
   .alerts-layout,
   .lane-grid,
   .signal-card-grid,
-  .health-check-grid {
+  .health-check-grid,
+  .status-ribbon {
     grid-template-columns: 1fr;
   }
 
   .page-chrome-row {
     align-items: start;
+  }
+
+  .pagination-bar {
+    grid-template-columns: 1fr;
   }
 
   .recent-item header,

@@ -113,6 +113,15 @@
     <h2 id="tasks-list-title">{{ ui.tasks.list_title }}</h2>
     <p class="section-note">{{ ui.tasks.list_note }}</p>
   </div>
+  <div class="status-ribbon" data-testid="dashboard-tasks-status-ribbon">
+    {% for metric in tasks.visible_status_metrics %}
+    <article class="status-summary-card status-summary-card--{{ metric.state }}">
+      <p class="summary-label">{{ metric.label }}</p>
+      <p class="status-summary-value">{{ metric.count }}</p>
+      <p class="status-summary-note">{{ metric.description }}</p>
+    </article>
+    {% endfor %}
+  </div>
 
   {% if tasks.filtered_empty %}
   <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-tasks-filter-empty">

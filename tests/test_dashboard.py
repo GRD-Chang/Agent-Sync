@@ -74,8 +74,8 @@ def test_dashboard_help_describes_access_and_launch_guidance(capsys: pytest.Capt
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
     assert "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Worker Queue / Alerts / Health。" in help_text
-    assert "支持通过页面内切换器在 en / zh-CN 之间切换界面语言" in help_text
-    assert "启动后会输出访问地址、数据目录和远程 SSH 端口转发提示" in help_text
+    assert "支持通过页面内切换器切换 en / zh-CN 与本地字体风格" in help_text
+    assert "启动后会输出本机访问地址，并在需要时给出同网段访问、SSH 端口转发与端口冲突建议" in help_text
     assert "--host" in help_text
     assert "--port" in help_text
 
@@ -99,6 +99,8 @@ def test_dashboard_command_prints_actionable_launch_output(
         lambda **kwargs: captured.update(kwargs),
     )
     monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@10.10.0.8")
+    monkeypatch.setattr(cli_module, "_dashboard_is_remote_session", lambda: True)
+    monkeypatch.setattr(cli_module, "_dashboard_has_gui_session", lambda: False)
 
     assert main(["dashboard", "--host", "127.0.0.1", "--port", str(port)]) == 0
     output = capsys.readouterr().out
@@ -106,10 +108,11 @@ def test_dashboard_command_prints_actionable_launch_output(
     assert "Dashboard 启动中" in output
     assert "监听地址: 127.0.0.1" in output
     assert f"监听端口: {port}" in output
-    assert f"本机访问: http://127.0.0.1:{port}/overview" in output
+    assert f"本机打开: http://127.0.0.1:{port}/overview" in output
     assert f"数据目录: {home}" in output
-    assert f"ssh -L {port}:127.0.0.1:{port} dev@10.10.0.8" in output
-    assert "当前命令不会自动打开浏览器" in output
+    assert f"远程访问: ssh -L {port}:127.0.0.1:{port} dev@10.10.0.8" in output
+    assert "当前会话看起来像远程或无 GUI 环境" in output
+    assert "<remote-host>" not in output
     assert "Ctrl+C" in output
     assert captured == {"home": home, "host": "127.0.0.1", "port": port}
 
@@ -127,7 +130,38 @@ def test_dashboard_command_reports_occupied_port(
     error_text = capsys.readouterr().err
     assert f"127.0.0.1:{port}" in error_text
     assert "已被占用" in error_text
+    assert "建议直接改用下面的命令" in error_text
     assert re.search(r"task-bridge dashboard --host 127\.0\.0\.1 --port \d+", error_text)
+
+
+def test_dashboard_launch_message_falls_back_to_generic_remote_guidance(monkeypatch: pytest.MonkeyPatch) -> None:
+    import task_bridge.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: None)
+    monkeypatch.setattr(cli_module, "_dashboard_is_remote_session", lambda: True)
+    monkeypatch.setattr(cli_module, "_dashboard_has_gui_session", lambda: False)
+
+    output = cli_module._dashboard_launch_message(home=Path("/tmp/demo-home"), host="127.0.0.1", port=8042)
+
+    assert "<remote-host>" not in output
+    assert "未能自动识别可重连地址" in output
+    assert "映射 8042:127.0.0.1:8042" in output
+    assert "本机打开: http://127.0.0.1:8042/overview" in output
+
+
+def test_dashboard_launch_message_shows_network_url_for_wildcard_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    import task_bridge.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_dashboard_detect_network_host", lambda: "10.20.30.40")
+    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@10.20.30.40")
+    monkeypatch.setattr(cli_module, "_dashboard_is_remote_session", lambda: False)
+    monkeypatch.setattr(cli_module, "_dashboard_has_gui_session", lambda: True)
+
+    output = cli_module._dashboard_launch_message(home=Path("/tmp/demo-home"), host="0.0.0.0", port=8050)
+
+    assert "本机打开: http://127.0.0.1:8050/overview" in output
+    assert "同网段打开: http://10.20.30.40:8050/overview" in output
+    assert "远程访问: ssh -L 8050:127.0.0.1:8050 dev@10.20.30.40" in output
 
 
 def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
@@ -142,14 +176,18 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert "Current view" in body
     assert "Task status summary" in body
     assert "Dispatch dashboard" in body
-    assert "A single place to review the live picture across jobs, tasks, queues, alerts, and health." in body
+    assert "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health." in body
+    assert 'data-font-preset="sans"' in body
     assert 'data-testid="dashboard-locale-switch"' in body
     assert 'data-testid="dashboard-page-chrome"' in body
     assert 'data-testid="dashboard-breadcrumbs"' in body
     assert 'data-testid="dashboard-locale-en"' in body
     assert 'data-testid="dashboard-locale-zh-cn"' in body
     assert 'data-testid="dashboard-font-switch"' in body
+    assert 'data-testid="dashboard-font-sans"' in body
     assert 'data-testid="dashboard-font-editorial"' in body
+    assert 'data-testid="dashboard-font-precision"' in body
+    assert 'data-testid="dashboard-font-mono"' in body
     assert "MVP scope" not in body
     assert "read-only" not in body
 
@@ -178,7 +216,7 @@ def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> 
     assert zh_response.status_code == 200
     zh_body = zh_response.text
     assert "<html lang=\"zh-CN\">" in zh_body
-    assert "任务总表与详情预览" in zh_body
+    assert "Tasks 总表与详情预览" in zh_body
     assert "进行中" in zh_body
     assert 'data-testid="dashboard-back-link"' in zh_body
     assert re.search(
@@ -194,14 +232,14 @@ def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> 
 def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
     seeded = seed_operational_dashboard_store(home)
     page_specs = [
-        ("/overview?lang=zh-CN", "dashboard-overview-hero", "任务状态汇总"),
-        (f"/jobs?job={seeded['job_a']['id']}&lang=zh-CN", "dashboard-jobs-page", "作业详情"),
+        ("/overview?lang=zh-CN", "dashboard-overview-hero", "Task 状态汇总"),
+        (f"/jobs?job={seeded['job_a']['id']}&lang=zh-CN", "dashboard-jobs-page", "Job 详情"),
         (
             f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}&lang=zh-CN",
             "dashboard-tasks-page",
             "时间线",
         ),
-        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "当前负载与队列深度"),
+        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "当前负载与 queue 深度"),
         ("/alerts?lang=zh-CN", "dashboard-alerts-hero", "当前需要处理的事项"),
         ("/health?lang=zh-CN", "dashboard-health-hero", "关键运行摘要"),
     ]
@@ -216,11 +254,11 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
             assert 'data-testid="dashboard-locale-switch"' in body
             assert 'data-testid="dashboard-page-chrome"' in body
             assert re.search(r'data-testid="dashboard-locale-zh-cn"[^>]*aria-current="page"', body)
-            assert "集中浏览现有存储中的作业、任务、队列、告警与健康信息。" in body
+            assert "集中查看当前 store 里已有的 jobs、tasks、queue、告警与健康信息。" in body
             assert "总览" in body
-            assert "作业" in body
-            assert "任务" in body
-            assert "代理与队列" in body
+            assert "Jobs" in body
+            assert "Tasks" in body
+            assert "Agent Queue" in body
             assert "告警" in body
             assert "健康" in body
             assert f'data-testid="{testid}"' in body
@@ -231,9 +269,9 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
 @pytest.mark.parametrize(
     ("path", "testid", "expected_copy"),
     [
-        ("/overview?lang=zh-CN", "dashboard-overview-empty-state", "还没有作业或任务"),
-        ("/jobs?lang=zh-CN", "dashboard-jobs-empty-state", "还没有作业"),
-        ("/tasks?lang=zh-CN", "dashboard-tasks-empty-state", "还没有任务"),
+        ("/overview?lang=zh-CN", "dashboard-overview-empty-state", "还没有 job 或 task"),
+        ("/jobs?lang=zh-CN", "dashboard-jobs-empty-state", "还没有 job"),
+        ("/tasks?lang=zh-CN", "dashboard-tasks-empty-state", "还没有 task"),
         ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-empty-state", "还没有 agent 活动"),
         ("/alerts?lang=zh-CN", "dashboard-alerts-empty-state", "当前没有需要处理的风险"),
     ],
@@ -554,6 +592,32 @@ def test_dashboard_tasks_query_groups_statuses_and_paginates(home: Path) -> None
     assert len(second_page.tasks) == 2
 
 
+def test_dashboard_tasks_query_keeps_selected_task_on_its_page(home: Path) -> None:
+    seeded = seed_dense_dashboard_store(home)
+    selected_task_id = str(seeded["tasks_by_state"]["failed"][0]["id"])
+
+    snapshot = DashboardQueryService(home).tasks(
+        selected_job_id=seeded["job"]["id"],
+        selected_task_id=selected_task_id,
+    )
+
+    assert snapshot.pagination.page == 2
+    assert snapshot.pagination.page_count == 3
+    assert snapshot.selected_task is not None
+    assert snapshot.detail_back_link is not None
+    assert snapshot.detail_back_link.href == f"/tasks?job={seeded['job']['id']}&page=2#tasks-registry"
+    assert snapshot.selected_task.back_links[0].href == f"/tasks?job={seeded['job']['id']}&page=2#tasks-registry"
+    assert [task.task_id for task in snapshot.tasks] == [item.task_id for group in snapshot.task_groups for item in group.tasks]
+    assert selected_task_id in {task.task_id for task in snapshot.tasks}
+    assert {metric.state: metric.count for metric in snapshot.visible_status_metrics} == {
+        "queued": 6,
+        "running": 6,
+        "done": 4,
+        "blocked": 6,
+        "failed": 4,
+    }
+
+
 def seed_operational_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
     seeded = seed_dashboard_store(home)
     store = TaskStore(home)
@@ -613,6 +677,73 @@ def seed_dashboard_store_with_many_job_tasks(home: Path) -> dict[str, object]:
     return {"job": job, "tasks": seeded_tasks}
 
 
+def seed_dense_dashboard_store(home: Path) -> dict[str, object]:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="dense bilingual register")
+    tasks_by_state: dict[str, list[dict[str, object]]] = {
+        "running": [],
+        "blocked": [],
+        "failed": [],
+        "queued": [],
+        "done": [],
+    }
+    state_counts = {
+        "running": 6,
+        "blocked": 6,
+        "failed": 4,
+        "queued": 6,
+        "done": 4,
+    }
+    overdue_due_at = [
+        "2026-03-19T08:00:00Z",
+        "2026-03-19T09:00:00Z",
+        "2026-03-19T10:00:00Z",
+        "2026-03-19T11:00:00Z",
+        "2026-03-19T12:00:00Z",
+    ]
+    scheduled_due_at = [
+        "2026-03-21T08:00:00Z",
+        "2026-03-21T09:00:00Z",
+        "2026-03-21T10:00:00Z",
+        "2026-03-21T11:00:00Z",
+        "2026-03-21T12:00:00Z",
+    ]
+    followup_due_at = overdue_due_at + scheduled_due_at
+    followup_index = 0
+    for state, count in state_counts.items():
+        for index in range(count):
+            requirement = (
+                f"{state} bilingual task {index} 中文 English coordination note "
+                f"to stress wrapping across denser dashboard cards."
+            )
+            task = store.create_task(
+                job_id=job["id"],
+                requirement=requirement,
+                assigned_agent=f"{state}-agent-{index % 3}",
+            )
+            if state != "queued":
+                store.update_task(
+                    task["id"],
+                    job_id=job["id"],
+                    state=state,
+                    result=(
+                        f"{state} result {index} 中文 English detail for scanability "
+                        f"and overflow resilience under dense cards."
+                    ),
+                )
+            record = store.load_task(task["id"], job_id=job["id"])
+            if state in {"blocked", "failed"}:
+                record["_scheduler"]["final_notified_at"] = f"2026-03-19T0{index % 9}:15:00Z"
+                record["_scheduler"]["leader_followup_due_at"] = followup_due_at[followup_index]
+                followup_index += 1
+                store.save_task(record)
+                record = store.load_task(task["id"], job_id=job["id"])
+            tasks_by_state[state].append(record)
+
+    return {"job": job, "tasks_by_state": tasks_by_state}
+
+
 def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> None:
     seeded = seed_operational_dashboard_store(home)
 
@@ -644,6 +775,34 @@ def test_dashboard_alerts_query_builds_live_base_snapshot(home: Path) -> None:
     assert {task.task_id for task in alerts.risk_tasks} == {seeded["task_b1"]["id"], seeded["task_b2"]["id"]}
     assert alerts.followup_tasks[0].task_id == seeded["task_b1"]["id"]
     assert alerts.followup_tasks[0].is_overdue is True
+
+
+def test_dashboard_alerts_query_groups_paginated_cards_by_priority(home: Path) -> None:
+    seeded = seed_dense_dashboard_store(home)
+
+    alerts = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts()
+
+    assert alerts.risk_pagination.page == 1
+    assert alerts.risk_pagination.page_count == 2
+    assert [group.state for group in alerts.risk_groups] == ["blocked", "failed"]
+    assert [group.count for group in alerts.risk_groups] == [6, 2]
+    assert alerts.risk_groups[0].tasks[0].state == "blocked"
+    assert [group.state for group in alerts.followup_groups] == ["due", "scheduled"]
+    assert [group.count for group in alerts.followup_groups] == [5, 3]
+    assert alerts.followup_groups[0].tasks[0].is_overdue is True
+    assert alerts.followup_groups[1].tasks[0].is_overdue is False
+
+    later_page = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts(
+        risk_page="2",
+        followup_page="2",
+    )
+
+    assert later_page.risk_pagination.page == 2
+    assert later_page.followup_pagination.page == 2
+    assert [group.state for group in later_page.risk_groups] == ["failed"]
+    assert [group.count for group in later_page.risk_groups] == [2]
+    assert [group.state for group in later_page.followup_groups] == ["scheduled"]
+    assert [group.count for group in later_page.followup_groups] == [2]
 
 
 def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
@@ -893,25 +1052,27 @@ def test_dashboard_tasks_route_shows_filter_empty_state(home: Path) -> None:
 
 
 def test_dashboard_tasks_route_renders_status_groups_and_pagination(home: Path) -> None:
-    store = TaskStore(home)
-    store.ensure_dirs()
-    job = store.create_job(title="paged-route")
-    state_cycle = ["running", "blocked", "failed", "queued", "done"]
-    for index in range(14):
-        task = store.create_task(job_id=job["id"], requirement=f"task {index}", assigned_agent="agent")
-        state = state_cycle[index % len(state_cycle)]
-        if state != "queued":
-            store.update_task(task["id"], job_id=job["id"], state=state, result=f"result {index}")
+    seeded = seed_dense_dashboard_store(home)
 
     with TestClient(create_dashboard_app(home)) as client:
-        response = client.get(f"/tasks?job={job['id']}")
+        response = client.get(f"/tasks?job={seeded['job']['id']}")
+        second_page = client.get(f"/tasks?job={seeded['job']['id']}&page=2")
 
     assert response.status_code == 200
     body = response.text
+    assert 'data-testid="dashboard-tasks-status-ribbon"' in body
     assert 'data-testid="dashboard-tasks-group-running"' in body
     assert 'data-testid="dashboard-tasks-group-blocked"' in body
     assert 'data-testid="dashboard-tasks-pagination"' in body
+    assert f'data-testid="dashboard-tasks-pagination-page-2"' in body
+    assert f"/tasks?job={seeded['job']['id']}&amp;page=2#tasks-registry" in body
     assert "#tasks-registry" in body
+
+    assert second_page.status_code == 200
+    second_body = second_page.text
+    assert 'data-testid="dashboard-tasks-group-failed"' in second_body
+    assert 'data-testid="dashboard-tasks-group-queued"' in second_body
+    assert re.search(r'data-testid="dashboard-tasks-pagination-page-2"[^>]*aria-current="page"', second_body)
 
 
 def test_dashboard_tasks_route_explicit_empty_state(home: Path) -> None:
@@ -980,16 +1141,7 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
 
 
 def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
-    store = TaskStore(home)
-    store.ensure_dirs()
-    job = store.create_job(title="alert-stack")
-    for index in range(10):
-        blocked = store.create_task(job_id=job["id"], requirement=f"blocked {index}", assigned_agent="ops-agent")
-        store.update_task(blocked["id"], job_id=job["id"], state="blocked", result=f"waiting {index}")
-        blocked_record = store.load_task(blocked["id"], job_id=job["id"])
-        blocked_record["_scheduler"]["final_notified_at"] = f"2026-03-19T0{index % 9}:00:00Z"
-        blocked_record["_scheduler"]["leader_followup_due_at"] = f"2026-03-19T1{index % 9}:00:00Z"
-        store.save_task(blocked_record)
+    seed_dense_dashboard_store(home)
 
     with TestClient(create_dashboard_app(home)) as client:
         response = client.get("/alerts")
@@ -997,13 +1149,27 @@ def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
 
     assert response.status_code == 200
     body = response.text
+    assert 'data-testid="dashboard-alerts-risk-group-blocked"' in body
+    assert 'data-testid="dashboard-alerts-risk-group-failed"' in body
+    assert 'data-testid="dashboard-alerts-followup-group-due"' in body
+    assert 'data-testid="dashboard-alerts-followup-group-scheduled"' in body
     assert 'data-testid="dashboard-alerts-risk-pagination"' in body
     assert 'data-testid="dashboard-alerts-followup-pagination"' in body
+    assert 'data-testid="dashboard-alerts-risk-pagination-page-2"' in body
+    assert 'data-testid="dashboard-alerts-followup-pagination-page-2"' in body
     assert "#alerts-risk-list" in body
     assert "#alerts-followups" in body
 
     assert second_page.status_code == 200
-    assert 'data-testid="dashboard-alerts-risk-pagination"' in second_page.text
+    second_body = second_page.text
+    assert 'data-testid="dashboard-alerts-risk-pagination"' in second_body
+    assert re.search(r'data-testid="dashboard-alerts-risk-pagination-page-2"[^>]*aria-current="page"', second_body)
+    assert re.search(
+        r'data-testid="dashboard-alerts-followup-pagination-page-2"[^>]*aria-current="page"',
+        second_body,
+    )
+    assert 'data-testid="dashboard-alerts-risk-group-failed"' in second_body
+    assert 'data-testid="dashboard-alerts-followup-group-scheduled"' in second_body
 
 
 def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:

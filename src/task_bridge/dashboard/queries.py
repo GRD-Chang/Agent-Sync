@@ -270,6 +270,16 @@ class PaginationSnapshot:
     end_index: int
     prev_href: str | None
     next_href: str | None
+    page_links: list["PaginationLink"]
+
+
+@dataclass(frozen=True)
+class PaginationLink:
+    label: str
+    page: int | None
+    href: str | None
+    is_current: bool = False
+    is_gap: bool = False
 
 
 @dataclass(frozen=True)
@@ -285,6 +295,7 @@ class TasksPageSnapshot:
     clear_filters_href: str
     tasks: list[TaskListItem]
     task_groups: list[TaskListGroup]
+    visible_status_metrics: list[TaskStatusMetric]
     pagination: PaginationSnapshot
     selected_task: TaskDetailSnapshot | None
     detail_back_link: DetailBackLink | None
@@ -364,10 +375,30 @@ class AlertsSnapshot:
     pending_followups_count: int
     overdue_followups_count: int
     risk_tasks: list[AlertTaskSnapshot]
+    risk_groups: list["AlertTaskGroup"]
     followup_tasks: list[FollowupTaskSnapshot]
+    followup_groups: list["FollowupTaskGroup"]
     risk_pagination: PaginationSnapshot
     followup_pagination: PaginationSnapshot
     has_alerts: bool
+
+
+@dataclass(frozen=True)
+class AlertTaskGroup:
+    state: str
+    label: str
+    description: str
+    count: int
+    tasks: list[AlertTaskSnapshot]
+
+
+@dataclass(frozen=True)
+class FollowupTaskGroup:
+    state: str
+    label: str
+    description: str
+    count: int
+    tasks: list[FollowupTaskSnapshot]
 
 
 @dataclass(frozen=True)
@@ -580,7 +611,10 @@ class DashboardQueryService:
                 agent=active_agent,
             )
         ]
+        resolved_task, selection_missing = self._resolve_selected_task(filtered_tasks, selected_task_id, selected_job_id)
         page = _parse_page_number(selected_page)
+        if resolved_task is not None:
+            page = _page_for_task(filtered_tasks, str(resolved_task["id"]), per_page=TASK_LIST_PAGE_SIZE)
         paged_tasks, pagination = self._paginate_items(
             filtered_tasks,
             page=page,
@@ -593,7 +627,6 @@ class DashboardQueryService:
             )
             + "#tasks-registry",
         )
-        resolved_task, selection_missing = self._resolve_selected_task(filtered_tasks, selected_task_id, selected_job_id)
         resolved_task_id = str(resolved_task["id"]) if resolved_task else None
         detail_back_link = (
             DetailBackLink(
@@ -644,6 +677,7 @@ class DashboardQueryService:
             clear_filters_href=self._tasks_path() + "#tasks-registry",
             tasks=task_rows,
             task_groups=self._build_task_list_groups(task_rows),
+            visible_status_metrics=self._build_task_status_metrics(filtered_tasks),
             pagination=pagination,
             selected_task=self._build_task_detail(
                 resolved_task,
@@ -779,7 +813,9 @@ class DashboardQueryService:
             pending_followups_count=len(followups_all),
             overdue_followups_count=sum(1 for task in followups_all if task.is_overdue),
             risk_tasks=risk_tasks,
+            risk_groups=self._build_alert_risk_groups(risk_tasks),
             followup_tasks=followups,
+            followup_groups=self._build_followup_groups(followups),
             risk_pagination=risk_pagination,
             followup_pagination=followup_pagination,
             has_alerts=bool(risk_tasks_all or followups_all),
@@ -1761,6 +1797,60 @@ class DashboardQueryService:
             )
         return groups
 
+    def _build_task_status_metrics(self, tasks: list[dict[str, object]]) -> list[TaskStatusMetric]:
+        counts = Counter(str(task.get("state") or "queued") for task in tasks)
+        return [
+            TaskStatusMetric(
+                state=state,
+                label=self._messages["status"][state]["label"],
+                description=self._messages["status"][state]["description"],
+                count=counts.get(state, 0),
+            )
+            for state in TASK_CARD_STATES
+        ]
+
+    def _build_alert_risk_groups(self, tasks: list[AlertTaskSnapshot]) -> list[AlertTaskGroup]:
+        groups: list[AlertTaskGroup] = []
+        for state in ("blocked", "failed"):
+            grouped_tasks = [task for task in tasks if task.state == state]
+            if not grouped_tasks:
+                continue
+            groups.append(
+                AlertTaskGroup(
+                    state=state,
+                    label=self._messages["status"][state]["label"],
+                    description=self._messages["status"][state]["description"],
+                    count=len(grouped_tasks),
+                    tasks=grouped_tasks,
+                )
+            )
+        return groups
+
+    def _build_followup_groups(self, tasks: list[FollowupTaskSnapshot]) -> list[FollowupTaskGroup]:
+        definitions = (
+            ("due", self._messages["alerts"]["followup_due"], self._messages["status"]["blocked"]["description"]),
+            (
+                "scheduled",
+                self._messages["alerts"]["followup_scheduled"],
+                self._messages["alerts"]["followup_note"],
+            ),
+        )
+        groups: list[FollowupTaskGroup] = []
+        for state, label, description in definitions:
+            grouped_tasks = [task for task in tasks if (task.is_overdue if state == "due" else not task.is_overdue)]
+            if not grouped_tasks:
+                continue
+            groups.append(
+                FollowupTaskGroup(
+                    state=state,
+                    label=label,
+                    description=description,
+                    count=len(grouped_tasks),
+                    tasks=grouped_tasks,
+                )
+            )
+        return groups
+
     def _paginate_items(
         self,
         items: list[object],
@@ -1776,14 +1866,15 @@ class DashboardQueryService:
                 PaginationSnapshot(
                     page=1,
                     page_count=1,
-                    per_page=per_page,
-                    total_items=0,
-                    start_index=0,
-                    end_index=0,
-                    prev_href=None,
-                    next_href=None,
-                ),
-            )
+                per_page=per_page,
+                total_items=0,
+                start_index=0,
+                end_index=0,
+                prev_href=None,
+                next_href=None,
+                page_links=[],
+            ),
+        )
 
         page_count = max((total_items - 1) // per_page + 1, 1)
         current_page = min(max(page, 1), page_count)
@@ -1800,6 +1891,11 @@ class DashboardQueryService:
                 end_index=end_index,
                 prev_href=href_builder(current_page - 1) if current_page > 1 else None,
                 next_href=href_builder(current_page + 1) if current_page < page_count else None,
+                page_links=_build_pagination_links(
+                    page_count=page_count,
+                    current_page=current_page,
+                    href_builder=href_builder,
+                ),
             ),
         )
 
@@ -1823,6 +1919,54 @@ def _task_state_priority(state: str) -> int:
         return TASK_CARD_STATES.index(state)
     except ValueError:
         return len(TASK_CARD_STATES)
+
+
+def _page_for_task(tasks: list[dict[str, object]], task_id: str, *, per_page: int) -> int:
+    for index, task in enumerate(tasks):
+        if str(task["id"]) == task_id:
+            return index // per_page + 1
+    return 1
+
+
+def _build_pagination_links(
+    *,
+    page_count: int,
+    current_page: int,
+    href_builder: Callable[[int], str],
+) -> list[PaginationLink]:
+    if page_count <= 1:
+        return []
+
+    if page_count <= 7:
+        pages = list(range(1, page_count + 1))
+    else:
+        pages = sorted(
+            {
+                1,
+                2,
+                page_count - 1,
+                page_count,
+                max(current_page - 1, 1),
+                current_page,
+                min(current_page + 1, page_count),
+            }
+        )
+
+    links: list[PaginationLink] = []
+    previous_page = 0
+    for page in pages:
+        if page - previous_page > 1:
+            links.append(PaginationLink(label="...", page=None, href=None, is_gap=True))
+        links.append(
+            PaginationLink(
+                label=str(page),
+                page=page,
+                href=None if page == current_page else href_builder(page),
+                is_current=page == current_page,
+            )
+        )
+        previous_page = page
+    return links
 
 
 def _is_overdue(value: str | None, now_value: datetime | None) -> bool:
