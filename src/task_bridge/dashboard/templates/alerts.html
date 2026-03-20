@@ -70,7 +70,7 @@
             <h3>{{ task.task_id }}</h3>
             <p>{{ task.job_id }} / {{ task.assigned_agent }}</p>
           </div>
-          <span class="status-pill status-{{ task.state }}">{{ task.state }}</span>
+          <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
         </div>
         <dl class="meta-grid">
           <div>

@@ -97,6 +97,7 @@ body::before {
 .section-heading p,
 .aside-label,
 .top-nav a,
+.locale-link,
 .status-pill,
 .hero-stats dt,
 .worker-card dt,
@@ -130,6 +131,7 @@ body::before {
 .masthead-note,
 .hero-text,
 .placeholder-panel > p,
+.locale-note,
 .state-panel p,
 .section-note,
 .list-card-summary,
@@ -146,16 +148,51 @@ body::before {
   line-height: 1.6;
 }
 
-.masthead-aside {
+.masthead-sidecar {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.masthead-aside,
+.locale-switcher {
   padding: 1.25rem;
   border: 1px dashed rgba(30, 26, 22, 0.24);
   background: rgba(255, 255, 255, 0.3);
-  align-self: start;
 }
 
 .aside-body {
   margin: 0.4rem 0 0;
   line-height: 1.5;
+}
+
+.locale-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.locale-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.45rem;
+  padding: 0.65rem 0.85rem;
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px solid rgba(30, 26, 22, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.locale-link.is-active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+
+.locale-note {
+  margin: 0.75rem 0 0;
 }
 
 .top-nav {
@@ -491,6 +528,8 @@ main {
 .list-card:focus-visible,
 .task-preview-card:hover,
 .task-preview-card:focus-visible,
+.locale-link:hover,
+.locale-link:focus-visible,
 .text-link:focus-visible {
   transform: translateY(-1px);
   border-color: rgba(30, 26, 22, 0.24);

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
+from urllib.parse import urlencode
 
 import uvicorn
 from starlette.applications import Starlette
@@ -12,7 +13,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
-from .i18n import DEFAULT_LOCALE, get_messages
+from .i18n import DEFAULT_LOCALE, LOCALE_SWITCH_ITEMS, get_messages, resolve_locale
 from .queries import DashboardQueryService
 
 
@@ -35,7 +36,6 @@ templates = Jinja2Templates(directory=str(files("task_bridge.dashboard").joinpat
 
 
 def create_dashboard_app(home: Path | None = None) -> Starlette:
-    service = DashboardQueryService(home, locale=DEFAULT_LOCALE)
     app = Starlette(
         debug=False,
         routes=[
@@ -53,18 +53,21 @@ def create_dashboard_app(home: Path | None = None) -> Starlette:
             ),
         ],
     )
-    app.state.dashboard_query_service = service
+    app.state.dashboard_home = home
     return app
 
 
 async def redirect_to_overview(request: Request):
-    return RedirectResponse(request.url_for("overview_page"), status_code=307)
+    return RedirectResponse(
+        _path_with_locale(request.url_for("overview_page").path, (), _request_locale(request)),
+        status_code=307,
+    )
 
 
 async def overview_page(request: Request):
     context = _base_context(request, "overview")
     try:
-        overview = request.app.state.dashboard_query_service.overview()
+        overview = _dashboard_service(request).overview()
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
             request,
@@ -84,7 +87,7 @@ async def jobs_page(request: Request):
     context = _base_context(request, "jobs")
     context["page_title"] = context["ui"]["jobs"]["title"]
     try:
-        jobs = request.app.state.dashboard_query_service.jobs(
+        jobs = _dashboard_service(request).jobs(
             selected_job_id=_query_param_value(request, "job"),
         )
     except Exception as exc:  # pragma: no cover
@@ -106,7 +109,7 @@ async def tasks_page(request: Request):
     context = _base_context(request, "tasks")
     context["page_title"] = context["ui"]["tasks"]["title"]
     try:
-        tasks = request.app.state.dashboard_query_service.tasks(
+        tasks = _dashboard_service(request).tasks(
             selected_job_id=_query_param_value(request, "job"),
             selected_task_id=_query_param_value(request, "task"),
         )
@@ -129,7 +132,7 @@ async def worker_queue_page(request: Request):
     context = _base_context(request, "worker-queue")
     context["page_title"] = context["ui"]["worker_queue"]["title"]
     try:
-        snapshot = request.app.state.dashboard_query_service.worker_queue()
+        snapshot = _dashboard_service(request).worker_queue()
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
             request,
@@ -149,7 +152,7 @@ async def alerts_page(request: Request):
     context = _base_context(request, "alerts")
     context["page_title"] = context["ui"]["alerts"]["title"]
     try:
-        snapshot = request.app.state.dashboard_query_service.alerts()
+        snapshot = _dashboard_service(request).alerts()
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
             request,
@@ -169,7 +172,7 @@ async def health_page(request: Request):
     context = _base_context(request, "health")
     context["page_title"] = context["ui"]["health"]["title"]
     try:
-        snapshot = request.app.state.dashboard_query_service.health()
+        snapshot = _dashboard_service(request).health()
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
             request,
@@ -223,12 +226,22 @@ def _render_live_page_error(
 
 
 def _base_context(request: Request, active_page: str) -> dict[str, object]:
-    ui = get_messages(DEFAULT_LOCALE)
+    locale = _request_locale(request)
+    ui = get_messages(locale)
     return {
         "request": request,
         "active_page": active_page,
         "page_title": ui["nav"][active_page],
-        "nav_items": [{"key": item.key, "label": ui["nav"][item.key], "href": item.href} for item in NAV_ITEMS],
+        "nav_items": [
+            {
+                "key": item.key,
+                "label": ui["nav"][item.key],
+                "href": _path_with_locale(item.href, (), locale),
+            }
+            for item in NAV_ITEMS
+        ],
+        "locale": locale,
+        "locale_options": _locale_options(request, locale),
         "ui": ui,
         "html_lang": ui["html_lang"],
     }
@@ -240,3 +253,36 @@ def _query_param_value(request: Request, key: str) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _dashboard_service(request: Request) -> DashboardQueryService:
+    return DashboardQueryService(request.app.state.dashboard_home, locale=_request_locale(request))
+
+
+def _request_locale(request: Request) -> str:
+    return resolve_locale(_query_param_value(request, "lang"))
+
+
+def _locale_options(request: Request, active_locale: str) -> list[dict[str, object]]:
+    base_params = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key != "lang" and value.strip()
+    ]
+    return [
+        {
+            **item,
+            "href": _path_with_locale(request.url.path, base_params, str(item["code"])),
+            "is_active": str(item["code"]) == active_locale,
+        }
+        for item in LOCALE_SWITCH_ITEMS
+    ]
+
+
+def _path_with_locale(path: str, pairs: tuple[tuple[str, str], ...] | list[tuple[str, str]], locale: str) -> str:
+    query_items = [(key, value) for key, value in pairs if value]
+    if locale != DEFAULT_LOCALE:
+        query_items.append(("lang", locale))
+    if not query_items:
+        return path
+    return f"{path}?{urlencode(query_items)}"

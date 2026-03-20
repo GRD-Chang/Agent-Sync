@@ -60,7 +60,7 @@
             <p class="list-card-meta">{{ item.job_id }} / {{ item.assigned_agent }}</p>
           </div>
           <div class="list-card-badges">
-            <span class="status-pill status-{{ item.state }}">{{ item.state }}</span>
+            <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
           </div>
         </div>
         <p class="list-card-summary">{{ item.summary_label }}: {{ item.summary_text }}</p>
@@ -95,7 +95,7 @@
             <h3>{{ tasks.selected_task.task_id }}</h3>
             <p>{{ tasks.selected_task.job_id }}</p>
           </div>
-          <span class="status-pill status-{{ tasks.selected_task.state }}">{{ tasks.selected_task.state }}</span>
+          <span class="status-pill status-{{ tasks.selected_task.state }}">{{ ui.status[tasks.selected_task.state].label }}</span>
         </div>
 
         <p class="section-note">
@@ -109,7 +109,7 @@
           </div>
           <div>
             <dt>{{ ui.tasks.state }}</dt>
-            <dd>{{ tasks.selected_task.state }}</dd>
+            <dd>{{ ui.status[tasks.selected_task.state].label }}</dd>
           </div>
           <div>
             <dt>{{ ui.tasks.assigned_agent }}</dt>

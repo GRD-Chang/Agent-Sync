@@ -8,6 +8,7 @@ from starlette.testclient import TestClient
 
 from task_bridge.cli import main
 from task_bridge.dashboard import DashboardQueryService, create_dashboard_app
+from task_bridge.dashboard.i18n import get_messages
 from task_bridge.store import TaskStore
 
 
@@ -46,6 +47,17 @@ def seed_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
     }
 
 
+def flatten_message_keys(value: object, prefix: str = "") -> set[str]:
+    if isinstance(value, dict):
+        keys: set[str] = set()
+        for key, nested in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            keys.add(path)
+            keys.update(flatten_message_keys(nested, path))
+        return keys
+    return set()
+
+
 def test_dashboard_help_describes_read_only_shell(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["dashboard", "-h"])
@@ -54,6 +66,7 @@ def test_dashboard_help_describes_read_only_shell(capsys: pytest.CaptureFixture[
     help_text = capsys.readouterr().out
     assert "启动 task-bridge 的只读 dashboard" in help_text
     assert "Overview / Jobs / Tasks / Worker & Queue / Alerts / Health 为只读 MVP 页面" in help_text
+    assert "支持通过页面内切换器在 en / zh-CN 之间切换界面语言" in help_text
     assert "Worker & Queue / Alerts / Health 保持基础只读范围" in help_text
     assert "--host" in help_text
     assert "--port" in help_text
@@ -72,6 +85,103 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert "Task status summary" in body
     assert "Dashboard foundation" in body
     assert "All six primary pages are live and read-only." in body
+    assert 'data-testid="dashboard-locale-switch"' in body
+    assert 'data-testid="dashboard-locale-en"' in body
+    assert 'data-testid="dashboard-locale-zh-cn"' in body
+
+
+def test_dashboard_i18n_catalogs_cover_same_surface() -> None:
+    english_keys = flatten_message_keys(dict(get_messages("en")))
+    chinese_keys = flatten_message_keys(dict(get_messages("zh-CN")))
+
+    assert chinese_keys == english_keys
+
+
+def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}")
+        zh_response = client.get(f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}&lang=zh-CN")
+
+    assert response.status_code == 200
+    body = response.text
+    assert re.search(
+        rf'data-testid="dashboard-locale-zh-cn"[^>]*href="/tasks\?job={seeded["job_a"]["id"]}&amp;task={seeded["task_a2"]["id"]}&amp;lang=zh-CN"',
+        body,
+    )
+
+    assert zh_response.status_code == 200
+    zh_body = zh_response.text
+    assert "<html lang=\"zh-CN\">" in zh_body
+    assert "带详情预览的只读任务登记。" in zh_body
+    assert "进行中" in zh_body
+    assert re.search(
+        rf'data-testid="dashboard-locale-en"[^>]*href="/tasks\?job={seeded["job_a"]["id"]}&amp;task={seeded["task_a2"]["id"]}"',
+        zh_body,
+    )
+    assert f"/jobs?job={seeded['job_a']['id']}&amp;lang=zh-CN" in zh_body
+
+
+def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
+    seeded = seed_operational_dashboard_store(home)
+    page_specs = [
+        ("/overview?lang=zh-CN", "dashboard-overview-hero", "任务状态汇总"),
+        (f"/jobs?job={seeded['job_a']['id']}&lang=zh-CN", "dashboard-jobs-page", "作业列表"),
+        (
+            f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}&lang=zh-CN",
+            "dashboard-tasks-page",
+            "时间线框架",
+        ),
+        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "代理占用与队列深度"),
+        ("/alerts?lang=zh-CN", "dashboard-alerts-hero", "终态与跟进汇总"),
+        ("/health?lang=zh-CN", "dashboard-health-hero", "存储与 daemon 摘要"),
+    ]
+
+    with TestClient(create_dashboard_app(home)) as client:
+        for path, testid, expected_copy in page_specs:
+            response = client.get(path)
+            body = response.text
+
+            assert response.status_code == 200
+            assert "<html lang=\"zh-CN\">" in body
+            assert 'data-testid="dashboard-locale-switch"' in body
+            assert re.search(r'data-testid="dashboard-locale-zh-cn"[^>]*aria-current="page"', body)
+            assert "六个主页面都已上线且保持只读。" in body
+            assert "总览" in body
+            assert "作业" in body
+            assert "任务" in body
+            assert "代理与队列" in body
+            assert "告警" in body
+            assert "健康" in body
+            assert f'data-testid="{testid}"' in body
+            assert expected_copy in body
+
+
+@pytest.mark.parametrize(
+    ("path", "testid", "expected_copy"),
+    [
+        ("/overview?lang=zh-CN", "dashboard-overview-empty-state", "还没有作业或任务"),
+        ("/jobs?lang=zh-CN", "dashboard-jobs-empty-state", "还没有作业"),
+        ("/tasks?lang=zh-CN", "dashboard-tasks-empty-state", "还没有任务"),
+        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-empty-state", "还没有代理或队列活动"),
+        ("/alerts?lang=zh-CN", "dashboard-alerts-empty-state", "当前没有告警态势"),
+    ],
+)
+def test_dashboard_chinese_locale_renders_empty_states(
+    home: Path,
+    path: str,
+    testid: str,
+    expected_copy: str,
+) -> None:
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(path)
+
+    assert response.status_code == 200
+    body = response.text
+    assert "<html lang=\"zh-CN\">" in body
+    assert f'data-testid="{testid}"' in body
+    assert expected_copy in body
 
 
 def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) -> None:
@@ -460,3 +570,20 @@ def test_dashboard_overview_error_state_preserves_shell(home: Path) -> None:
     assert 'data-testid="dashboard-overview-error-state"' in body
     assert "Overview unavailable" in body
     assert "Store read failed" in body
+
+
+def test_dashboard_overview_error_state_localizes_to_chinese(home: Path) -> None:
+    job_dir = home / "jobs" / "job-broken"
+    job_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text("{broken", encoding="utf-8")
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview?lang=zh-CN")
+
+    assert response.status_code == 500
+    body = response.text
+    assert "<html lang=\"zh-CN\">" in body
+    assert 'data-testid="dashboard-shell"' in body
+    assert 'data-testid="dashboard-overview-error-state"' in body
+    assert "总览暂不可用" in body
+    assert "读取存储失败" in body

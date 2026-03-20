@@ -32,15 +32,16 @@ This reconciliation patch is anchored to the current dashboard evidence in `src/
   - Must not include: daemon start/stop/restart, filesystem repair tools, arbitrary host metrics, log viewers, or write-side diagnostics.
 
 ### i18n MVP Contract
-- MVP ships one consistent default UI locale across nav labels, page titles, boundary copy, empty states, error states, and Playwright assertions. Mixed-language top-level UI on the same page is a reject unless the text is a literal CLI command, route, field name, or state id shown in code formatting.
-- Current repo evidence baseline is English-only dashboard templates and browser smoke across all six pages. A future localization slice may switch the dashboard UI to Simplified Chinese, but it must convert all shipped dashboard pages and browser assertions together in the same change; partial translation is not acceptable.
-- Runtime locale switchers, browser-language negotiation, translation catalogs, per-user locale preference, and pluralization infrastructure are out of scope for the read-only MVP.
+- MVP keeps one consistent UI locale per rendered page across nav labels, page titles, boundary copy, empty states, error states, summary labels, and browser assertions. Mixed-language top-level UI on the same page is a reject unless the text is a literal CLI command, route, field name, file name, agent name, or stable identifier shown from existing data.
+- Dashboard now supports explicit read-only bilingual UI switching between English (`en`) and Simplified Chinese (`zh-CN`) through a visible in-page locale switcher backed by the `lang` query parameter. Default routing stays English unless `lang=zh-CN` is requested.
+- Any localization slice must convert all shipped dashboard pages and browser assertions together in the same change; partial translation is not acceptable.
+- Browser-language negotiation, persisted per-user locale preference, and pluralization infrastructure remain out of scope for the read-only MVP.
 - Internal identifiers stay stable and untranslated: route paths, JSON keys, CLI command names, task state ids, and stable selectors.
 
 ### Selector / Playwright Contract
 - Any future slice that touches dashboard templates must add and preserve stable `data-testid` hooks. Do not rely only on visible text or CSS classes for smoke coverage, except when the test is explicitly verifying copy or locale behavior.
 - Selector naming scheme is frozen as `dashboard-<page>-<element>`.
-- Minimum cross-page stable hooks: `dashboard-shell`, `dashboard-primary-nav`, `dashboard-nav-overview`, `dashboard-nav-jobs`, `dashboard-nav-tasks`, `dashboard-nav-worker-queue`, `dashboard-nav-alerts`, `dashboard-nav-health`, `dashboard-page-title`, and `dashboard-boundary-note`.
+- Minimum cross-page stable hooks: `dashboard-shell`, `dashboard-primary-nav`, `dashboard-nav-overview`, `dashboard-nav-jobs`, `dashboard-nav-tasks`, `dashboard-nav-worker-queue`, `dashboard-nav-alerts`, `dashboard-nav-health`, `dashboard-page-title`, `dashboard-boundary-note`, `dashboard-locale-switch`, `dashboard-locale-en`, and `dashboard-locale-zh-cn`.
 - Minimum overview hooks: `dashboard-overview-hero`, `dashboard-overview-task-status`, `dashboard-overview-worker-utilization`, `dashboard-overview-worker-list`, `dashboard-overview-recent-updates`, `dashboard-overview-empty-state`, and `dashboard-overview-error-state`.
 - Minimum jobs hooks: `dashboard-jobs-page`, `dashboard-jobs-list`, `dashboard-jobs-detail`, and `dashboard-jobs-empty-state`.
 - Minimum tasks hooks: `dashboard-tasks-page`, `dashboard-tasks-list`, `dashboard-tasks-detail`, `dashboard-tasks-detail-preview`, `dashboard-tasks-timeline`, and `dashboard-tasks-empty-state`.

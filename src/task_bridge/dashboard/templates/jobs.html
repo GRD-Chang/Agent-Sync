@@ -169,7 +169,7 @@
                 <p>{{ item.summary_label }}: {{ item.summary_text }}</p>
               </div>
               <div class="task-preview-meta">
-                <span class="status-pill status-{{ item.state }}">{{ item.state }}</span>
+                <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
                 <span>{{ item.assigned_agent }}</span>
                 <span>{{ item.updated_at }}</span>
               </div>

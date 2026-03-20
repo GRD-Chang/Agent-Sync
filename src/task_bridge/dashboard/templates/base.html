@@ -15,10 +15,26 @@
           <h1>{{ ui.shell.title }}</h1>
           <p class="masthead-note">{{ ui.shell.note }}</p>
         </div>
-        <aside class="masthead-aside" aria-label="Dashboard framing">
-          <p class="aside-label">{{ ui.shell.scope_label }}</p>
-          <p class="aside-body" data-testid="dashboard-boundary-note">{{ ui.shell.scope_note }}</p>
-        </aside>
+        <div class="masthead-sidecar">
+          <section class="locale-switcher" aria-label="{{ ui.shell.locale_label }}" data-testid="dashboard-locale-switch">
+            <p class="aside-label">{{ ui.shell.locale_label }}</p>
+            <div class="locale-links">
+              {% for option in locale_options %}
+              <a
+                class="locale-link{% if option.is_active %} is-active{% endif %}"
+                data-testid="{{ option.testid }}"
+                href="{{ option.href }}"
+                {% if option.is_active %}aria-current="page"{% endif %}
+              >{{ option.label }}</a>
+              {% endfor %}
+            </div>
+            <p class="locale-note">{{ ui.shell.locale_note }}</p>
+          </section>
+          <aside class="masthead-aside" aria-label="{{ ui.shell.framing_label }}">
+            <p class="aside-label">{{ ui.shell.scope_label }}</p>
+            <p class="aside-body" data-testid="dashboard-boundary-note">{{ ui.shell.scope_note }}</p>
+          </aside>
+        </div>
       </header>
 
       <nav class="top-nav" aria-label="{{ ui.shell.primary_nav_label }}" data-testid="dashboard-primary-nav">

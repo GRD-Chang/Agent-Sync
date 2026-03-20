@@ -228,6 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "启动 task-bridge 的只读 dashboard。"
             "Overview / Jobs / Tasks / Worker & Queue / Alerts / Health 为只读 MVP 页面；"
+            "支持通过页面内切换器在 en / zh-CN 之间切换界面语言；"
             "Worker & Queue / Alerts / Health 保持基础只读范围。"
         ),
         formatter_class=HelpFormatter,

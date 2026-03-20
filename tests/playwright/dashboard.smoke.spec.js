@@ -195,6 +195,9 @@ test("overview renders the live happy path shell", async ({ page }) => {
     await expect(page).toHaveURL(`${server.baseUrl}/overview`);
     await expect(page.getByTestId("dashboard-shell")).toBeVisible();
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
+    await expect(page.getByTestId("dashboard-locale-switch")).toBeVisible();
+    await expect(page.getByTestId("dashboard-locale-en")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("dashboard-locale-zh-cn")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "All six primary pages are live and read-only. Worker & Queue, Alerts, and Health stay within the MVP base scope.",
     );
@@ -260,6 +263,40 @@ test("jobs and tasks render live read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-tasks-detail-preview")).toContainText("Runbook");
     await expect(page.getByTestId("dashboard-tasks-timeline")).toContainText("Last dispatch recorded");
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("locale switch toggles tasks page between English and Simplified Chinese", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-locale-"));
+  const seeded = await seedLiveDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4179);
+
+  try {
+    await page.goto(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText(
+      "Read-only task register with detail preview.",
+    );
+    await page.getByTestId("dashboard-locale-zh-cn").click();
+    await expect(page).toHaveURL(
+      `${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}&lang=zh-CN`,
+    );
+    await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("带详情预览的只读任务登记。");
+    await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("进行中");
+    await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
+      "六个主页面都已上线且保持只读。代理与队列、告警、健康页面继续限定在 MVP 基础范围内。",
+    );
+    await expect(page.getByTestId("dashboard-locale-zh-cn")).toHaveAttribute("aria-current", "page");
+
+    await page.getByTestId("dashboard-locale-en").click();
+    await expect(page).toHaveURL(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText(
+      "Read-only task register with detail preview.",
+    );
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

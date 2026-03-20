@@ -10,7 +10,7 @@ from pathlib import Path
 from task_bridge.runtime import now_iso
 from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
 
-from .i18n import DEFAULT_LOCALE, get_messages
+from .i18n import DEFAULT_LOCALE, get_messages, resolve_locale
 
 CORE_TASK_STATES = ["queued", "running", "done", "blocked", "failed"]
 ACTIVE_TASK_STATES = {"queued", "running"}
@@ -300,7 +300,8 @@ class DashboardQueryService:
     ) -> None:
         self.store = TaskStore(home)
         self._now_provider = now_provider
-        self._messages = get_messages(locale)
+        self._locale = resolve_locale(locale)
+        self._messages = get_messages(self._locale)
 
     @property
     def home_path(self) -> str:
@@ -635,7 +636,7 @@ class DashboardQueryService:
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
             terminal_task_count=sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES),
-            detail_href=f"/jobs?job={job_id}",
+            detail_href=self._path_with_locale("/jobs", ("job", job_id)),
         )
 
     def _build_job_detail(
@@ -668,7 +669,11 @@ class DashboardQueryService:
                 ),
                 summary_label=summary_label,
                 summary_text=summary_text,
-                detail_href=f"/tasks?job={task['job_id']}&task={task['id']}",
+                detail_href=self._path_with_locale(
+                    "/tasks",
+                    ("job", str(task["job_id"])),
+                    ("task", str(task["id"])),
+                ),
             )
             for task, (summary_label, summary_text) in [
                 (task, self._task_summary(task))
@@ -723,8 +728,8 @@ class DashboardQueryService:
             ),
             summary_label=summary_label,
             summary_text=summary_text,
-            detail_href=f"/tasks?job={job_id}&task={task_id}",
-            job_href=f"/jobs?job={job_id}",
+            detail_href=self._path_with_locale("/tasks", ("job", job_id), ("task", task_id)),
+            job_href=self._path_with_locale("/jobs", ("job", job_id)),
             is_selected=task_id == resolved_task_id,
         )
 
@@ -734,7 +739,7 @@ class DashboardQueryService:
         return TaskDetailSnapshot(
             task_id=str(task["id"]),
             job_id=job_id,
-            job_href=f"/jobs?job={job_id}",
+            job_href=self._path_with_locale("/jobs", ("job", job_id)),
             state=str(task.get("state") or "queued"),
             assigned_agent=_optional_text(task.get("assigned_agent"))
             or self._messages["tasks"]["assigned_agent_empty"],
@@ -986,6 +991,12 @@ class DashboardQueryService:
         if requirement_text:
             return self._messages["recent_update"]["requirement"], _truncate(requirement_text, 180)
         return self._messages["recent_update"]["update"], self._messages["recent_update"]["no_detail"]
+
+    def _path_with_locale(self, path: str, *pairs: tuple[str, str]) -> str:
+        query = "&".join(f"{key}={value}" for key, value in pairs if value)
+        if self._locale != DEFAULT_LOCALE:
+            query = f"{query}&lang={self._locale}" if query else f"lang={self._locale}"
+        return f"{path}?{query}" if query else path
 
 
 def _task_scheduler(task: dict[str, object]) -> dict[str, object]:

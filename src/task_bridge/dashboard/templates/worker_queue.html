@@ -67,7 +67,7 @@
             <h3>{{ lane.agent }}</h3>
             <p>{{ ui.worker_queue.lane_running }}: {{ lane.running_task_id or ui.common.none }}</p>
           </div>
-          <span class="status-pill status-{{ lane.status }}">{{ lane.status }}</span>
+          <span class="status-pill status-{{ lane.status }}">{{ ui.worker_status[lane.status] }}</span>
         </div>
         <dl class="meta-grid">
           <div>
@@ -95,7 +95,7 @@
                 <p>{{ task.summary_label }}: {{ task.summary_text }}</p>
               </div>
               <div class="task-preview-meta">
-                <span class="status-pill status-{{ task.state }}">{{ task.state }}</span>
+                <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
                 <span>{{ task.updated_at }}</span>
               </div>
             </div>
@@ -125,7 +125,7 @@
             <h3>{{ task.task_id }}</h3>
             <p>{{ task.job_id }}</p>
           </div>
-          <span class="status-pill status-{{ task.state }}">{{ task.state }}</span>
+          <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
         </div>
         <dl class="meta-grid">
           <div>
