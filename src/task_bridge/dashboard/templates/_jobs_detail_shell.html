@@ -1,6 +1,25 @@
 {% from "_task_detail_panel.html" import render_task_detail %}
 {% set selected_job = jobs.selected_job %}
 
+{% if jobs.selected_task %}
+<section class="detail-shell" aria-labelledby="job-task-detail-title" data-testid="dashboard-jobs-task-detail-shell">
+  {% if jobs.detail_back_link %}
+  <a class="inline-back-link" href="{{ jobs.detail_back_link.href }}">{{ jobs.detail_back_link.label }}</a>
+  {% endif %}
+  {{ render_task_detail(
+    jobs.selected_task,
+    ui,
+    "job-task-detail",
+    "job-task-detail-title",
+    "dashboard-jobs-task-detail",
+    "dashboard-jobs-task-detail-preview",
+    "dashboard-jobs-task-timeline",
+    ui.tasks.detail_eyebrow,
+    ui.tasks.detail_title,
+    ui.tasks.detail_note
+  ) }}
+</section>
+{% else %}
 <section class="detail-shell" aria-labelledby="jobs-detail-title" data-testid="dashboard-jobs-detail-shell">
   {% if jobs.detail_back_link %}
   <a class="inline-back-link" href="{{ jobs.detail_back_link.href }}">{{ jobs.detail_back_link.label }}</a>
@@ -21,19 +40,5 @@
       {% endif %}
     </div>
   </section>
-
-  {% if jobs.selected_task %}
-  {{ render_task_detail(
-    jobs.selected_task,
-    ui,
-    "job-task-detail",
-    "job-task-detail-title",
-    "dashboard-jobs-task-detail",
-    "dashboard-jobs-task-detail-preview",
-    "dashboard-jobs-task-timeline",
-    ui.tasks.detail_eyebrow,
-    ui.tasks.detail_title,
-    ui.tasks.detail_note
-  ) }}
-  {% endif %}
 </section>
+{% endif %}

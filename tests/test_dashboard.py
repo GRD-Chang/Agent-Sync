@@ -494,7 +494,7 @@ def test_dashboard_jobs_query_filters_by_active_view(home: Path) -> None:
     assert jobs.detail_back_link is None
 
 
-def test_dashboard_jobs_query_surfaces_all_tasks_in_status_groups_and_inline_task_detail(home: Path) -> None:
+def test_dashboard_jobs_query_keeps_grouped_task_snapshot_but_uses_focused_task_detail(home: Path) -> None:
     seeded = seed_dashboard_store_with_many_job_tasks(home)
     selected_task = str(seeded["tasks"][1]["id"])
 
@@ -505,13 +505,14 @@ def test_dashboard_jobs_query_surfaces_all_tasks_in_status_groups_and_inline_tas
 
     assert jobs.selected_job is not None
     assert jobs.selected_task is not None
+    assert jobs.detail_back_link is not None
     assert jobs.selected_job.task_count == 8
     assert len(jobs.selected_job.task_previews) == 8
     assert [group.state for group in jobs.selected_job.task_groups] == ["running", "blocked", "failed", "queued", "done"]
     assert [group.count for group in jobs.selected_job.task_groups] == [2, 1, 1, 2, 2]
     assert jobs.selected_task.task_id == selected_task
-    assert jobs.selected_task.back_links[0].href.endswith("#job-task-groups")
-    assert jobs.selected_task.back_links[1].href.endswith("#tasks-detail")
+    assert jobs.detail_back_link.href.endswith(f"/jobs?job={seeded['job']['id']}#job-detail")
+    assert jobs.selected_task.back_links == []
 
 
 def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
@@ -1006,12 +1007,13 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert seeded["job_b"]["id"] in body
     assert "job-a" in body
     assert "queued req" in body
-    assert f"/tasks?job={seeded['job_a']['id']}#tasks-registry" in body
     assert f"/jobs?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}#job-task-detail" in body
+    assert "Open latest task here" not in body
+    assert f"/tasks?job={seeded['job_a']['id']}#tasks-registry" not in body
     assert 'data-testid="dashboard-jobs-empty-state"' not in body
 
 
-def test_dashboard_jobs_route_keeps_task_drilldown_on_jobs_page_and_shows_all_cards(home: Path) -> None:
+def test_dashboard_jobs_route_swaps_to_focused_task_detail_in_job_context(home: Path) -> None:
     seeded = seed_dashboard_store_with_many_job_tasks(home)
     selected_task = str(seeded["tasks"][1]["id"])
 
@@ -1020,12 +1022,15 @@ def test_dashboard_jobs_route_keeps_task_drilldown_on_jobs_page_and_shows_all_ca
 
     assert response.status_code == 200
     body = response.text
-    assert 'data-testid="dashboard-jobs-detail-shell"' in body
+    assert 'data-testid="dashboard-jobs-task-detail-shell"' in body
     assert 'data-testid="dashboard-jobs-task-detail"' in body
-    assert 'data-testid="dashboard-jobs-task-groups"' in body
-    assert body.count('data-testid="dashboard-jobs-task-card-') == 8
-    assert f"/jobs?job={seeded['job']['id']}&amp;task={selected_task}#job-task-detail" in body
-    assert f"/tasks?job={seeded['job']['id']}&amp;task={selected_task}#tasks-detail" in body
+    assert 'data-testid="dashboard-jobs-detail"' not in body
+    assert 'data-testid="dashboard-jobs-task-groups"' not in body
+    assert 'data-testid="dashboard-jobs-task-card-' not in body
+    assert selected_task in body
+    assert f'href="/jobs?job={seeded["job"]["id"]}#job-detail"' in body
+    assert "Back to job detail" in body
+    assert "Open in Tasks" not in body
 
 
 def test_dashboard_jobs_route_renders_current_job_work_plan_toggle(home: Path) -> None:

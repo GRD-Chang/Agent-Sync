@@ -59,6 +59,18 @@ class TaskDisplayQueryAssembler:
         job_id = str(task["job_id"])
         detail_path = str(task.get("detail_path") or "")
         detail_preview = _load_detail_preview(detail_path)
+        resolved_back_links = (
+            back_links
+            if back_links is not None
+            else TasksPageQueryAssembler(self._service)._build_task_back_links(
+                task_id=str(task["id"]),
+                job_id=job_id,
+                selected_job_id=selected_job_id,
+                selected_state=selected_state,
+                selected_agent=selected_agent,
+                selected_page=selected_page,
+            )
+        )
         return TaskDetailSnapshot(
             task_id=str(task["id"]),
             job_id=job_id,
@@ -81,15 +93,7 @@ class TaskDisplayQueryAssembler:
             detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_preview.status],
             detail_preview=detail_preview,
             timeline=self.build_task_timeline(task),
-            back_links=back_links
-            or TasksPageQueryAssembler(self._service)._build_task_back_links(
-                task_id=str(task["id"]),
-                job_id=job_id,
-                selected_job_id=selected_job_id,
-                selected_state=selected_state,
-                selected_agent=selected_agent,
-                selected_page=selected_page,
-            ),
+            back_links=resolved_back_links,
         )
 
     def build_task_timeline(self, task: dict[str, object]) -> list[TaskTimelineEvent]:

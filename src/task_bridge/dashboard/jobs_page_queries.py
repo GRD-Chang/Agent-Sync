@@ -54,14 +54,6 @@ class JobsPageQueryAssembler:
             if self._job_matches_view(job, tasks_by_job.get(str(job["id"]), []), active_view)
         ]
         resolved_job_id, selection_missing = self._resolve_selected_job_id(ordered_jobs, selected_job_id)
-        detail_back_link = (
-            DetailBackLink(
-                label=self._messages["jobs"]["back_to_list"],
-                href=self._service._jobs_path(view=active_view) + "#jobs-registry",
-            )
-            if resolved_job_id
-            else None
-        )
         job_rows = [
             self._build_job_row(
                 job,
@@ -75,12 +67,18 @@ class JobsPageQueryAssembler:
         selected_job_tasks = tasks_by_job.get(resolved_job_id or "", [])
         active_detail_view = self._resolve_job_detail_view(selected_job_raw, selected_detail_view)
         resolved_task = None
-        if active_detail_view == "tasks":
+        if selected_task_id:
             resolved_task, _ = self._service._resolve_selected_task(
                 selected_job_tasks,
                 selected_task_id,
                 resolved_job_id,
             )
+        detail_back_link = self._build_detail_back_link(
+            job=selected_job_raw,
+            active_view=active_view,
+            active_detail_view=active_detail_view,
+            has_selected_task=resolved_task is not None,
+        )
 
         return JobsPageSnapshot(
             home_path=self._service.home_path,
@@ -113,11 +111,7 @@ class JobsPageQueryAssembler:
             selected_task=self._service._build_task_detail(
                 resolved_task,
                 selected_job_id=resolved_job_id,
-                back_links=self._build_job_task_back_links(
-                    job_id=resolved_job_id or "",
-                    task_id=str(resolved_task["id"]),
-                    active_view=active_view,
-                ),
+                back_links=[],
                 job_href=self._service._jobs_path(
                     job_id=resolved_job_id,
                     task_id=str(resolved_task["id"]),
@@ -131,6 +125,36 @@ class JobsPageQueryAssembler:
             is_empty=not jobs,
             filtered_empty=bool(jobs and not ordered_jobs),
             selection_missing=selection_missing,
+        )
+
+    def _build_detail_back_link(
+        self,
+        *,
+        job: dict[str, object] | None,
+        active_view: str,
+        active_detail_view: str,
+        has_selected_task: bool,
+    ) -> DetailBackLink | None:
+        if job is None:
+            return None
+
+        if has_selected_task:
+            is_current = bool(job.get("is_current"))
+            detail_view = active_detail_view if is_current and active_detail_view == "plan" else None
+            anchor = "#job-work-plan" if detail_view == "plan" else "#job-detail"
+            return DetailBackLink(
+                label=self._messages["tasks"]["back_to_job"],
+                href=self._service._jobs_path(
+                    job_id=str(job["id"]),
+                    view=active_view,
+                    detail_view=detail_view,
+                )
+                + anchor,
+            )
+
+        return DetailBackLink(
+            label=self._messages["jobs"]["back_to_list"],
+            href=self._service._jobs_path(view=active_view) + "#jobs-registry",
         )
 
     def _build_job_row(
@@ -367,24 +391,6 @@ class JobsPageQueryAssembler:
                 )
                 + "#job-work-plan",
                 is_active=active_detail_view == "plan",
-            ),
-        ]
-
-    def _build_job_task_back_links(
-        self,
-        *,
-        job_id: str,
-        task_id: str,
-        active_view: str,
-    ) -> list[DetailBackLink]:
-        return [
-            DetailBackLink(
-                label=self._messages["jobs"]["back_to_task_groups"],
-                href=self._service._jobs_path(job_id=job_id, view=active_view) + "#job-task-groups",
-            ),
-            DetailBackLink(
-                label=self._messages["jobs"]["open_standalone_task"],
-                href=self._service._tasks_path(job_id=job_id, task_id=task_id) + "#tasks-detail",
             ),
         ]
 

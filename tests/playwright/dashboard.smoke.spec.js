@@ -397,12 +397,32 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page).toHaveURL(
       new RegExp(`/jobs\\?(?:job=${seeded.jobA.id}&view=active|view=active&job=${seeded.jobA.id})#job-detail$`),
     );
-    await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("Open latest task here");
+    await expect(page.getByTestId("dashboard-jobs-detail")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-task-groups")).toBeVisible();
     await expect(page.getByText("Back to job cards")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
     );
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+
+    await page.getByTestId(`dashboard-jobs-task-card-${seeded.taskA2.id}`).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/jobs\\?(?:job=${seeded.jobA.id}&task=${seeded.taskA2.id}&view=active|job=${seeded.jobA.id}&view=active&task=${seeded.taskA2.id}|view=active&job=${seeded.jobA.id}&task=${seeded.taskA2.id})#job-task-detail$`,
+      ),
+    );
+    await expect(page.getByTestId("dashboard-jobs-task-detail")).toContainText("actively working");
+    await expect(page.getByTestId("dashboard-jobs-task-detail-preview")).toContainText("Runbook");
+    await expect(page.getByTestId("dashboard-jobs-task-timeline")).toContainText("Last dispatch recorded");
+    await expect(page.getByTestId("dashboard-jobs-detail")).toHaveCount(0);
+    await expect(page.getByTestId("dashboard-jobs-task-groups")).toHaveCount(0);
+    await expect(page.getByText("Back to job detail")).toBeVisible();
+    await expect(page.getByText("Open in Tasks")).toHaveCount(0);
+
+    await page.getByText("Back to job detail").click();
+    await expect(page).toHaveURL(new RegExp(`/jobs\\?(?:job=${seeded.jobA.id}&view=active|view=active&job=${seeded.jobA.id})#job-detail$`));
+    await expect(page.getByTestId("dashboard-jobs-detail")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-task-groups")).toBeVisible();
 
     await page.goto(`${server.baseUrl}/jobs?job=${seeded.jobB.id}&detail_view=plan`);
     await expect(page.getByTestId("dashboard-jobs-detail-view-switch")).toBeVisible();

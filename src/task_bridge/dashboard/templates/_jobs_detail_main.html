@@ -40,19 +40,6 @@
     </div>
   </dl>
 
-  <div class="detail-callout route-callout">
-    <p class="eyebrow">{{ ui.jobs.view_paths }}</p>
-    <p>{{ ui.jobs.view_paths_note }}</p>
-    <div class="route-link-list">
-      <a class="route-link" href="{{ selected_job.tasks_href }}">{{ ui.jobs.open_tasks }}</a>
-      {% if selected_job.latest_task_href %}
-      <a class="route-link" href="{{ selected_job.latest_task_href }}">{{ ui.jobs.open_latest_task }}</a>
-      {% else %}
-      <p class="section-note">{{ ui.jobs.latest_task_empty }}</p>
-      {% endif %}
-    </div>
-  </div>
-
   <div class="detail-callout compact-grid">
     <p class="eyebrow">{{ ui.jobs.status_section }}</p>
     <p>{{ ui.jobs.status_note }}</p>
