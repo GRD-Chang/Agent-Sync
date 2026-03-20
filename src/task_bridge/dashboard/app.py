@@ -41,11 +41,11 @@ def create_dashboard_app(home: Path | None = None) -> Starlette:
         routes=[
             Route("/", endpoint=redirect_to_overview),
             Route("/overview", endpoint=overview_page),
-            Route("/jobs", endpoint=placeholder_page),
-            Route("/tasks", endpoint=placeholder_page),
-            Route("/worker-queue", endpoint=worker_queue_page),
-            Route("/alerts", endpoint=alerts_page),
-            Route("/health", endpoint=health_page),
+            Route("/jobs", endpoint=jobs_page),
+            Route("/tasks", endpoint=tasks_page),
+            Route("/worker-queue", endpoint=placeholder_page),
+            Route("/alerts", endpoint=placeholder_page),
+            Route("/health", endpoint=placeholder_page),
             Mount(
                 "/static",
                 app=StaticFiles(directory=str(files("task_bridge.dashboard").joinpath("static"))),
@@ -80,64 +80,49 @@ async def overview_page(request: Request):
     return templates.TemplateResponse(request=request, name="overview.html", context=context)
 
 
-async def worker_queue_page(request: Request):
-    context = _base_context(request, "worker-queue")
-    context["page_title"] = context["ui"]["worker_queue"]["title"]
+async def jobs_page(request: Request):
+    context = _base_context(request, "jobs")
+    context["page_title"] = context["ui"]["jobs"]["title"]
     try:
-        snapshot = request.app.state.dashboard_query_service.worker_queue()
+        jobs = request.app.state.dashboard_query_service.jobs(
+            selected_job_id=_query_param_value(request, "job"),
+        )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
             request,
             context=context,
-            error_title=context["ui"]["worker_queue"]["error_title"],
-            error_body=context["ui"]["worker_queue"]["error_body"],
-            error_label=context["ui"]["worker_queue"]["error_label"],
+            error_title=context["ui"]["jobs"]["error_title"],
+            error_body=context["ui"]["jobs"]["error_body"],
+            error_label=context["ui"]["jobs"]["error_label"],
             error_message=str(exc),
-            error_testid="dashboard-worker-queue-error-state",
+            error_testid="dashboard-jobs-error-state",
         )
 
-    context["worker_queue"] = snapshot
-    return templates.TemplateResponse(request=request, name="worker_queue.html", context=context)
+    context["jobs"] = jobs
+    return templates.TemplateResponse(request=request, name="jobs.html", context=context)
 
 
-async def alerts_page(request: Request):
-    context = _base_context(request, "alerts")
-    context["page_title"] = context["ui"]["alerts"]["title"]
+async def tasks_page(request: Request):
+    context = _base_context(request, "tasks")
+    context["page_title"] = context["ui"]["tasks"]["title"]
     try:
-        snapshot = request.app.state.dashboard_query_service.alerts()
+        tasks = request.app.state.dashboard_query_service.tasks(
+            selected_job_id=_query_param_value(request, "job"),
+            selected_task_id=_query_param_value(request, "task"),
+        )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
             request,
             context=context,
-            error_title=context["ui"]["alerts"]["error_title"],
-            error_body=context["ui"]["alerts"]["error_body"],
-            error_label=context["ui"]["alerts"]["error_label"],
+            error_title=context["ui"]["tasks"]["error_title"],
+            error_body=context["ui"]["tasks"]["error_body"],
+            error_label=context["ui"]["tasks"]["error_label"],
             error_message=str(exc),
-            error_testid="dashboard-alerts-error-state",
+            error_testid="dashboard-tasks-error-state",
         )
 
-    context["alerts"] = snapshot
-    return templates.TemplateResponse(request=request, name="alerts.html", context=context)
-
-
-async def health_page(request: Request):
-    context = _base_context(request, "health")
-    context["page_title"] = context["ui"]["health"]["title"]
-    try:
-        snapshot = request.app.state.dashboard_query_service.health()
-    except Exception as exc:  # pragma: no cover
-        return _render_live_page_error(
-            request,
-            context=context,
-            error_title=context["ui"]["health"]["error_title"],
-            error_body=context["ui"]["health"]["error_body"],
-            error_label=context["ui"]["health"]["error_label"],
-            error_message=str(exc),
-            error_testid="dashboard-health-error-state",
-        )
-
-    context["health"] = snapshot
-    return templates.TemplateResponse(request=request, name="health.html", context=context)
+    context["tasks"] = tasks
+    return templates.TemplateResponse(request=request, name="tasks.html", context=context)
 
 
 async def placeholder_page(request: Request):
@@ -187,3 +172,11 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
         "ui": ui,
         "html_lang": ui["html_lang"],
     }
+
+
+def _query_param_value(request: Request, key: str) -> str | None:
+    value = request.query_params.get(key)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None

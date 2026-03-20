@@ -14,10 +14,10 @@ const navItems = [
   { key: "alerts", label: "Alerts", route: "/alerts" },
   { key: "health", label: "Health", route: "/health" },
 ];
-const placeholderItems = navItems.filter((item) =>
+const liveSliceBItems = navItems.filter((item) =>
   ["jobs", "tasks"].includes(item.key),
 );
-const liveSliceCItems = navItems.filter((item) =>
+const placeholderItems = navItems.filter((item) =>
   ["worker-queue", "alerts", "health"].includes(item.key),
 );
 
@@ -130,6 +130,10 @@ async function seedLiveDashboard(homeDir) {
     "# Runbook\n\n- capture logs\n- compare outputs\n",
     "utf-8",
   );
+  const taskA2JsonPath = path.join(homeDir, "jobs", jobA.id, "tasks", `${taskA2.id}.json`);
+  const taskA2Payload = JSON.parse(await fs.readFile(taskA2JsonPath, "utf-8"));
+  taskA2Payload._scheduler.last_dispatch_at = taskA2Payload.updatedAt;
+  await fs.writeFile(taskA2JsonPath, `${JSON.stringify(taskA2Payload, null, 2)}\n`, "utf-8");
 
   const jobB = runBridgeJson(homeDir, ["create-job", "--title", "job-b"]);
   const taskB1 = runBridgeJson(homeDir, [
@@ -157,7 +161,7 @@ test("overview renders the live happy path shell", async ({ page }) => {
     await expect(page.getByTestId("dashboard-shell")).toBeVisible();
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "Overview, Worker & Queue, Alerts, and Health are live. Jobs and Tasks remain shell-ready and intentionally read-only.",
+      "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
     );
     for (const item of navItems) {
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveText(item.label);
@@ -197,38 +201,64 @@ test("overview renders the explicit empty state", async ({ page }) => {
   }
 });
 
-test("jobs and tasks remain shell-only placeholders", async ({ page }) => {
-  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-shell-"));
+test("jobs and tasks render live read-only pages", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-live-slice-b-"));
+  const seeded = await seedLiveDashboard(homeDir);
   const server = await startDashboard(homeDir, 4175);
 
   try {
-    for (const item of placeholderItems) {
-      await page.goto(`${server.baseUrl}${item.route}`);
-      await expect(page.getByTestId(`dashboard-${item.key}-shell`)).toBeVisible();
-      await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
-      await expect(page.getByTestId("dashboard-boundary-note")).toBeVisible();
-      await expect(page.getByTestId("dashboard-page-title")).toContainText(item.label);
-      await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
-    }
+    await page.goto(`${server.baseUrl}/jobs?job=${seeded.jobA.id}`);
+    await expect(page.getByTestId("dashboard-nav-jobs")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("dashboard-jobs-page")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-list")).toContainText("job-a");
+    await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("queued req");
+    await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
+      "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
+    );
+    await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+
+    await page.goto(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
+    await expect(page.getByTestId("dashboard-nav-tasks")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("dashboard-tasks-page")).toBeVisible();
+    await expect(page.getByTestId("dashboard-tasks-list")).toContainText(seeded.taskA2.id);
+    await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("actively working");
+    await expect(page.getByTestId("dashboard-tasks-detail-preview")).toContainText("Runbook");
+    await expect(page.getByTestId("dashboard-tasks-timeline")).toContainText("Last dispatch recorded");
+    await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
   }
 });
 
-test("worker queue, alerts, and health render live read-only pages", async ({ page }) => {
-  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-live-slice-c-"));
-  await seedLiveDashboard(homeDir);
+test("jobs and tasks render explicit empty states", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-empty-live-slice-b-"));
   const server = await startDashboard(homeDir, 4176);
 
   try {
-    for (const item of liveSliceCItems) {
+    await page.goto(`${server.baseUrl}/jobs`);
+    await expect(page.getByTestId("dashboard-jobs-empty-state")).toContainText("No jobs yet");
+    await page.goto(`${server.baseUrl}/tasks`);
+    await expect(page.getByTestId("dashboard-tasks-empty-state")).toContainText("No tasks yet");
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("worker queue, alerts, and health remain shell-only placeholders", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-shell-slice-b-"));
+  const server = await startDashboard(homeDir, 4177);
+
+  try {
+    for (const item of placeholderItems) {
       await page.goto(`${server.baseUrl}${item.route}`);
+      await expect(page.getByTestId(`dashboard-${item.key}-shell`)).toBeVisible();
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
-      await expect(page.getByTestId(`dashboard-${item.key}-hero`)).toBeVisible();
       await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-        "Overview, Worker & Queue, Alerts, and Health are live. Jobs and Tasks remain shell-ready and intentionally read-only.",
+        "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
       );
+      await expect(page.getByTestId("dashboard-page-title")).toContainText(item.label);
       await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
     }
   } finally {

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel" aria-labelledby="tasks-title" data-testid="dashboard-tasks-page">
+  <div class="hero-copy">
+    <p class="eyebrow">{{ ui.tasks.eyebrow }}</p>
+    <h2 id="tasks-title" data-testid="dashboard-page-title">{{ ui.tasks.title }}</h2>
+    <p class="hero-text">{{ ui.tasks.intro }}</p>
+  </div>
+  <dl class="hero-stats" aria-label="{{ ui.tasks.stats_label }}">
+    <div>
+      <dt>{{ ui.tasks.current_job }}</dt>
+      <dd>{{ tasks.current_job_id or ui.overview.current_job_empty }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.tasks.jobs_tracked }}</dt>
+      <dd>{{ tasks.jobs_count }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.tasks.tasks_tracked }}</dt>
+      <dd>{{ tasks.tasks_count }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.tasks.generated_at }}</dt>
+      <dd>{{ tasks.generated_at }}</dd>
+    </div>
+    <div class="hero-home">
+      <dt>{{ ui.overview.store_home }}</dt>
+      <dd>{{ tasks.home_path }}</dd>
+    </div>
+  </dl>
+</section>
+
+{% if tasks.selection_missing %}
+<section class="state-panel selection-note" role="status" aria-live="polite">
+  <h3>{{ ui.tasks.selection_missing_title }}</h3>
+  <p>{{ ui.tasks.selection_missing_body }}</p>
+</section>
+{% endif %}
+
+{% if tasks.is_empty %}
+<section class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-tasks-empty-state">
+  <h3>{{ ui.tasks.empty_title }}</h3>
+  <p>{{ ui.tasks.empty_body }}</p>
+</section>
+{% else %}
+<div class="browse-layout">
+  <section class="browse-panel" aria-labelledby="tasks-list-title" data-testid="dashboard-tasks-list">
+    <div class="section-heading">
+      <p class="eyebrow">{{ ui.tasks.list_eyebrow }}</p>
+      <h2 id="tasks-list-title">{{ ui.tasks.list_title }}</h2>
+      <p class="section-note">{{ ui.tasks.list_note }}</p>
+    </div>
+    <div class="item-list">
+      {% for item in tasks.tasks %}
+      <a class="list-card{% if item.is_selected %} is-selected{% endif %}" href="{{ item.detail_href }}">
+        <div class="list-card-header">
+          <div>
+            <h3>{{ item.task_id }}</h3>
+            <p class="list-card-meta">{{ item.job_id }} / {{ item.assigned_agent }}</p>
+          </div>
+          <div class="list-card-badges">
+            <span class="status-pill status-{{ item.state }}">{{ item.state }}</span>
+          </div>
+        </div>
+        <p class="list-card-summary">{{ item.summary_label }}: {{ item.summary_text }}</p>
+        <dl class="list-card-stats">
+          <div>
+            <dt>{{ ui.tasks.created_at }}</dt>
+            <dd>{{ item.created_at }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.tasks.updated_at }}</dt>
+            <dd>{{ item.updated_at }}</dd>
+          </div>
+        </dl>
+        <p class="list-card-foot">{{ ui.tasks.job_id }}: {{ item.job_id }}</p>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="detail-panel" aria-labelledby="tasks-detail-title" data-testid="dashboard-tasks-detail">
+    <div class="section-heading">
+      <p class="eyebrow">{{ ui.tasks.detail_eyebrow }}</p>
+      <h2 id="tasks-detail-title">{{ ui.tasks.detail_title }}</h2>
+      <p class="section-note">{{ ui.tasks.detail_note }}</p>
+    </div>
+
+    {% if tasks.selected_task %}
+    <div class="detail-stack">
+      <article class="detail-card">
+        <div class="detail-title-row">
+          <div>
+            <h3>{{ tasks.selected_task.task_id }}</h3>
+            <p>{{ tasks.selected_task.job_id }}</p>
+          </div>
+          <span class="status-pill status-{{ tasks.selected_task.state }}">{{ tasks.selected_task.state }}</span>
+        </div>
+
+        <p class="section-note">
+          <a class="text-link" href="{{ tasks.selected_task.job_href }}">{{ ui.tasks.open_job }}</a>
+        </p>
+
+        <dl class="meta-grid">
+          <div>
+            <dt>{{ ui.tasks.job_id }}</dt>
+            <dd>{{ tasks.selected_task.job_id }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.tasks.state }}</dt>
+            <dd>{{ tasks.selected_task.state }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.tasks.assigned_agent }}</dt>
+            <dd>{{ tasks.selected_task.assigned_agent }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.tasks.notify_target }}</dt>
+            <dd>{{ tasks.selected_task.notify_target }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.tasks.created_at }}</dt>
+            <dd>{{ tasks.selected_task.created_at }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.tasks.updated_at }}</dt>
+            <dd>{{ tasks.selected_task.updated_at }}</dd>
+          </div>
+          <div class="meta-span-2">
+            <dt>{{ ui.tasks.detail_path }}</dt>
+            <dd>{{ tasks.selected_task.detail_path }}</dd>
+          </div>
+        </dl>
+
+        <div class="detail-callout">
+          <p class="eyebrow">{{ ui.tasks.requirement }}</p>
+          <p>{{ tasks.selected_task.requirement }}</p>
+        </div>
+        <div class="detail-callout">
+          <p class="eyebrow">{{ ui.tasks.result }}</p>
+          <p>{{ tasks.selected_task.result or ui.tasks.result_empty }}</p>
+        </div>
+      </article>
+
+      <article class="detail-card" data-testid="dashboard-tasks-detail-preview">
+        <div class="section-heading">
+          <p class="eyebrow">{{ ui.tasks.detail_preview }}</p>
+          <h3>{{ ui.tasks.detail_preview }}</h3>
+          <p class="section-note">{{ ui.tasks.detail_preview_note }}</p>
+        </div>
+
+        {% if tasks.selected_task.detail_preview.status == "rendered" %}
+        <div class="markdown-preview">
+          {% for block in tasks.selected_task.detail_preview.blocks %}
+          {% if block.kind == "heading" %}
+          <h4 class="preview-heading preview-heading-{{ block.level }}">{{ block.text }}</h4>
+          {% elif block.kind == "paragraph" %}
+          <p>{{ block.text }}</p>
+          {% elif block.kind == "list" %}
+          <ul>
+            {% for item in block.items %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% elif block.kind == "quote" %}
+          <blockquote>{{ block.text }}</blockquote>
+          {% elif block.kind == "code" %}
+          <pre><code>{{ block.text }}</code></pre>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% elif tasks.selected_task.detail_preview.status == "missing" %}
+        <div class="state-panel" role="status" aria-live="polite">
+          <h3>{{ ui.tasks.detail_preview }}</h3>
+          <p>{{ ui.tasks.detail_preview_missing }}</p>
+        </div>
+        {% elif tasks.selected_task.detail_preview.status == "empty" %}
+        <div class="state-panel" role="status" aria-live="polite">
+          <h3>{{ ui.tasks.detail_preview }}</h3>
+          <p>{{ ui.tasks.detail_preview_empty }}</p>
+        </div>
+        {% else %}
+        <div class="state-panel error-state" role="alert">
+          <h3>{{ ui.tasks.detail_preview }}</h3>
+          <p>{{ ui.tasks.detail_preview_error }}</p>
+          <p>{{ tasks.selected_task.detail_preview.error_message }}</p>
+        </div>
+        {% endif %}
+
+        {% if tasks.selected_task.detail_preview.is_truncated %}
+        <p class="preview-truncation">
+          {{ ui.tasks.preview_truncated.format(line_limit=tasks.selected_task.detail_preview.line_limit, char_limit=tasks.selected_task.detail_preview.char_limit) }}
+        </p>
+        {% endif %}
+      </article>
+
+      <article class="detail-card" data-testid="dashboard-tasks-timeline">
+        <div class="section-heading">
+          <p class="eyebrow">{{ ui.tasks.timeline }}</p>
+          <h3>{{ ui.tasks.timeline }}</h3>
+          <p class="section-note">{{ ui.tasks.timeline_note }}</p>
+        </div>
+        <div class="timeline-list">
+          {% for item in tasks.selected_task.timeline %}
+          <article class="timeline-item">
+            <div class="timeline-dot" aria-hidden="true"></div>
+            <div class="timeline-copy">
+              <header>
+                <h4>{{ item.title }}</h4>
+                <time datetime="{{ item.timestamp_display }}">{{ item.timestamp_display }}</time>
+              </header>
+              <p>{{ item.note }}</p>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </article>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

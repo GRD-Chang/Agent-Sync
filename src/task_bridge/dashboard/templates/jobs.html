@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel" aria-labelledby="jobs-title" data-testid="dashboard-jobs-page">
+  <div class="hero-copy">
+    <p class="eyebrow">{{ ui.jobs.eyebrow }}</p>
+    <h2 id="jobs-title" data-testid="dashboard-page-title">{{ ui.jobs.title }}</h2>
+    <p class="hero-text">{{ ui.jobs.intro }}</p>
+  </div>
+  <dl class="hero-stats" aria-label="{{ ui.jobs.stats_label }}">
+    <div>
+      <dt>{{ ui.jobs.current_job }}</dt>
+      <dd>{{ jobs.current_job_id or ui.overview.current_job_empty }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.jobs.jobs_tracked }}</dt>
+      <dd>{{ jobs.jobs_count }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.jobs.tasks_tracked }}</dt>
+      <dd>{{ jobs.tasks_count }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.jobs.generated_at }}</dt>
+      <dd>{{ jobs.generated_at }}</dd>
+    </div>
+    <div class="hero-home">
+      <dt>{{ ui.overview.store_home }}</dt>
+      <dd>{{ jobs.home_path }}</dd>
+    </div>
+  </dl>
+</section>
+
+{% if jobs.selection_missing %}
+<section class="state-panel selection-note" role="status" aria-live="polite">
+  <h3>{{ ui.jobs.selection_missing_title }}</h3>
+  <p>{{ ui.jobs.selection_missing_body }}</p>
+</section>
+{% endif %}
+
+{% if jobs.is_empty %}
+<section class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-jobs-empty-state">
+  <h3>{{ ui.jobs.empty_title }}</h3>
+  <p>{{ ui.jobs.empty_body }}</p>
+</section>
+{% else %}
+<div class="browse-layout">
+  <section class="browse-panel" aria-labelledby="jobs-list-title" data-testid="dashboard-jobs-list">
+    <div class="section-heading">
+      <p class="eyebrow">{{ ui.jobs.list_eyebrow }}</p>
+      <h2 id="jobs-list-title">{{ ui.jobs.list_title }}</h2>
+      <p class="section-note">{{ ui.jobs.list_note }}</p>
+    </div>
+    <div class="item-list">
+      {% for item in jobs.jobs %}
+      <a class="list-card{% if item.is_selected %} is-selected{% endif %}" href="{{ item.detail_href }}">
+        <div class="list-card-header">
+          <div>
+            <h3>{{ item.title }}</h3>
+            <p class="list-card-meta">{{ item.job_id }}</p>
+          </div>
+          <div class="list-card-badges">
+            {% if item.is_current %}
+            <span class="status-pill status-current">{{ ui.jobs.current_badge }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <p class="list-card-summary">{{ ui.jobs.notify_target }}: {{ item.notify_target }}</p>
+        <dl class="list-card-stats">
+          <div>
+            <dt>{{ ui.jobs.tasks_total }}</dt>
+            <dd>{{ item.task_count }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.tasks_active }}</dt>
+            <dd>{{ item.active_task_count }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.tasks_terminal }}</dt>
+            <dd>{{ item.terminal_task_count }}</dd>
+          </div>
+        </dl>
+        <p class="list-card-foot">{{ ui.jobs.updated_at }}: {{ item.updated_at }}</p>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="detail-panel" aria-labelledby="jobs-detail-title" data-testid="dashboard-jobs-detail">
+    <div class="section-heading">
+      <p class="eyebrow">{{ ui.jobs.detail_eyebrow }}</p>
+      <h2 id="jobs-detail-title">{{ ui.jobs.detail_title }}</h2>
+      <p class="section-note">{{ ui.jobs.detail_note }}</p>
+    </div>
+
+    {% if jobs.selected_job %}
+    <div class="detail-stack">
+      <article class="detail-card">
+        <div class="detail-title-row">
+          <div>
+            <h3>{{ jobs.selected_job.title }}</h3>
+            <p>{{ jobs.selected_job.job_id }}</p>
+          </div>
+          {% if jobs.selected_job.is_current %}
+          <span class="status-pill status-current">{{ ui.jobs.current_badge }}</span>
+          {% endif %}
+        </div>
+
+        <dl class="meta-grid">
+          <div>
+            <dt>{{ ui.jobs.job_id }}</dt>
+            <dd>{{ jobs.selected_job.job_id }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.notify_target }}</dt>
+            <dd>{{ jobs.selected_job.notify_target }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.created_at }}</dt>
+            <dd>{{ jobs.selected_job.created_at }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.updated_at }}</dt>
+            <dd>{{ jobs.selected_job.updated_at }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.tasks_total }}</dt>
+            <dd>{{ jobs.selected_job.task_count }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.tasks_active }}</dt>
+            <dd>{{ jobs.selected_job.active_task_count }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.jobs.tasks_terminal }}</dt>
+            <dd>{{ jobs.selected_job.terminal_task_count }}</dd>
+          </div>
+        </dl>
+
+        <div class="detail-callout compact-grid">
+          <p class="eyebrow">{{ ui.jobs.status_section }}</p>
+          <p>{{ ui.jobs.status_note }}</p>
+          <div class="summary-grid">
+            {% for metric in jobs.selected_job.task_status_metrics %}
+            <article class="summary-card summary-{{ metric.state }}">
+              <p class="summary-label">{{ metric.label }}</p>
+              <p class="summary-value">{{ metric.count }}</p>
+              <p class="summary-note">{{ metric.description }}</p>
+            </article>
+            {% endfor %}
+          </div>
+        </div>
+      </article>
+
+      <article class="detail-card">
+        <div class="section-heading">
+          <p class="eyebrow">{{ ui.jobs.task_preview }}</p>
+          <h3>{{ ui.jobs.task_preview }}</h3>
+          <p class="section-note">{{ ui.jobs.task_preview_note }}</p>
+        </div>
+
+        {% if jobs.selected_job.task_previews %}
+        <div class="task-preview-list">
+          {% for item in jobs.selected_job.task_previews %}
+          <a class="task-preview-card" href="{{ item.detail_href }}">
+            <div class="task-preview-header">
+              <div>
+                <h4>{{ item.task_id }}</h4>
+                <p>{{ item.summary_label }}: {{ item.summary_text }}</p>
+              </div>
+              <div class="task-preview-meta">
+                <span class="status-pill status-{{ item.state }}">{{ item.state }}</span>
+                <span>{{ item.assigned_agent }}</span>
+                <span>{{ item.updated_at }}</span>
+              </div>
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="state-panel" role="status" aria-live="polite">
+          <h3>{{ ui.jobs.task_preview }}</h3>
+          <p>{{ ui.jobs.task_preview_empty }}</p>
+        </div>
+        {% endif %}
+      </article>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

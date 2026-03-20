@@ -22,7 +22,7 @@ _CATALOGS: dict[str, dict[str, Any]] = {
             "title": "Dashboard foundation",
             "note": "Built on the existing job/task JSON store, worker queue semantics, and daemon state model.",
             "scope_label": "MVP scope",
-            "scope_note": "Overview, Worker & Queue, Alerts, and Health are live. Jobs and Tasks remain shell-ready and intentionally read-only.",
+            "scope_note": "Overview, Jobs, and Tasks are live. Worker & Queue, Alerts, and Health remain shell-ready and intentionally read-only.",
             "primary_nav_label": "Primary",
         },
         "common": {
@@ -263,11 +263,11 @@ _CATALOGS: dict[str, dict[str, Any]] = {
             "boundary_title": "MVP boundary",
             "boundary_body": "No write controls, no speculative metrics, and no extra domain fields are introduced in this slice.",
             "copy": {
-                "jobs": "Job browsing remains a shell-only placeholder in this slice. Any future live data must stay read-only and tied to the existing job.json records.",
-                "tasks": "Task browsing remains a shell-only placeholder in this slice. Any future live data must stay read-only and tied to the existing task JSON contract.",
-                "worker-queue": "Worker lanes and queue drill-down are now limited to current assigned/queued facts already present in task JSON.",
-                "alerts": "Alerts are limited to blocked / failed states and unresolved leader follow-up timestamps already stored in task scheduler metadata.",
-                "health": "Health is limited to store readability and daemon cache evidence already present on disk.",
+                "jobs": "The Jobs page is live and read-only in this slice. If this shell ever appears, treat it as a regression and keep the page tied to existing job.json records only.",
+                "tasks": "The Tasks page is live and read-only in this slice. If this shell ever appears, treat it as a regression and keep the page tied to the existing task JSON contract only.",
+                "worker-queue": "The Worker & Queue page stays a shell-only placeholder in this slice. Any future live data must stay read-only and tied to the existing per-agent queue semantics.",
+                "alerts": "The Alerts page stays a shell-only placeholder in this slice. Any future live data must stay limited to blocked / failed states and unresolved leader follow-up timestamps already present in task metadata.",
+                "health": "The Health page stays a shell-only placeholder in this slice. Any future live data must stay limited to readable daemon and store evidence already present on disk.",
             },
         },
         "status": {

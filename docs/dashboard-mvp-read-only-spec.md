@@ -1,11 +1,12 @@
 ## Execution Spec Patch: Agent-Sync dashboard MVP（只读版）
 
-This freeze is anchored to the current dashboard evidence in `src/task_bridge/dashboard/app.py`, `src/task_bridge/dashboard/templates/`, `src/task_bridge/dashboard/queries.py`, `tests/test_dashboard.py`, and `tests/playwright/dashboard.smoke.spec.js`.
+This Slice B freeze is anchored to the current dashboard evidence in `src/task_bridge/dashboard/app.py`, `src/task_bridge/dashboard/templates/`, `src/task_bridge/dashboard/queries.py`, `tests/test_dashboard.py`, and `tests/playwright/dashboard.smoke.spec.js`.
 
 ### Frozen Scope
 - Dashboard MVP remains a read-only web surface over the existing local `task-bridge` store and queue semantics. It may only read facts already represented by `job.json`, task JSON, worker queue derivation, and daemon-readable state; it must not add new persistence, mutation endpoints, background jobs, or daemon control paths.
 - Primary routes are frozen for MVP: `/overview`, `/jobs`, `/tasks`, `/worker-queue`, `/alerts`, `/health`.
-- `/overview` is the only live data page in MVP v1. `/jobs`, `/tasks`, `/worker-queue`, `/alerts`, and `/health` stay shell-only until a later spec update explicitly promotes them.
+- `/overview`, `/jobs`, and `/tasks` are the only live data pages in MVP v1. `/worker-queue`, `/alerts`, and `/health` stay shell-only until a later spec update explicitly promotes them.
+- Any previously attempted promotion of `/worker-queue`, `/alerts`, or `/health` is out of scope for this slice and must be rolled back to the documented shell-only boundary.
 - Overview data is limited to facts already derivable from the current query layer: current job id, job count, task count, generated timestamp, store home path, core task-state counts (`queued`, `running`, `done`, `blocked`, `failed`), worker utilization / queue snapshots, and recent task updates derived from existing task fields.
 - Read-only error handling is in scope. If the store is unreadable, the dashboard keeps the navigation shell and renders an explicit overview error state instead of failing CLI startup or hiding the shell.
 - Out of scope unless a future spec explicitly reopens scope: create/update/delete actions, status transitions, claim/start/complete/block/fail controls, queue reordering, bulk actions, search/filter/sort/pagination, auth, per-user settings, live push/polling, charts, exports, alert rule configuration, and daemon lifecycle controls.
@@ -15,11 +16,11 @@ This freeze is anchored to the current dashboard evidence in `src/task_bridge/da
   - Must include: a read-only overview shell; current job id, jobs tracked, tasks tracked, generated timestamp, and store home; task status summary for `queued`, `running`, `done`, `blocked`, `failed`; worker utilization summary; per-worker lane snapshot; recent updates; explicit empty state; explicit unreadable-store error state that preserves primary navigation.
   - Must not include: any write control; job/task edit or transition actions; drill-down that invents new detail models; metrics not derivable from the existing store; auto-refresh, websocket streaming, charts, or speculative KPIs.
 - Jobs
-  - Must include: mounted route at `/jobs`; page identity and active-nav state; explicit boundary copy that job browsing is deferred and any later live data must stay read-only and tied to existing `job.json` records.
-  - Must not include: job table, job detail drawer, current-job switching, create/edit/delete actions, progress formulas not already defined in repo code, filters/search/sort/pagination, or export.
+  - Must include: mounted route at `/jobs`; page identity and active-nav state; read-only job list/detail skeletons tied only to existing `job.json` records and task JSON facts; a query-string detail entry path; explicit empty state; stable selectors for list/detail coverage; and task preview links that remain read-only.
+  - Must not include: current-job switching, create/edit/delete actions, queue or priority mutation, progress formulas not already defined in repo code, filters/search/sort/pagination controls, or export.
 - Tasks
-  - Must include: mounted route at `/tasks`; page identity and active-nav state; explicit boundary copy that task browsing is deferred and any later live data must stay read-only and tied to the existing task JSON contract.
-  - Must not include: task detail editor, status transition buttons, result or `detail_path` editing, reassignment, bulk actions, filters/search/sort/pagination, or log tailing.
+  - Must include: mounted route at `/tasks`; page identity and active-nav state; read-only task list/detail skeletons tied only to the existing task JSON contract; a query-string detail entry path; read-only `detail.md` preview placeholder / controlled rendering; a minimal timeline framework derived only from existing task timestamps and `_scheduler` timestamps; explicit empty state; and stable selectors for list/detail/preview/timeline coverage.
+  - Must not include: task detail editor, status transition buttons, result or `detail_path` editing, reassignment, bulk actions, filters/search/sort/pagination controls, log tailing, or any new event/state model beyond existing store facts.
 - Worker & Queue
   - Must include: mounted route at `/worker-queue`; page identity and active-nav state; explicit boundary copy that worker lanes and queue drill-down are deferred and any later live data must stay tied to existing per-agent queue semantics.
   - Must not include: dispatch/reset buttons, queue reordering, worker claim/reassign controls, daemon controls, throughput/SLA charts, or any synthetic capacity metric not already derivable from current store state.
@@ -41,15 +42,17 @@ This freeze is anchored to the current dashboard evidence in `src/task_bridge/da
 - Selector naming scheme is frozen as `dashboard-<page>-<element>`.
 - Minimum cross-page stable hooks: `dashboard-shell`, `dashboard-primary-nav`, `dashboard-nav-overview`, `dashboard-nav-jobs`, `dashboard-nav-tasks`, `dashboard-nav-worker-queue`, `dashboard-nav-alerts`, `dashboard-nav-health`, `dashboard-page-title`, and `dashboard-boundary-note`.
 - Minimum overview hooks: `dashboard-overview-hero`, `dashboard-overview-task-status`, `dashboard-overview-worker-utilization`, `dashboard-overview-worker-list`, `dashboard-overview-recent-updates`, `dashboard-overview-empty-state`, and `dashboard-overview-error-state`.
-- Minimum placeholder hooks while pages remain shell-only: `dashboard-jobs-shell`, `dashboard-tasks-shell`, `dashboard-worker-queue-shell`, `dashboard-alerts-shell`, and `dashboard-health-shell`.
-- Read-only smoke matrix is frozen as follows: `/` redirects to `/overview`; primary nav renders all six destinations; overview covers the happy path, empty-store state, and unreadable-store `500` shell; each placeholder route returns `200`, marks the correct nav item active, shows the boundary note, and exposes no write controls.
+- Minimum jobs hooks: `dashboard-jobs-page`, `dashboard-jobs-list`, `dashboard-jobs-detail`, and `dashboard-jobs-empty-state`.
+- Minimum tasks hooks: `dashboard-tasks-page`, `dashboard-tasks-list`, `dashboard-tasks-detail`, `dashboard-tasks-detail-preview`, `dashboard-tasks-timeline`, and `dashboard-tasks-empty-state`.
+- Minimum placeholder hooks while pages remain shell-only: `dashboard-worker-queue-shell`, `dashboard-alerts-shell`, and `dashboard-health-shell`.
+- Read-only smoke matrix is frozen as follows: `/` redirects to `/overview`; primary nav renders all six destinations; overview covers the happy path, empty-store state, and unreadable-store `500` shell; jobs covers the live list/detail shell and explicit empty-store state; tasks covers the live list/detail shell plus `detail.md` preview / timeline presence and explicit empty-store state; each remaining placeholder route returns `200`, marks the correct nav item active, shows the boundary note, and exposes no write controls.
 - When a placeholder page becomes live in a later approved slice, that same change must update selectors, expand Playwright coverage, and amend this spec instead of silently widening behavior.
 
 ### Regression Gate Contract
 - A dashboard-affecting slice is not done until `task-bridge -h` succeeds and still lists the baseline CLI commands without pulling dashboard web dependencies into plain CLI startup.
 - Lazy import protection stays mandatory: `tests/test_cli.py` must continue proving that importing `task_bridge.cli` or `task_bridge.dashboard` does not eagerly load `task_bridge.dashboard.app`.
 - Isolated-home smoke stays mandatory: `TASK_BRIDGE_HOME=/tmp/task-bridge-smoke-<marker> task-bridge create-job --title "smoke test"` must succeed without touching the default task-bridge home.
-- Dashboard help/query expectations stay mandatory: `task-bridge dashboard -h` and `tests/test_dashboard.py` must continue to pass for the read-only shell.
+- Dashboard help/query expectations stay mandatory: `task-bridge dashboard -h` and `tests/test_dashboard.py` must continue to pass for the read-only dashboard surface.
 - Python regression gate for dashboard slices: `python -m pytest -q` is the preferred full gate; at minimum, the slice owner must run and pass `python -m pytest -q tests/test_cli.py tests/test_dashboard.py`.
 - Browser regression gate for dashboard slices: `npx playwright test tests/playwright/dashboard.smoke.spec.js` must pass in a prepared environment. If the browser stack is unavailable locally, the slice is not done until that smoke runs in CI or an equivalent prepared environment.
 - Any change that widens dashboard behavior without simultaneously updating the relevant tests, selectors, and this spec is incomplete.

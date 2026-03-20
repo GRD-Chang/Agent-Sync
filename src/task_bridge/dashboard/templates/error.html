@@ -2,11 +2,11 @@
 
 {% block content %}
 <section class="placeholder-panel" aria-labelledby="error-title">
-  <p class="eyebrow">{{ ui.overview.eyebrow }}</p>
-  <h2 id="error-title" data-testid="dashboard-page-title">{{ ui.overview.error_title }}</h2>
-  <p>{{ ui.overview.error_body }}</p>
-  <div class="state-panel error-state" role="alert" data-testid="dashboard-overview-error-state">
-    <h3>{{ ui.overview.error_label }}</h3>
+  <p class="eyebrow">{{ ui.nav[active_page] }}</p>
+  <h2 id="error-title" data-testid="dashboard-page-title">{{ error_title }}</h2>
+  <p>{{ error_body }}</p>
+  <div class="state-panel error-state" role="alert" data-testid="{{ error_testid }}">
+    <h3>{{ error_label }}</h3>
     <p>{{ error_message }}</p>
   </div>
 </section>
