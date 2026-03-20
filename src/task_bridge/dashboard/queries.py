@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -12,34 +11,23 @@ from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
 from .detail_preview import load_detail_preview as _load_detail_preview
 from .formatting import (
     format_timestamp as _format_timestamp,
-    is_overdue as _is_overdue,
     optional_display_text as _optional_display_text,
     optional_text as _optional_text,
-    parse_timestamp as _parse_timestamp,
     truncate as _truncate,
 )
 from .i18n import DEFAULT_LOCALE, get_messages, resolve_locale
-from .pagination import paginate_items
-from .pagination import parse_page_number as _parse_page_number
 from .snapshots import (
-    AlertTaskGroup,
-    AlertTaskSnapshot,
     AlertsSnapshot,
     DetailBackLink,
-    FollowupTaskGroup,
-    FollowupTaskSnapshot,
     HealthCheck,
     HealthSnapshot,
     JobsPageSnapshot,
     OverviewSnapshot,
-    PaginationSnapshot,
-    QueueTaskSnapshot,
     RecentUpdate,
     TaskDetailSnapshot,
     TaskStatusMetric,
     TasksPageSnapshot,
     TaskTimelineEvent,
-    WorkerLaneSnapshot,
     WorkerQueueSnapshot,
     WorkerSnapshot,
 )
@@ -48,13 +36,11 @@ CORE_TASK_STATES = ["queued", "running", "done", "blocked", "failed"]
 TASK_CARD_STATES = ("running", "blocked", "failed", "queued", "done")
 ACTIVE_TASK_STATES = {"queued", "running"}
 TERMINAL_TASK_STATES = {"done", "blocked", "failed"}
-ALERT_TASK_STATES = {"blocked", "failed"}
 RECENT_UPDATES_LIMIT = 6
 JOB_VIEW_OPTIONS = ("all", "current", "active", "terminal")
 JOB_DETAIL_VIEW_OPTIONS = ("tasks", "plan")
 UNASSIGNED_AGENT_FILTER = "__unassigned__"
 TASK_LIST_PAGE_SIZE = 12
-ALERT_LIST_PAGE_SIZE = 8
 
 
 class DashboardQueryService:
@@ -167,63 +153,9 @@ class DashboardQueryService:
         )
 
     def worker_queue(self) -> WorkerQueueSnapshot:
-        tasks = self.store.list_tasks(all_jobs=True)
-        worker_rows = infer_worker_status(tasks)
-        lanes: list[WorkerLaneSnapshot] = []
-        assigned_queue_depth = 0
-        for row in worker_rows:
-            agent = str(row["agent"])
-            queue = queue_for_agent(tasks, agent)
-            queued_tasks = [self._build_queue_task(task) for task in queue["queued_tasks"]]
-            assigned_queue_depth += len(queued_tasks)
-            running_task = next(
-                (
-                    task
-                    for task in tasks
-                    if str(task.get("assigned_agent") or "") == agent and str(task.get("state") or "queued") == "running"
-                ),
-                None,
-            )
-            running_label = None
-            running_text = None
-            if running_task is not None:
-                running_label, running_text = self._task_summary(running_task)
-            lanes.append(
-                WorkerLaneSnapshot(
-                    agent=agent,
-                    status=str(row["status"]),
-                    running_task_id=_optional_text(row.get("running_task_id")),
-                    running_summary_label=running_label,
-                    running_summary_text=running_text,
-                    queued_tasks=queued_tasks,
-                )
-            )
-        unassigned = [
-            self._build_queue_task(task)
-            for task in sorted(
-                [
-                    task
-                    for task in tasks
-                    if str(task.get("state") or "queued") == "queued" and not _optional_text(task.get("assigned_agent"))
-                ],
-                key=lambda item: (str(item.get("createdAt") or ""), str(item["job_id"]), str(item["id"])),
-            )
-        ]
-        busy_workers = sum(1 for lane in lanes if lane.status == "busy")
-        return WorkerQueueSnapshot(
-            home_path=self.home_path,
-            current_job_id=self.store.get_current_job_id(),
-            generated_at=_format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"]),
-            worker_count=len(lanes),
-            busy_workers=busy_workers,
-            idle_workers=max(len(lanes) - busy_workers, 0),
-            running_tasks=sum(1 for lane in lanes if lane.running_task_id),
-            assigned_queue_depth=assigned_queue_depth,
-            unassigned_queue_depth=len(unassigned),
-            lanes=lanes,
-            unassigned_queued_tasks=unassigned,
-            has_activity=bool(tasks),
-        )
+        from .worker_queue_page_queries import WorkerQueuePageQueryAssembler
+
+        return WorkerQueuePageQueryAssembler(self).build()
 
     def alerts(
         self,
@@ -231,66 +163,11 @@ class DashboardQueryService:
         risk_page: str | None = None,
         followup_page: str | None = None,
     ) -> AlertsSnapshot:
-        self.store.list_jobs()
-        tasks = self.store.list_tasks(all_jobs=True)
-        status_counts = Counter(str(task.get("state") or "queued") for task in tasks)
-        now_value = _parse_timestamp(self._now_provider())
-        risk_tasks_all = [
-            self._build_alert_task(task)
-            for task in self._sort_tasks_for_cards(
-                [task for task in tasks if str(task.get("state") or "queued") in ALERT_TASK_STATES]
-            )
-        ]
-        followup_raw = [
-            task
-            for task in tasks
-            if _optional_text(_task_scheduler(task).get("leader_followup_due_at"))
-            and _task_scheduler(task).get("leader_followup_sent_at") is None
-        ]
-        followup_raw.sort(
-            key=lambda item: (
-                0 if _is_overdue(_optional_text(_task_scheduler(item).get("leader_followup_due_at")), now_value) else 1,
-                str(_task_scheduler(item).get("leader_followup_due_at") or ""),
-                str(item["job_id"]),
-                str(item["id"]),
-            )
-        )
-        followups_all = [self._build_followup_task(task, now_value=now_value) for task in followup_raw]
-        risk_tasks, risk_pagination = paginate_items(
-            risk_tasks_all,
-            page=_parse_page_number(risk_page),
-            per_page=ALERT_LIST_PAGE_SIZE,
-            href_builder=lambda page_number: self._alerts_path(
-                risk_page=page_number,
-                followup_page=_parse_page_number(followup_page),
-            )
-            + "#alerts-risk-list",
-        )
-        followups, followup_pagination = paginate_items(
-            followups_all,
-            page=_parse_page_number(followup_page),
-            per_page=ALERT_LIST_PAGE_SIZE,
-            href_builder=lambda page_number: self._alerts_path(
-                risk_page=risk_pagination.page,
-                followup_page=page_number,
-            )
-            + "#alerts-followups",
-        )
-        return AlertsSnapshot(
-            home_path=self.home_path,
-            current_job_id=self.store.get_current_job_id(),
-            generated_at=_format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"]),
-            blocked_count=status_counts.get("blocked", 0),
-            failed_count=status_counts.get("failed", 0),
-            pending_followups_count=len(followups_all),
-            overdue_followups_count=sum(1 for task in followups_all if task.is_overdue),
-            risk_tasks=risk_tasks,
-            risk_groups=self._build_alert_risk_groups(risk_tasks),
-            followup_tasks=followups,
-            followup_groups=self._build_followup_groups(followups),
-            risk_pagination=risk_pagination,
-            followup_pagination=followup_pagination,
-            has_alerts=bool(risk_tasks_all or followups_all),
+        from .alerts_page_queries import AlertsPageQueryAssembler
+
+        return AlertsPageQueryAssembler(self).build(
+            risk_page=risk_page,
+            followup_page=followup_page,
         )
 
     def health(self) -> HealthSnapshot:
@@ -614,64 +491,6 @@ class DashboardQueryService:
             ("task", task_id or ""),
         )
 
-    def _alerts_path(
-        self,
-        *,
-        risk_page: int | None = None,
-        followup_page: int | None = None,
-    ) -> str:
-        return self._path_with_locale(
-            "/alerts",
-            ("risk_page", str(risk_page) if risk_page and risk_page > 1 else ""),
-            ("followup_page", str(followup_page) if followup_page and followup_page > 1 else ""),
-        )
-
-    def _build_queue_task(self, task: dict[str, object]) -> QueueTaskSnapshot:
-        summary_label, summary_text = self._task_summary(task)
-        return QueueTaskSnapshot(
-            task_id=str(task["id"]),
-            job_id=str(task["job_id"]),
-            assigned_agent=_optional_text(task.get("assigned_agent")) or self._messages["common"]["none"],
-            state=str(task.get("state") or "queued"),
-            updated_at=_format_timestamp(
-                str(task.get("updatedAt") or task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
-            summary_label=summary_label,
-            summary_text=summary_text,
-        )
-
-    def _build_alert_task(self, task: dict[str, object]) -> AlertTaskSnapshot:
-        summary_label, summary_text = self._task_summary(task)
-        return AlertTaskSnapshot(
-            task_id=str(task["id"]),
-            job_id=str(task["job_id"]),
-            assigned_agent=_optional_text(task.get("assigned_agent")) or self._messages["recent_update"]["unassigned"],
-            state=str(task.get("state") or "queued"),
-            updated_at=_format_timestamp(
-                str(task.get("updatedAt") or task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
-            summary_label=summary_label,
-            summary_text=summary_text,
-        )
-
-    def _build_followup_task(self, task: dict[str, object], *, now_value: datetime | None) -> FollowupTaskSnapshot:
-        summary_label, summary_text = self._task_summary(task)
-        scheduler = _task_scheduler(task)
-        due_at_raw = _optional_text(scheduler.get("leader_followup_due_at")) or ""
-        return FollowupTaskSnapshot(
-            task_id=str(task["id"]),
-            job_id=str(task["job_id"]),
-            state=str(task.get("state") or "queued"),
-            notify_target=_optional_text(task.get("notify_target")) or self._messages["common"]["unknown"],
-            final_notified_at=_format_timestamp(str(scheduler.get("final_notified_at") or ""), fallback=self._messages["common"]["unknown"]),
-            due_at=_format_timestamp(due_at_raw, fallback=self._messages["common"]["unknown"]),
-            is_overdue=_is_overdue(due_at_raw, now_value),
-            summary_label=summary_label,
-            summary_text=summary_text,
-        )
-
     def _task_summary(self, task: dict[str, object]) -> tuple[str, str]:
         result_text = _optional_display_text(task.get("result"))
         requirement_text = _optional_display_text(task.get("requirement"))
@@ -699,48 +518,6 @@ class DashboardQueryService:
         )
         ordered.sort(key=lambda item: _task_state_priority(str(item.get("state") or "queued")))
         return ordered
-
-    def _build_alert_risk_groups(self, tasks: list[AlertTaskSnapshot]) -> list[AlertTaskGroup]:
-        groups: list[AlertTaskGroup] = []
-        for state in ("blocked", "failed"):
-            grouped_tasks = [task for task in tasks if task.state == state]
-            if not grouped_tasks:
-                continue
-            groups.append(
-                AlertTaskGroup(
-                    state=state,
-                    label=self._messages["status"][state]["label"],
-                    description=self._messages["status"][state]["description"],
-                    count=len(grouped_tasks),
-                    tasks=grouped_tasks,
-                )
-            )
-        return groups
-
-    def _build_followup_groups(self, tasks: list[FollowupTaskSnapshot]) -> list[FollowupTaskGroup]:
-        definitions = (
-            ("due", self._messages["alerts"]["followup_due"], self._messages["status"]["blocked"]["description"]),
-            (
-                "scheduled",
-                self._messages["alerts"]["followup_scheduled"],
-                self._messages["alerts"]["followup_note"],
-            ),
-        )
-        groups: list[FollowupTaskGroup] = []
-        for state, label, description in definitions:
-            grouped_tasks = [task for task in tasks if (task.is_overdue if state == "due" else not task.is_overdue)]
-            if not grouped_tasks:
-                continue
-            groups.append(
-                FollowupTaskGroup(
-                    state=state,
-                    label=label,
-                    description=description,
-                    count=len(grouped_tasks),
-                    tasks=grouped_tasks,
-                )
-        )
-        return groups
 
 
 def _task_scheduler(task: dict[str, object]) -> dict[str, object]:
