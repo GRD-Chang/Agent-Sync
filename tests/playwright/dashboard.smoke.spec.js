@@ -102,8 +102,8 @@ async function getTestIdWidth(page, testId) {
   }, testId);
 }
 
-async function expectSelectorContained(page, selector) {
-  const metrics = await page.locator(selector).first().evaluate((node) => {
+async function expectLocatorContained(locator) {
+  const metrics = await locator.evaluate((node) => {
     const rect = node.getBoundingClientRect();
     return {
       clientWidth: node.clientWidth,
@@ -115,6 +115,16 @@ async function expectSelectorContained(page, selector) {
 
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
   expect(metrics.right).toBeLessThanOrEqual(metrics.viewport + 1);
+}
+
+async function expectReadOnlyContent(page) {
+  await expect(page.getByTestId("dashboard-page-chrome")).toBeVisible();
+  await expect(page.getByTestId("dashboard-page-tools")).toBeVisible();
+  await expect(
+    page
+      .locator('main > :not([data-testid="dashboard-page-chrome"])')
+      .locator("button, form, input, select, textarea"),
+  ).toHaveCount(0);
 }
 
 async function getFontSnapshot(page) {
@@ -463,7 +473,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
     );
-    await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+    await expectReadOnlyContent(page);
 
     await page.getByTestId(`dashboard-jobs-task-card-${seeded.taskA2.id}`).click();
     await expect(page).toHaveURL(
@@ -490,7 +500,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-jobs-work-plan")).toContainText("Live work plan");
     await expect(page.getByTestId("dashboard-jobs-work-plan")).toContainText("clear blocked review path");
     await expect(page.getByTestId("dashboard-jobs-task-groups")).toHaveCount(0);
-    await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+    await expectReadOnlyContent(page);
 
     await page.getByTestId("dashboard-jobs-detail-view-tasks").click();
     await expect(page).toHaveURL(new RegExp(`/jobs\\?job=${seeded.jobB.id}(?:#job-task-groups)?$`));
@@ -522,7 +532,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
       Math.round(node.getBoundingClientRect().top),
     );
     expect(taskTimelineTop).toBeLessThan(taskPreviewTop);
-    await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+    await expectReadOnlyContent(page);
 
     await page.goto(
       `${server.baseUrl}/tasks?job=${seeded.jobA.id}&state=queued&agent=code-agent&task=${seeded.taskA1.id}`,
@@ -664,14 +674,20 @@ test("job detail task cards keep long agent labels and metadata contained", asyn
     await expect(page.locator(cardSelector)).toBeVisible();
     await expect(page.locator(cardSelector)).toContainText("agent-with-an-extremely-long-routing-label");
     await expectNoHorizontalOverflow(page);
-    await expectSelectorContained(page, cardSelector);
-    await expectSelectorContained(page, `${cardSelector} .task-preview-meta`);
+    await expectLocatorContained(page.locator(cardSelector));
+    await expectLocatorContained(page.locator(`${cardSelector} .task-preview-meta`));
 
     await page.locator(cardSelector).click();
     await expect(page.getByTestId("dashboard-jobs-task-detail")).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    await expectSelectorContained(page, '[data-testid="dashboard-jobs-task-detail"] .detail-card');
-    await expectSelectorContained(page, '[data-testid="dashboard-jobs-task-detail"] .meta-grid');
+    await expectLocatorContained(
+      page.locator('[data-testid="dashboard-jobs-task-detail"] .detail-stack > .detail-card:first-child'),
+    );
+    await expectLocatorContained(
+      page.locator(
+        '[data-testid="dashboard-jobs-task-detail"] .detail-stack > .detail-card:first-child .meta-grid',
+      ),
+    );
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
@@ -705,7 +721,7 @@ test("worker queue, alerts, and health render live read-only base pages", async 
       await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
         "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
       );
-      await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+      await expectReadOnlyContent(page);
     }
 
     await page.goto(`${server.baseUrl}/worker-queue`);
