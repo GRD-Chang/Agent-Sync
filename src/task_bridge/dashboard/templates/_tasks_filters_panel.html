@@ -1,0 +1,41 @@
+<section class="route-panel" aria-labelledby="tasks-filters-title" data-testid="dashboard-tasks-filters">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.tasks.filters_eyebrow }}</p>
+    <h2 id="tasks-filters-title">{{ ui.tasks.filters_title }}</h2>
+    <p class="section-note">{{ ui.tasks.filters_note }}</p>
+  </div>
+  <div class="route-groups">
+    {% for group in tasks.filter_groups %}
+    <article class="route-group">
+      <h3>{{ group.label }}</h3>
+      <div class="filter-chip-group">
+        {% for option in group.options %}
+        <a
+          class="filter-chip{% if option.is_active %} is-active{% endif %}"
+          data-testid="dashboard-tasks-filter-{{ group.key }}-{{ option.key }}"
+          href="{{ option.href }}"
+        >
+          <span>{{ option.label }}</span>
+          <strong>{{ option.count }}</strong>
+        </a>
+        {% endfor %}
+      </div>
+    </article>
+    {% endfor %}
+    <article class="route-group route-group-boundary">
+      <p class="eyebrow">{{ ui.tasks.read_only_boundary }}</p>
+      <p class="section-note">{{ ui.tasks.read_only_boundary_note }}</p>
+      <p class="route-group-note">{{ ui.tasks.filters_match_count.format(visible_tasks_count=tasks.visible_tasks_count) }}</p>
+      {% if tasks.applied_filters %}
+      <div class="token-row">
+        {% for item in tasks.applied_filters %}
+        <a class="token-link" href="{{ item.clear_href }}">{{ item.label }}: {{ item.value }}</a>
+        {% endfor %}
+      </div>
+      <a class="text-link" href="{{ tasks.clear_filters_href }}">{{ ui.tasks.clear_filters }}</a>
+      {% else %}
+      <p class="section-note">{{ ui.tasks.no_filters }}</p>
+      {% endif %}
+    </article>
+  </div>
+</section>

@@ -1,0 +1,19 @@
+{% from "_task_detail_panel.html" import render_task_detail %}
+
+<section class="detail-shell" aria-labelledby="tasks-detail-title" data-testid="dashboard-tasks-detail-shell">
+  {% if tasks.detail_back_link %}
+  <a class="inline-back-link" href="{{ tasks.detail_back_link.href }}">{{ tasks.detail_back_link.label }}</a>
+  {% endif %}
+  {{ render_task_detail(
+    tasks.selected_task,
+    ui,
+    "tasks-detail",
+    "tasks-detail-title",
+    "dashboard-tasks-detail",
+    "dashboard-tasks-detail-preview",
+    "dashboard-tasks-timeline",
+    ui.tasks.detail_eyebrow,
+    ui.tasks.detail_title,
+    ui.tasks.detail_note
+  ) }}
+</section>

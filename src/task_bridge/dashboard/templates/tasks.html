@@ -1,6 +1,4 @@
 {% extends "base.html" %}
-{% from "_pagination.html" import render_pagination %}
-{% from "_task_detail_panel.html" import render_task_detail %}
 
 {% block content %}
 <section class="hero-panel" aria-labelledby="tasks-title" data-testid="dashboard-tasks-page">
@@ -46,143 +44,12 @@
   <p>{{ ui.tasks.empty_body }}</p>
 </section>
 {% else %}
-<section class="route-panel" aria-labelledby="tasks-filters-title" data-testid="dashboard-tasks-filters">
-  <div class="section-heading">
-    <p class="eyebrow">{{ ui.tasks.filters_eyebrow }}</p>
-    <h2 id="tasks-filters-title">{{ ui.tasks.filters_title }}</h2>
-    <p class="section-note">{{ ui.tasks.filters_note }}</p>
-  </div>
-  <div class="route-groups">
-    {% for group in tasks.filter_groups %}
-    <article class="route-group">
-      <h3>{{ group.label }}</h3>
-      <div class="filter-chip-group">
-        {% for option in group.options %}
-        <a
-          class="filter-chip{% if option.is_active %} is-active{% endif %}"
-          data-testid="dashboard-tasks-filter-{{ group.key }}-{{ option.key }}"
-          href="{{ option.href }}"
-        >
-          <span>{{ option.label }}</span>
-          <strong>{{ option.count }}</strong>
-        </a>
-        {% endfor %}
-      </div>
-    </article>
-    {% endfor %}
-    <article class="route-group route-group-boundary">
-      <p class="eyebrow">{{ ui.tasks.read_only_boundary }}</p>
-      <p class="section-note">{{ ui.tasks.read_only_boundary_note }}</p>
-      <p class="route-group-note">{{ ui.tasks.filters_match_count.format(visible_tasks_count=tasks.visible_tasks_count) }}</p>
-      {% if tasks.applied_filters %}
-      <div class="token-row">
-        {% for item in tasks.applied_filters %}
-        <a class="token-link" href="{{ item.clear_href }}">{{ item.label }}: {{ item.value }}</a>
-        {% endfor %}
-      </div>
-      <a class="text-link" href="{{ tasks.clear_filters_href }}">{{ ui.tasks.clear_filters }}</a>
-      {% else %}
-      <p class="section-note">{{ ui.tasks.no_filters }}</p>
-      {% endif %}
-    </article>
-  </div>
-</section>
+{% include "_tasks_filters_panel.html" %}
 
 {% if tasks.selected_task %}
-<section class="detail-shell" aria-labelledby="tasks-detail-title" data-testid="dashboard-tasks-detail-shell">
-  {% if tasks.detail_back_link %}
-  <a class="inline-back-link" href="{{ tasks.detail_back_link.href }}">{{ tasks.detail_back_link.label }}</a>
-  {% endif %}
-  {{ render_task_detail(
-    tasks.selected_task,
-    ui,
-    "tasks-detail",
-    "tasks-detail-title",
-    "dashboard-tasks-detail",
-    "dashboard-tasks-detail-preview",
-    "dashboard-tasks-timeline",
-    ui.tasks.detail_eyebrow,
-    ui.tasks.detail_title,
-    ui.tasks.detail_note
-  ) }}
-</section>
+{% include "_tasks_detail_shell.html" %}
 {% else %}
-<section id="tasks-registry" class="browse-panel tasks-list-shell" aria-labelledby="tasks-list-title" data-testid="dashboard-tasks-list">
-  <div class="section-heading">
-    <p class="eyebrow">{{ ui.tasks.list_eyebrow }}</p>
-    <h2 id="tasks-list-title">{{ ui.tasks.list_title }}</h2>
-    <p class="section-note">{{ ui.tasks.list_note }}</p>
-  </div>
-  <div class="status-ribbon" data-testid="dashboard-tasks-status-ribbon">
-    {% for metric in tasks.visible_status_metrics %}
-    <article class="status-summary-card status-summary-card--{{ metric.state }}">
-      <p class="summary-label">{{ metric.label }}</p>
-      <p class="status-summary-value">{{ metric.count }}</p>
-      <p class="status-summary-note">{{ metric.description }}</p>
-    </article>
-    {% endfor %}
-  </div>
-
-  {% if tasks.filtered_empty %}
-  <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-tasks-filter-empty">
-    <h3>{{ ui.tasks.filters_empty_title }}</h3>
-    <p>{{ ui.tasks.filters_empty_body }}</p>
-  </div>
-  {% else %}
-  <div class="status-group-list">
-    {% for group in tasks.task_groups %}
-    <section class="status-group-card status-group-card--{{ group.state }}" data-testid="dashboard-tasks-group-{{ group.state }}">
-      <header class="status-group-header">
-        <div>
-          <p class="eyebrow">{{ group.label }}</p>
-          <h3>{{ group.label }}</h3>
-        </div>
-        <div class="status-group-meta">
-          <span class="status-pill status-{{ group.state }}">{{ group.count }}</span>
-          <p>{{ group.description }}</p>
-        </div>
-      </header>
-      <div class="tasks-card-grid item-grid">
-        {% for item in group.tasks %}
-        <a
-          class="list-card task-card{% if item.is_selected %} is-selected{% endif %}"
-          data-testid="dashboard-tasks-list-card-{{ item.task_id }}"
-          href="{{ item.detail_href }}"
-        >
-          <div class="list-card-header">
-            <div>
-              <h3>{{ item.task_id }}</h3>
-              <p class="list-card-meta">{{ item.job_id }} / {{ item.assigned_agent }}</p>
-            </div>
-            <div class="list-card-badges">
-              <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
-            </div>
-          </div>
-          <p class="list-card-summary">{{ item.summary_label }}: {{ item.summary_text }}</p>
-          <dl class="list-card-stats">
-            <div>
-              <dt>{{ ui.tasks.created_at }}</dt>
-              <dd>{{ item.created_at }}</dd>
-            </div>
-            <div>
-              <dt>{{ ui.tasks.updated_at }}</dt>
-              <dd>{{ item.updated_at }}</dd>
-            </div>
-            <div>
-              <dt>{{ ui.tasks.detail_status }}</dt>
-              <dd>{{ item.detail_status_label }}</dd>
-            </div>
-          </dl>
-          <p class="list-card-foot">{{ ui.tasks.job_id }}: {{ item.job_id }}</p>
-        </a>
-        {% endfor %}
-      </div>
-    </section>
-    {% endfor %}
-  </div>
-  {{ render_pagination(tasks.pagination, ui, "dashboard-tasks-pagination") }}
-  {% endif %}
-</section>
+{% include "_tasks_registry_panel.html" %}
 {% endif %}
 {% endif %}
 {% endblock %}
