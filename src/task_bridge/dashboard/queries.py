@@ -19,7 +19,6 @@ from .i18n import DEFAULT_LOCALE, get_messages, resolve_locale
 from .snapshots import (
     AlertsSnapshot,
     DetailBackLink,
-    HealthCheck,
     HealthSnapshot,
     JobsPageSnapshot,
     OverviewSnapshot,
@@ -171,66 +170,9 @@ class DashboardQueryService:
         )
 
     def health(self) -> HealthSnapshot:
-        messages = self._messages["health"]
-        current_job_id = self.store.get_current_job_id()
-        generated_at = _format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"])
-        jobs_count = 0
-        tasks_count = 0
-        records_status = "ok"
-        records_detail = messages["records_ok"].format(jobs_count=jobs_count, tasks_count=tasks_count)
-        try:
-            jobs = self.store.list_jobs()
-            tasks = self.store.list_tasks(all_jobs=True)
-            jobs_count = len(jobs)
-            tasks_count = len(tasks)
-            records_detail = messages["records_ok"].format(jobs_count=jobs_count, tasks_count=tasks_count)
-        except Exception:
-            records_status = "warn"
-            records_detail = messages["records_warn"]
-        worker_prompt_entries = 0
-        leader_last_running_notice_at = messages["leader_last_running_notice_empty"]
-        daemon_status = "ok"
-        daemon_detail = messages["daemon_ok_existing"]
-        cache_status = "ok"
-        cache_detail = messages["cache_ok"].format(
-            worker_prompt_entries=worker_prompt_entries,
-            leader_last_running_notice_at=leader_last_running_notice_at,
-        )
-        try:
-            daemon_exists = self.store.daemon_state_path().exists()
-            daemon_state = self.store.load_daemon_state()
-            worker_prompt_entries = len(daemon_state["worker_last_prompt_at"])
-            leader_last_running_notice_at = _format_timestamp(
-                str(daemon_state.get("leader_last_running_notice_at") or ""),
-                fallback=messages["leader_last_running_notice_empty"],
-            )
-            daemon_detail = messages["daemon_ok_existing"] if daemon_exists else messages["daemon_ok_default"]
-            cache_detail = messages["cache_ok"].format(
-                worker_prompt_entries=worker_prompt_entries,
-                leader_last_running_notice_at=leader_last_running_notice_at,
-            )
-        except Exception:
-            daemon_status = "warn"
-            cache_status = "warn"
-            daemon_detail = messages["daemon_warn"]
-            cache_detail = messages["cache_warn"]
-            leader_last_running_notice_at = messages["leader_last_running_notice_empty"]
-        checks = [
-            HealthCheck("store-home", messages["store_home_check"], "ok", self.home_path),
-            HealthCheck("records", messages["records_check"], records_status, records_detail),
-            HealthCheck("daemon-state", messages["daemon_check"], daemon_status, daemon_detail),
-            HealthCheck("prompt-cache", messages["cache_check"], cache_status, cache_detail),
-        ]
-        return HealthSnapshot(
-            home_path=self.home_path,
-            current_job_id=current_job_id,
-            generated_at=generated_at,
-            jobs_count=jobs_count,
-            tasks_count=tasks_count,
-            worker_prompt_entries=worker_prompt_entries,
-            leader_last_running_notice_at=leader_last_running_notice_at,
-            checks=checks,
-        )
+        from .health_page_queries import HealthPageQueryAssembler
+
+        return HealthPageQueryAssembler(self).build()
 
     def _build_recent_update(self, task: dict[str, object]) -> RecentUpdate:
         summary_label, summary_text = self._task_summary(task)

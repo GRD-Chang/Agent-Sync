@@ -869,6 +869,22 @@ def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
     }
 
 
+def test_dashboard_health_query_defaults_when_daemon_state_file_is_absent(home: Path) -> None:
+    seed_dashboard_store(home)
+
+    health = DashboardQueryService(home).health()
+    checks = {check.key: check for check in health.checks}
+
+    assert health.jobs_count == 2
+    assert health.tasks_count == 3
+    assert health.worker_prompt_entries == 0
+    assert health.leader_last_running_notice_at == "None recorded"
+    assert checks["daemon-state"].status == "ok"
+    assert checks["daemon-state"].detail == "`daemon_state.json` has not been written yet; default empty values are shown."
+    assert checks["prompt-cache"].status == "ok"
+    assert checks["prompt-cache"].detail == "0 worker prompt cache entries. Last leader running notice: None recorded."
+
+
 def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
     store = TaskStore(home)
     store.ensure_dirs()
