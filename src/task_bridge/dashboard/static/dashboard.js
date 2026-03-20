@@ -1,10 +1,11 @@
 (function () {
   const FONT_STORAGE_KEY = "task-bridge.dashboard.font";
   const SCROLL_STORAGE_KEY = "task-bridge.dashboard.scroll";
-  const FONT_PRESETS = new Set(["editorial", "sans", "mono"]);
+  const DEFAULT_FONT_PRESET = "sans";
+  const FONT_PRESETS = new Set(["sans", "editorial", "precision", "mono"]);
 
   function normalizeFontPreset(value) {
-    return FONT_PRESETS.has(value) ? value : "editorial";
+    return FONT_PRESETS.has(value) ? value : DEFAULT_FONT_PRESET;
   }
 
   function syncFontButtons(activePreset) {
@@ -17,6 +18,7 @@
 
   function applyFontPreset(preset) {
     const normalized = normalizeFontPreset(preset);
+    document.documentElement.setAttribute("data-font-preset", normalized);
     document.body.setAttribute("data-font-preset", normalized);
     syncFontButtons(normalized);
     try {
@@ -34,7 +36,12 @@
       void error;
     }
 
-    applyFontPreset(storedPreset || document.body.getAttribute("data-font-preset") || "editorial");
+    applyFontPreset(
+      storedPreset ||
+        document.documentElement.getAttribute("data-font-preset") ||
+        document.body.getAttribute("data-font-preset") ||
+        DEFAULT_FONT_PRESET,
+    );
 
     document.querySelectorAll("[data-font-option]").forEach((button) => {
       button.addEventListener("click", (event) => {

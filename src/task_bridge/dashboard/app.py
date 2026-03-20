@@ -31,9 +31,11 @@ NAV_ITEMS = [
     NavItem("alerts", "/alerts"),
     NavItem("health", "/health"),
 ]
+DEFAULT_FONT_PRESET = "sans"
 FONT_PRESET_ITEMS = (
-    {"key": "editorial"},
     {"key": "sans"},
+    {"key": "editorial"},
+    {"key": "precision"},
     {"key": "mono"},
 )
 
@@ -279,9 +281,15 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
         "locale": locale,
         "locale_options": _locale_options(request, locale),
         "font_options": [
-            {"key": item["key"], "label": ui["shell"]["font_options"][item["key"]]}
+            {
+                "key": item["key"],
+                "label": ui["shell"]["font_options"][item["key"]],
+                "sample": ui["shell"]["font_samples"][item["key"]],
+                "is_default": item["key"] == DEFAULT_FONT_PRESET,
+            }
             for item in FONT_PRESET_ITEMS
         ],
+        "default_font_preset": DEFAULT_FONT_PRESET,
         "page_chrome": _page_chrome_context(
             {
                 "active_page": active_page,

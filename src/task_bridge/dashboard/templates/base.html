@@ -1,13 +1,29 @@
 <!DOCTYPE html>
-<html lang="{{ html_lang }}">
+<html lang="{{ html_lang }}" data-font-preset="{{ default_font_preset }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ page_title }} | task-bridge</title>
+    <script>
+      (function () {
+        try {
+          var preset = window.localStorage.getItem("task-bridge.dashboard.font");
+          if (preset) {
+            document.documentElement.setAttribute("data-font-preset", preset);
+          }
+        } catch (error) {
+          void error;
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="{{ request.url_for('static', path='/dashboard.css') }}">
     <script defer src="{{ request.url_for('static', path='/dashboard.js') }}"></script>
   </head>
-  <body data-dashboard-page="{{ active_page }}" data-font-preset="editorial">
+  <body
+    data-dashboard-page="{{ active_page }}"
+    data-ui-locale="{{ locale }}"
+    data-font-preset="{{ default_font_preset }}"
+  >
     <a class="skip-link" href="#content">{{ ui.shell.skip_link }}</a>
     <div class="page-shell" data-testid="dashboard-shell">
       <header class="masthead">
@@ -33,14 +49,18 @@
           </section>
           <section class="locale-switcher" aria-label="{{ ui.shell.font_label }}" data-testid="dashboard-font-switch">
             <p class="aside-label">{{ ui.shell.font_label }}</p>
-            <div class="locale-links">
+            <div class="font-links" role="group" aria-label="{{ ui.shell.font_label }}">
               {% for option in font_options %}
-              <a
-                class="locale-link font-link{% if loop.first %} is-active{% endif %}"
+              <button
+                type="button"
+                class="font-link{% if option.is_default %} is-active{% endif %}"
                 data-font-option="{{ option.key }}"
                 data-testid="dashboard-font-{{ option.key }}"
-                href="#font-{{ option.key }}"
-              >{{ option.label }}</a>
+                aria-pressed="{% if option.is_default %}true{% else %}false{% endif %}"
+              >
+                <span class="font-link-label">{{ option.label }}</span>
+                <span class="font-link-sample">{{ option.sample }}</span>
+              </button>
               {% endfor %}
             </div>
             <p class="locale-note">{{ ui.shell.font_note }}</p>

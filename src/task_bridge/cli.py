@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import socket
 import sys
 import time
@@ -229,8 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="启动 dashboard Web 界面",
         description=(
             "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Worker Queue / Alerts / Health。"
-            "支持通过页面内切换器在 en / zh-CN 之间切换界面语言；"
-            "启动后会输出访问地址、数据目录和远程 SSH 端口转发提示。"
+            "支持通过页面内切换器切换 en / zh-CN 与本地字体风格；"
+            "启动后会输出本机访问地址，并在需要时给出同网段访问、SSH 端口转发与端口冲突建议。"
         ),
         formatter_class=HelpFormatter,
     )
@@ -418,57 +419,119 @@ def _run_dashboard_command(*, home: Any, host: str, port: int) -> None:
 
 def _dashboard_port_issue(*, host: str, port: int) -> str | None:
     if not 0 < port < 65536:
-        return f"Dashboard 无法启动：端口 {port} 超出有效范围，请使用 1 到 65535 之间的端口。"
+        return f"Dashboard 启动失败：端口 {port} 超出有效范围，请使用 1 到 65535 之间的端口。"
     if _can_bind_dashboard_port(host=host, port=port):
         return None
 
     suggestion = _find_available_dashboard_port(host=host, start_port=port + 1)
     lines = [
-        f"Dashboard 无法启动：{host}:{port} 已被占用。",
-        "请释放当前端口，或改用其他未占用端口。",
+        f"Dashboard 启动失败：{host}:{port} 已被占用。",
+        "请释放当前端口，或换一个未占用的端口后重试。",
     ]
     if suggestion is not None:
-        lines.append(f"可改用：task-bridge dashboard --host {host} --port {suggestion}")
+        lines.append("建议直接改用下面的命令：")
+        lines.append(f"task-bridge dashboard --host {host} --port {suggestion}")
     return "\n".join(lines)
 
 
 def _dashboard_launch_message(*, home: Any, host: str, port: int) -> str:
     local_url = _dashboard_local_url(host=host, port=port)
+    network_url = _dashboard_network_url(host=host, port=port)
     ssh_target = _dashboard_ssh_target()
-    return "\n".join(
+    remote_session = _dashboard_is_remote_session()
+    gui_session = _dashboard_has_gui_session()
+    browser_line = (
+        "浏览器: 当前会话看起来像远程或无 GUI 环境；"
+        f"建议先在本机执行下面的 SSH 端口转发，再打开 {local_url}"
+        if remote_session or not gui_session
+        else f"浏览器: 当前命令不会自动打开浏览器；请手动打开 {local_url}"
+    )
+    remote_line = (
+        f"远程访问: ssh -L {port}:127.0.0.1:{port} {ssh_target}"
+        if ssh_target
+        else "远程访问: 未能自动识别可重连地址；请在本机用你平时登录这台机器时使用的主机名执行 SSH 端口转发，"
+        f"映射 {port}:127.0.0.1:{port}"
+    )
+    lines = [
+        "Dashboard 启动中",
+        f"监听地址: {host}",
+        f"监听端口: {port}",
+        f"本机打开: {local_url}",
+    ]
+    if network_url:
+        lines.append(f"同网段打开: {network_url}")
+    lines.extend(
         [
-            "Dashboard 启动中",
-            f"监听地址: {host}",
-            f"监听端口: {port}",
-            f"本机访问: {local_url}",
             f"数据目录: {home}",
-            f"SSH 端口转发: ssh -L {port}:127.0.0.1:{port} {ssh_target}",
-            "浏览器: 当前命令不会自动打开浏览器；如果你在远程或无 GUI 环境，请先建立端口转发，再在本机浏览器打开上面的地址。",
+            remote_line,
+            browser_line,
             "停止方式: Ctrl+C",
         ]
+    )
+    return "\n".join(
+        lines
     )
 
 
 def _dashboard_local_url(*, host: str, port: int) -> str:
     access_host = "127.0.0.1" if host in {"0.0.0.0", "::", "[::]", "localhost"} else host
+    return _dashboard_http_url(access_host, port=port)
+
+
+def _dashboard_network_url(*, host: str, port: int) -> str | None:
+    if host not in {"0.0.0.0", "::", "[::]"}:
+        return None
+    candidate = _dashboard_detect_network_host()
+    if not candidate:
+        return None
+    return _dashboard_http_url(candidate, port=port)
+
+
+def _dashboard_http_url(host: str, *, port: int) -> str:
+    access_host = host.strip()
     if ":" in access_host and not access_host.startswith("["):
         access_host = f"[{access_host}]"
     return f"http://{access_host}:{port}/overview"
 
 
-def _dashboard_ssh_target() -> str:
+def _dashboard_ssh_target() -> str | None:
+    override = os.environ.get("TASK_BRIDGE_DASHBOARD_SSH_TARGET", "").strip()
+    if override:
+        return override
+
     user = getpass.getuser().strip() or "user"
-    host = _dashboard_detect_ssh_host() or socket.gethostname().strip() or "remote-host"
+    host = _dashboard_detect_ssh_host()
+    if not host:
+        return None
     return host if "@" in host else f"{user}@{host}"
 
 
 def _dashboard_detect_ssh_host() -> str | None:
+    ssh_connection = os.environ.get("SSH_CONNECTION", "").strip().split()
+    if len(ssh_connection) >= 3:
+        candidate = _dashboard_clean_host_candidate(ssh_connection[2])
+        if candidate:
+            return candidate
+
+    for candidate in (
+        _dashboard_detect_network_host(),
+        socket.getfqdn().strip(),
+        socket.gethostname().strip(),
+    ):
+        cleaned = _dashboard_clean_host_candidate(candidate)
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _dashboard_detect_network_host() -> str | None:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(("8.8.8.8", 80))
             candidate = sock.getsockname()[0]
-        if candidate and candidate not in {"0.0.0.0", "127.0.0.1"}:
-            return candidate
+        cleaned = _dashboard_clean_host_candidate(candidate)
+        if cleaned:
+            return cleaned
     except OSError:
         pass
 
@@ -478,13 +541,37 @@ def _dashboard_detect_ssh_host() -> str | None:
             return None
         for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, None):
             if family == socket.AF_INET:
-                candidate = sockaddr[0]
-                if candidate and candidate not in {"0.0.0.0", "127.0.0.1"}:
-                    return candidate
+                cleaned = _dashboard_clean_host_candidate(sockaddr[0])
+                if cleaned:
+                    return cleaned
     except OSError:
         pass
 
     return None
+
+
+def _dashboard_clean_host_candidate(candidate: str | None) -> str | None:
+    if candidate is None:
+        return None
+    value = candidate.strip().strip("[]")
+    if not value:
+        return None
+
+    if value.lower() in {"localhost", "ip6-localhost"}:
+        return None
+    if value in {"0.0.0.0", "127.0.0.1", "::", "::1"}:
+        return None
+    return value
+
+
+def _dashboard_is_remote_session() -> bool:
+    return any(os.environ.get(name, "").strip() for name in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
+
+
+def _dashboard_has_gui_session() -> bool:
+    if os.name == "nt" or sys.platform == "darwin":
+        return True
+    return any(os.environ.get(name, "").strip() for name in ("DISPLAY", "WAYLAND_DISPLAY"))
 
 
 def _can_bind_dashboard_port(*, host: str, port: int) -> bool:

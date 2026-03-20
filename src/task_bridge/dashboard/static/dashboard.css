@@ -11,9 +11,9 @@
   --olive: #617239;
   --maroon: #7a3838;
   --shadow: 0 24px 60px rgba(44, 31, 16, 0.12);
-  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Songti SC", "STSong", Georgia, serif;
-  --font-body: "Charter", "Georgia", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif;
-  --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+  --font-display: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
 }
 
@@ -33,6 +33,8 @@ body {
   margin: 0;
   color: var(--ink);
   font-family: var(--font-body);
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
   background:
     linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)),
     repeating-linear-gradient(
@@ -44,16 +46,25 @@ body {
     );
 }
 
-body[data-font-preset="sans"] {
-  --font-display: "Avenir Next", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
-  --font-body: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
-  --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+:root[data-font-preset="editorial"],
+body[data-font-preset="editorial"] {
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+  --font-body: "Charter", "Georgia", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif;
+  --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
 }
 
+:root[data-font-preset="precision"],
+body[data-font-preset="precision"] {
+  --font-display: "IBM Plex Sans", "Bahnschrift", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-body: "IBM Plex Sans", "Aptos", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-ui: "IBM Plex Sans", "Aptos", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+}
+
+:root[data-font-preset="mono"],
 body[data-font-preset="mono"] {
   --font-display: "JetBrains Mono", "IBM Plex Mono", "Sarasa Mono SC", "SFMono-Regular", monospace;
-  --font-body: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
-  --font-ui: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-ui: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
 }
 
 body::before {
@@ -114,7 +125,7 @@ body::before {
 .aside-label,
 .top-nav a,
 .locale-link,
-.font-link,
+.font-link-label,
 .status-pill,
 .hero-stats dt,
 .worker-card dt,
@@ -192,6 +203,13 @@ body::before {
   margin-top: 0.75rem;
 }
 
+.font-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
 .locale-link {
   display: inline-flex;
   align-items: center;
@@ -207,12 +225,70 @@ body::before {
 .font-link {
   appearance: none;
   cursor: pointer;
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  width: 100%;
+  min-height: 5.25rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(30, 26, 22, 0.16);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.38);
+  color: var(--ink);
+  text-align: left;
+  font-family: var(--font-ui);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.font-link:hover,
+.font-link:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(30, 26, 22, 0.3);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.font-link:focus-visible {
+  outline: 2px solid rgba(217, 106, 50, 0.35);
+  outline-offset: 2px;
 }
 
 .locale-link.is-active {
   background: var(--ink);
   color: #fff;
   border-color: var(--ink);
+}
+
+.font-link.is-active {
+  background: linear-gradient(135deg, rgba(30, 26, 22, 0.94), rgba(93, 86, 77, 0.92));
+  border-color: rgba(30, 26, 22, 0.94);
+  box-shadow: 0 16px 32px rgba(30, 26, 22, 0.18);
+  color: #fff;
+}
+
+.font-link-label,
+.font-link-sample {
+  display: block;
+}
+
+.font-link-label {
+  color: inherit;
+}
+
+.font-link-sample {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.font-link.is-active .font-link-sample {
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .locale-note {

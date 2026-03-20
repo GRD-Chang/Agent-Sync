@@ -102,6 +102,13 @@ async function getTestIdWidth(page, testId) {
   }, testId);
 }
 
+async function getFontSnapshot(page) {
+  return page.evaluate(() => ({
+    body: getComputedStyle(document.body).fontFamily,
+    title: getComputedStyle(document.querySelector(".masthead h1")).fontFamily,
+  }));
+}
+
 function bridgeEnv(homeDir) {
   return {
     ...process.env,
@@ -312,7 +319,7 @@ test("overview renders the live happy path shell", async ({ page }) => {
     await expect(page.getByTestId("dashboard-locale-en")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-locale-zh-cn")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
+      "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
     );
     for (const item of navItems) {
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveText(item.label);
@@ -346,9 +353,9 @@ test("dashboard startup logs expose access guidance", async () => {
     await expect.poll(() => server.getLogs()).toContain("Dashboard 启动中");
     await expect.poll(() => server.getLogs()).toContain("监听地址: 127.0.0.1");
     await expect.poll(() => server.getLogs()).toContain("监听端口: 4182");
-    await expect.poll(() => server.getLogs()).toContain("本机访问: http://127.0.0.1:4182/overview");
-    await expect.poll(() => server.getLogs()).toContain("SSH 端口转发: ssh -L 4182:127.0.0.1:4182 ");
-    await expect.poll(() => server.getLogs()).toContain("当前命令不会自动打开浏览器");
+    await expect.poll(() => server.getLogs()).toContain("本机打开: http://127.0.0.1:4182/overview");
+    await expect.poll(() => server.getLogs()).toContain("远程访问: ssh -L 4182:127.0.0.1:4182 ");
+    await expect.poll(() => server.getLogs()).toContain("当前会话看起来像远程或无 GUI 环境");
     await expect.poll(() => server.getLogs()).toContain("停止方式: Ctrl+C");
   } finally {
     await stopDashboard(server);
@@ -393,7 +400,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("Open latest task here");
     await expect(page.getByText("Back to job cards")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
+      "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
     );
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
 
@@ -457,10 +464,10 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
       `${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}&lang=zh-CN`,
     );
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
-    await expect(page.getByTestId("dashboard-page-title")).toHaveText("任务总表与详情预览");
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("Tasks 总表与详情预览");
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("进行中");
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "集中浏览现有存储中的作业、任务、队列、告警与健康信息。",
+      "集中查看当前 store 里已有的 jobs、tasks、queue、告警和健康信息。",
     );
     await expect(page.getByTestId("dashboard-locale-zh-cn")).toHaveAttribute("aria-current", "page");
 
@@ -470,6 +477,57 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
     await expect(page.getByTestId("dashboard-page-title")).toHaveText(
       "Task register with detail preview",
     );
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("font presets switch and persist without breaking dense bilingual layout", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-fonts-"));
+  const seeded = await seedDenseDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4185);
+
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${server.baseUrl}/tasks?job=${seeded.job.id}&lang=zh-CN`);
+
+    await expect(page.getByTestId("dashboard-font-switch")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-font-preset", "sans");
+    await expect(page.locator("body")).toHaveAttribute("data-font-preset", "sans");
+    await expect(page.getByTestId("dashboard-font-sans")).toHaveAttribute("aria-pressed", "true");
+    const defaultFonts = await getFontSnapshot(page);
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByTestId("dashboard-font-editorial").click();
+    await expect(page.locator("html")).toHaveAttribute("data-font-preset", "editorial");
+    await expect(page.locator("body")).toHaveAttribute("data-font-preset", "editorial");
+    await expect(page.getByTestId("dashboard-font-editorial")).toHaveAttribute("aria-pressed", "true");
+    const editorialFonts = await getFontSnapshot(page);
+    expect(editorialFonts.body).not.toBe(defaultFonts.body);
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByTestId("dashboard-font-precision").click();
+    await expect(page.locator("html")).toHaveAttribute("data-font-preset", "precision");
+    await expect(page.locator("body")).toHaveAttribute("data-font-preset", "precision");
+    const precisionFonts = await getFontSnapshot(page);
+    expect(precisionFonts.body).not.toBe(editorialFonts.body);
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByTestId("dashboard-font-mono").click();
+    await expect(page.locator("html")).toHaveAttribute("data-font-preset", "mono");
+    await expect(page.locator("body")).toHaveAttribute("data-font-preset", "mono");
+    await expect(page.getByTestId("dashboard-font-mono")).toHaveAttribute("aria-pressed", "true");
+    const monoFonts = await getFontSnapshot(page);
+    expect(monoFonts.title).not.toBe(precisionFonts.title);
+    expect(await page.evaluate(() => window.localStorage.getItem("task-bridge.dashboard.font"))).toBe("mono");
+    await expectNoHorizontalOverflow(page);
+
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-font-preset", "mono");
+    await expect(page.locator("body")).toHaveAttribute("data-font-preset", "mono");
+    await expect(page.getByTestId("dashboard-font-mono")).toHaveAttribute("aria-pressed", "true");
+    await expectNoHorizontalOverflow(page);
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
@@ -501,7 +559,7 @@ test("worker queue, alerts, and health render live read-only base pages", async 
       await page.goto(`${server.baseUrl}${item.route}`);
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-        "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
+        "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
       );
       await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
     }

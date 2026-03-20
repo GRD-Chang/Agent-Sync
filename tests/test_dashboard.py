@@ -67,6 +67,10 @@ def flatten_message_keys(value: object, prefix: str = "") -> set[str]:
     return set()
 
 
+def assert_html_lang(body: str, lang: str) -> None:
+    assert re.search(rf'<html lang="{re.escape(lang)}"[^>]*>', body)
+
+
 def test_dashboard_help_describes_access_and_launch_guidance(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["dashboard", "-h"])
@@ -164,13 +168,42 @@ def test_dashboard_launch_message_shows_network_url_for_wildcard_host(monkeypatc
     assert "远程访问: ssh -L 8050:127.0.0.1:8050 dev@10.20.30.40" in output
 
 
+def test_dashboard_launch_message_guides_local_browser_when_gui_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import task_bridge.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@10.20.30.40")
+    monkeypatch.setattr(cli_module, "_dashboard_is_remote_session", lambda: False)
+    monkeypatch.setattr(cli_module, "_dashboard_has_gui_session", lambda: True)
+
+    output = cli_module._dashboard_launch_message(home=Path("/tmp/demo-home"), host="127.0.0.1", port=8052)
+
+    assert "浏览器: 当前命令不会自动打开浏览器；请手动打开 http://127.0.0.1:8052/overview" in output
+    assert "当前会话看起来像远程或无 GUI 环境" not in output
+    assert "远程访问: ssh -L 8052:127.0.0.1:8052 dev@10.20.30.40" in output
+
+
+def test_dashboard_detect_ssh_host_prefers_network_host_before_hostname(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import task_bridge.cli as cli_module
+
+    monkeypatch.delenv("SSH_CONNECTION", raising=False)
+    monkeypatch.setattr(cli_module, "_dashboard_detect_network_host", lambda: "10.10.0.8")
+    monkeypatch.setattr(cli_module.socket, "getfqdn", lambda: "builder-host.internal")
+    monkeypatch.setattr(cli_module.socket, "gethostname", lambda: "builder-host")
+
+    assert cli_module._dashboard_detect_ssh_host() == "10.10.0.8"
+
+
 def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     with TestClient(create_dashboard_app(home)) as client:
         response = client.get("/overview")
 
     assert response.status_code == 200
     body = response.text
-    assert "<html lang=\"en\">" in body
+    assert_html_lang(body, "en")
     assert "Live dispatch posture for the current task bridge" in body
     assert "Recent updates" in body
     assert "Current view" in body
@@ -190,6 +223,20 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert 'data-testid="dashboard-font-mono"' in body
     assert "MVP scope" not in body
     assert "read-only" not in body
+
+
+def test_dashboard_font_switcher_renders_samples_and_default_state(home: Path) -> None:
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview?lang=zh-CN")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-font-preset="sans"' in body
+    assert 'data-ui-locale="zh-CN"' in body
+    assert re.search(r'data-testid="dashboard-font-sans"[^>]*aria-pressed="true"', body)
+    assert re.search(r'data-testid="dashboard-font-editorial"[^>]*aria-pressed="false"', body)
+    assert "默认推荐，适合中英混排长时间阅读" in body
+    assert "更偏工程面板感，适合信息密集页面" in body
 
 
 def test_dashboard_i18n_catalogs_cover_same_surface() -> None:
@@ -215,7 +262,7 @@ def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> 
 
     assert zh_response.status_code == 200
     zh_body = zh_response.text
-    assert "<html lang=\"zh-CN\">" in zh_body
+    assert_html_lang(zh_body, "zh-CN")
     assert "Tasks 总表与详情预览" in zh_body
     assert "进行中" in zh_body
     assert 'data-testid="dashboard-back-link"' in zh_body
@@ -250,11 +297,11 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
             body = response.text
 
             assert response.status_code == 200
-            assert "<html lang=\"zh-CN\">" in body
+            assert_html_lang(body, "zh-CN")
             assert 'data-testid="dashboard-locale-switch"' in body
             assert 'data-testid="dashboard-page-chrome"' in body
             assert re.search(r'data-testid="dashboard-locale-zh-cn"[^>]*aria-current="page"', body)
-            assert "集中查看当前 store 里已有的 jobs、tasks、queue、告警与健康信息。" in body
+            assert "集中查看当前 store 里已有的 jobs、tasks、queue、告警和健康信息。" in body
             assert "总览" in body
             assert "Jobs" in body
             assert "Tasks" in body
@@ -287,7 +334,7 @@ def test_dashboard_chinese_locale_renders_empty_states(
 
     assert response.status_code == 200
     body = response.text
-    assert "<html lang=\"zh-CN\">" in body
+    assert_html_lang(body, "zh-CN")
     assert f'data-testid="{testid}"' in body
     assert expected_copy in body
 
@@ -1108,7 +1155,6 @@ def test_dashboard_worker_queue_route_renders_live_base_page(home: Path) -> None
     assert 'data-testid="dashboard-worker-queue-empty-state"' not in body
     assert re.search(r'data-testid="dashboard-nav-worker-queue"[^>]*aria-current="page"', body)
     assert "<form" not in body
-    assert "<button" not in body
     assert "<input" not in body
     assert "<textarea" not in body
     assert "<select" not in body
@@ -1134,7 +1180,6 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert "Review the latest task summary before deciding the next action." in body
     assert re.search(r'data-testid="dashboard-nav-alerts"[^>]*aria-current="page"', body)
     assert "<form" not in body
-    assert "<button" not in body
     assert "<input" not in body
     assert "<textarea" not in body
     assert "<select" not in body
@@ -1189,7 +1234,6 @@ def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:
     assert "Warnings here come only from readable local files." in body
     assert re.search(r'data-testid="dashboard-nav-health"[^>]*aria-current="page"', body)
     assert "<form" not in body
-    assert "<button" not in body
     assert "<input" not in body
     assert "<textarea" not in body
     assert "<select" not in body
@@ -1223,7 +1267,7 @@ def test_dashboard_overview_error_state_localizes_to_chinese(home: Path) -> None
 
     assert response.status_code == 500
     body = response.text
-    assert "<html lang=\"zh-CN\">" in body
+    assert_html_lang(body, "zh-CN")
     assert 'data-testid="dashboard-shell"' in body
     assert 'data-testid="dashboard-overview-error-state"' in body
     assert "总览暂不可用" in body
