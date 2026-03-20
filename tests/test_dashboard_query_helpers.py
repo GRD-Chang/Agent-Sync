@@ -128,3 +128,55 @@ def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_cont
     assert detail.timeline[0].title == "Task 已创建"
     assert "结果：result line 1\nresult line 2" in detail.timeline[1].note
     assert detail.back_links[0].href == "/tasks#tasks-registry"
+
+
+def test_dashboard_jobs_query_derives_read_only_timeline_from_existing_job_task_facts(
+    tmp_path: Path,
+) -> None:
+    store = TaskStore(tmp_path)
+    store.ensure_dirs()
+
+    job = store.create_job(title="timeline-job")
+    task = store.create_task(
+        job_id=job["id"],
+        requirement="timeline requirement",
+        assigned_agent="quality-agent",
+    )
+    store.update_task(
+        task["id"],
+        job_id=job["id"],
+        state="blocked",
+        result="waiting on external input",
+    )
+
+    job_record = store.load_job(job["id"])
+    job_record["createdAt"] = "2026-03-20T12:00:00Z"
+    job_record["updatedAt"] = "2026-03-20T12:45:00Z"
+    store.save_job(job_record)
+
+    task_record = store.load_task(task["id"], job_id=job["id"])
+    task_record["createdAt"] = "2026-03-20T12:05:00Z"
+    task_record["updatedAt"] = "2026-03-20T12:15:00Z"
+    task_record["_scheduler"]["last_dispatch_at"] = "2026-03-20T12:20:00Z"
+    task_record["_scheduler"]["final_notified_at"] = "2026-03-20T12:30:00Z"
+    task_record["_scheduler"]["leader_followup_due_at"] = "2026-03-20T12:40:00Z"
+    task_record["_scheduler"]["leader_followup_sent_at"] = "2026-03-20T12:50:00Z"
+    store.save_task(task_record)
+
+    snapshot = DashboardQueryService(tmp_path).jobs(selected_job_id=job["id"])
+
+    assert snapshot.selected_job is not None
+    assert [event.key for event in snapshot.selected_job.timeline] == [
+        "created",
+        "task-activity",
+        "dispatch",
+        "final-notified",
+        "followup-due",
+        "followup-sent",
+    ]
+    assert snapshot.selected_job.timeline[0].title == "Job created"
+    assert snapshot.selected_job.timeline[1].title == "Latest task activity"
+    assert task["id"] in snapshot.selected_job.timeline[1].note
+    assert "quality-agent" in snapshot.selected_job.timeline[2].note
+    assert "team-leader" in snapshot.selected_job.timeline[3].note
+    assert task["id"] in snapshot.selected_job.timeline[4].note

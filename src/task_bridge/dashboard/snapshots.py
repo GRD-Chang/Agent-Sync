@@ -160,6 +160,7 @@ class JobDetailSnapshot:
     tasks_href: str
     latest_task_href: str | None
     task_status_metrics: list[TaskStatusMetric]
+    timeline: list["TaskTimelineEvent"]
     task_previews: list[JobTaskPreview]
     detail_view: str
     detail_view_options: list[LinkOption]
@@ -328,6 +329,7 @@ class AlertTaskSnapshot:
     updated_at: str
     summary_label: str
     summary_text: str
+    detail_href: str
 
 
 @dataclass(frozen=True)
@@ -341,6 +343,7 @@ class FollowupTaskSnapshot:
     is_overdue: bool
     summary_label: str
     summary_text: str
+    detail_href: str
 
 
 @dataclass(frozen=True)

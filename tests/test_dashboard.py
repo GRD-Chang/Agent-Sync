@@ -427,6 +427,11 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
     assert jobs.selected_job.detail_view == "tasks"
     assert jobs.selected_job.detail_view_options == []
     assert jobs.selected_job.work_plan is None
+    assert [event.key for event in jobs.selected_job.timeline] == [
+        "created",
+        "task-activity",
+        "dispatch",
+    ]
     assert jobs.selected_job.tasks_href.endswith(f"/tasks?job={seeded['job_a']['id']}#tasks-registry")
     assert jobs.selected_job.latest_task_href is not None
     assert [item.task_id for item in jobs.selected_job.task_previews] == [
@@ -840,7 +845,17 @@ def test_dashboard_alerts_query_builds_live_base_snapshot(home: Path) -> None:
     assert alerts.overdue_followups_count == 1
     assert alerts.has_alerts is True
     assert {task.task_id for task in alerts.risk_tasks} == {seeded["task_b1"]["id"], seeded["task_b2"]["id"]}
+    assert {
+        task.detail_href for task in alerts.risk_tasks
+    } == {
+        f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b1']['id']}#tasks-detail",
+        f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b2']['id']}#tasks-detail",
+    }
     assert alerts.followup_tasks[0].task_id == seeded["task_b1"]["id"]
+    assert (
+        alerts.followup_tasks[0].detail_href
+        == f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b1']['id']}#tasks-detail"
+    )
     assert alerts.followup_tasks[0].is_overdue is True
 
 
@@ -1000,6 +1015,7 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert 'data-testid="dashboard-jobs-list"' in body
     assert 'data-testid="dashboard-jobs-detail-shell"' in body
     assert 'data-testid="dashboard-jobs-detail"' in body
+    assert 'data-testid="dashboard-jobs-timeline"' in body
     assert 'data-testid="dashboard-jobs-task-groups"' in body
     assert 'data-testid="dashboard-jobs-detail-view-switch"' not in body
     assert 'data-testid="dashboard-jobs-work-plan"' not in body
@@ -1007,6 +1023,8 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert seeded["job_b"]["id"] in body
     assert "job-a" in body
     assert "queued req" in body
+    assert "Job timeline" in body
+    assert body.index('data-testid="dashboard-jobs-timeline"') < body.index('data-testid="dashboard-jobs-task-groups"')
     assert f"/jobs?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}#job-task-detail" in body
     assert "Open latest task here" not in body
     assert f"/tasks?job={seeded['job_a']['id']}#tasks-registry" not in body
@@ -1098,6 +1116,7 @@ def test_dashboard_tasks_route_renders_live_list_detail_preview_and_timeline(hom
     assert 'data-testid="dashboard-tasks-detail-preview"' in body
     assert 'data-testid="dashboard-tasks-detail-preview-rendered"' in body
     assert 'data-testid="dashboard-tasks-timeline"' in body
+    assert body.index('data-testid="dashboard-tasks-timeline"') < body.index('data-testid="dashboard-tasks-detail-preview"')
     assert seeded["task_a2"]["id"] in body
     assert "Preview ready" in body
     assert "Runbook" in body
@@ -1215,6 +1234,14 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert seeded["task_b1"]["id"] in body
     assert seeded["task_b2"]["id"] in body
     assert "worker crashed" in body
+    assert re.search(
+        rf'data-testid="dashboard-alerts-risk-task-{seeded["task_b2"]["id"]}"[\s\S]*?href="/tasks\?job={seeded["job_b"]["id"]}&amp;task={seeded["task_b2"]["id"]}#tasks-detail"',
+        body,
+    )
+    assert re.search(
+        rf'data-testid="dashboard-alerts-followup-task-{seeded["task_b1"]["id"]}"[\s\S]*?href="/tasks\?job={seeded["job_b"]["id"]}&amp;task={seeded["task_b1"]["id"]}#tasks-detail"',
+        body,
+    )
     assert 'class="alerts-layout"' in body
     assert "browse-layout" not in body
     assert "Review the latest task summary before deciding the next action." in body

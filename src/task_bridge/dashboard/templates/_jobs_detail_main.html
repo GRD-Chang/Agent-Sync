@@ -55,6 +55,28 @@
   </div>
 </article>
 
+<article class="detail-card" data-testid="dashboard-jobs-timeline">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.jobs.timeline }}</p>
+    <h3>{{ ui.jobs.timeline }}</h3>
+    <p class="section-note">{{ ui.jobs.timeline_note }}</p>
+  </div>
+  <div class="timeline-list">
+    {% for item in selected_job.timeline %}
+    <article class="timeline-item">
+      <div class="timeline-dot" aria-hidden="true"></div>
+      <div class="timeline-copy">
+        <header>
+          <h4>{{ item.title }}</h4>
+          <time datetime="{{ item.timestamp_display }}">{{ item.timestamp_display }}</time>
+        </header>
+        <p>{{ item.note }}</p>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</article>
+
 {% if selected_job.detail_view_options %}
 <article class="detail-card detail-subview-card" data-testid="dashboard-jobs-detail-view-switch">
   <div class="section-heading">

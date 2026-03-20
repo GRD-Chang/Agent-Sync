@@ -383,6 +383,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
   const server = await startDashboard(homeDir, 4175);
 
   try {
+    await page.setViewportSize({ width: 1280, height: 960 });
     await page.goto(`${server.baseUrl}/jobs?view=active`);
     await expect(page.getByTestId("dashboard-nav-jobs")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-jobs-page")).toBeVisible();
@@ -398,7 +399,15 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
       new RegExp(`/jobs\\?(?:job=${seeded.jobA.id}&view=active|view=active&job=${seeded.jobA.id})#job-detail$`),
     );
     await expect(page.getByTestId("dashboard-jobs-detail")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-timeline")).toBeVisible();
     await expect(page.getByTestId("dashboard-jobs-task-groups")).toBeVisible();
+    const jobTimelineTop = await page.getByTestId("dashboard-jobs-timeline").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    const jobTaskGroupsTop = await page.getByTestId("dashboard-jobs-task-groups").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    expect(jobTimelineTop).toBeLessThan(jobTaskGroupsTop);
     await expect(page.getByText("Back to job cards")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
@@ -455,6 +464,13 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByText("Back to job detail")).toBeVisible();
     await expect(page.getByTestId("dashboard-tasks-detail-preview")).toContainText("Runbook");
     await expect(page.getByTestId("dashboard-tasks-timeline")).toContainText("Last dispatch recorded");
+    const taskTimelineTop = await page.getByTestId("dashboard-tasks-timeline").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    const taskPreviewTop = await page.getByTestId("dashboard-tasks-detail-preview").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    expect(taskTimelineTop).toBeLessThan(taskPreviewTop);
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
 
     await page.goto(
@@ -463,6 +479,34 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-tasks-detail-preview-missing")).toContainText(
       "No detail.md file exists at the recorded path yet.",
     );
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("alerts cards navigate into canonical tasks detail routes", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-alert-links-"));
+  const seeded = await seedLiveDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4186);
+
+  try {
+    await page.setViewportSize({ width: 1280, height: 960 });
+    await page.goto(`${server.baseUrl}/alerts`);
+    await expect(page.getByTestId("dashboard-alerts-risk-list")).toBeVisible();
+
+    await page.getByTestId(`dashboard-alerts-risk-task-${seeded.taskB2.id}`).click();
+    await expect(page).toHaveURL(
+      `${server.baseUrl}/tasks?job=${seeded.jobB.id}&task=${seeded.taskB2.id}#tasks-detail`,
+    );
+    await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("worker crashed");
+
+    await page.goto(`${server.baseUrl}/alerts`);
+    await page.getByTestId(`dashboard-alerts-followup-task-${seeded.taskB1.id}`).click();
+    await expect(page).toHaveURL(
+      `${server.baseUrl}/tasks?job=${seeded.jobB.id}&task=${seeded.taskB1.id}#tasks-detail`,
+    );
+    await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("waiting on input");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

@@ -74,28 +74,6 @@
       </div>
     </article>
 
-    <article class="detail-card" data-testid="{{ preview_testid }}">
-      <div class="section-heading">
-        <p class="eyebrow">{{ ui.tasks.detail_preview }}</p>
-        <h3>{{ ui.tasks.detail_preview }}</h3>
-        <p class="section-note">{{ ui.tasks.detail_preview_note }}</p>
-      </div>
-
-      <p class="preview-status">
-        <span class="status-pill">{{ task.detail_status_label }}</span>
-      </p>
-
-      {{ render_markdown_preview(
-        task.detail_preview,
-        preview_testid,
-        ui.tasks.detail_preview,
-        ui.tasks.detail_preview_missing,
-        ui.tasks.detail_preview_empty,
-        ui.tasks.detail_preview_error,
-        ui.tasks.preview_truncated.format(line_limit=task.detail_preview.line_limit, char_limit=task.detail_preview.char_limit),
-      ) }}
-    </article>
-
     <article class="detail-card" data-testid="{{ timeline_testid }}">
       <div class="section-heading">
         <p class="eyebrow">{{ ui.tasks.timeline }}</p>
@@ -116,6 +94,28 @@
         </article>
         {% endfor %}
       </div>
+    </article>
+
+    <article class="detail-card" data-testid="{{ preview_testid }}">
+      <div class="section-heading">
+        <p class="eyebrow">{{ ui.tasks.detail_preview }}</p>
+        <h3>{{ ui.tasks.detail_preview }}</h3>
+        <p class="section-note">{{ ui.tasks.detail_preview_note }}</p>
+      </div>
+
+      <p class="preview-status">
+        <span class="status-pill">{{ task.detail_status_label }}</span>
+      </p>
+
+      {{ render_markdown_preview(
+        task.detail_preview,
+        preview_testid,
+        ui.tasks.detail_preview,
+        ui.tasks.detail_preview_missing,
+        ui.tasks.detail_preview_empty,
+        ui.tasks.detail_preview_error,
+        ui.tasks.preview_truncated.format(line_limit=task.detail_preview.line_limit, char_limit=task.detail_preview.char_limit),
+      ) }}
     </article>
   </div>
 </section>

@@ -144,9 +144,11 @@ class AlertsPageQueryAssembler:
 
     def _build_alert_task(self, task: dict[str, object]) -> AlertTaskSnapshot:
         summary_label, summary_text = self._service._task_summary(task)
+        task_id = str(task["id"])
+        job_id = str(task["job_id"])
         return AlertTaskSnapshot(
-            task_id=str(task["id"]),
-            job_id=str(task["job_id"]),
+            task_id=task_id,
+            job_id=job_id,
             assigned_agent=_optional_text(task.get("assigned_agent")) or self._messages["recent_update"]["unassigned"],
             state=str(task.get("state") or "queued"),
             updated_at=_format_timestamp(
@@ -155,6 +157,7 @@ class AlertsPageQueryAssembler:
             ),
             summary_label=summary_label,
             summary_text=summary_text,
+            detail_href=self._service._tasks_path(job_id=job_id, task_id=task_id) + "#tasks-detail",
         )
 
     def _build_followup_task(self, task: dict[str, object], *, now_value: datetime | None) -> FollowupTaskSnapshot:
@@ -163,9 +166,11 @@ class AlertsPageQueryAssembler:
         summary_label, summary_text = self._service._task_summary(task)
         scheduler = _task_scheduler(task)
         due_at_raw = _optional_text(scheduler.get("leader_followup_due_at")) or ""
+        task_id = str(task["id"])
+        job_id = str(task["job_id"])
         return FollowupTaskSnapshot(
-            task_id=str(task["id"]),
-            job_id=str(task["job_id"]),
+            task_id=task_id,
+            job_id=job_id,
             state=str(task.get("state") or "queued"),
             notify_target=_optional_text(task.get("notify_target")) or self._messages["common"]["unknown"],
             final_notified_at=_format_timestamp(
@@ -176,6 +181,7 @@ class AlertsPageQueryAssembler:
             is_overdue=_is_overdue(due_at_raw, now_value),
             summary_label=summary_label,
             summary_text=summary_text,
+            detail_href=self._service._tasks_path(job_id=job_id, task_id=task_id) + "#tasks-detail",
         )
 
     def _build_alert_risk_groups(self, tasks: list[AlertTaskSnapshot]) -> list[AlertTaskGroup]:

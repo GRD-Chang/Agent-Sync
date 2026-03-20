@@ -88,7 +88,11 @@
           </header>
           <div class="signal-card-grid">
             {% for task in group.tasks %}
-            <article class="detail-card signal-card signal-card--{{ task.state }}">
+            <a
+              class="detail-card signal-card signal-card--{{ task.state }}"
+              data-testid="dashboard-alerts-risk-task-{{ task.task_id }}"
+              href="{{ task.detail_href }}"
+            >
               <div class="detail-title-row">
                 <div class="detail-title-copy">
                   <h3>{{ task.task_id }}</h3>
@@ -110,7 +114,7 @@
                 <p class="eyebrow">{{ task.summary_label }}</p>
                 <p>{{ task.summary_text }}</p>
               </div>
-            </article>
+            </a>
             {% endfor %}
           </div>
         </section>
@@ -155,7 +159,11 @@
           </header>
           <div class="signal-card-grid">
             {% for task in group.tasks %}
-            <article class="detail-card signal-card signal-card--{{ 'due' if task.is_overdue else 'scheduled' }}">
+            <a
+              class="detail-card signal-card signal-card--{{ 'due' if task.is_overdue else 'scheduled' }}"
+              data-testid="dashboard-alerts-followup-task-{{ task.task_id }}"
+              href="{{ task.detail_href }}"
+            >
               <div class="detail-title-row">
                 <div class="detail-title-copy">
                   <h3>{{ task.task_id }}</h3>
@@ -179,7 +187,7 @@
                 <p class="eyebrow">{{ task.summary_label }}</p>
                 <p>{{ task.summary_text }}</p>
               </div>
-            </article>
+            </a>
             {% endfor %}
           </div>
         </section>
