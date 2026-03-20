@@ -324,6 +324,10 @@ main {
   padding: 1rem;
 }
 
+.state-panel .eyebrow {
+  margin: 0 0 0.5rem;
+}
+
 .worker-card header,
 .recent-item header {
   display: flex;

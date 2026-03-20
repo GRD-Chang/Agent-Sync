@@ -12,37 +12,30 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
+from .i18n import DEFAULT_LOCALE, get_messages
 from .queries import DashboardQueryService
 
 
 @dataclass(frozen=True)
 class NavItem:
     key: str
-    label: str
     href: str
 
 
 NAV_ITEMS = [
-    NavItem("overview", "Overview", "/overview"),
-    NavItem("jobs", "Jobs", "/jobs"),
-    NavItem("tasks", "Tasks", "/tasks"),
-    NavItem("worker-queue", "Worker & Queue", "/worker-queue"),
-    NavItem("alerts", "Alerts", "/alerts"),
-    NavItem("health", "Health", "/health"),
+    NavItem("overview", "/overview"),
+    NavItem("jobs", "/jobs"),
+    NavItem("tasks", "/tasks"),
+    NavItem("worker-queue", "/worker-queue"),
+    NavItem("alerts", "/alerts"),
+    NavItem("health", "/health"),
 ]
-PLACEHOLDER_COPY = {
-    "jobs": "Job-level browsing will land here in a later slice. This foundation stays read-only and tied to existing job.json records.",
-    "tasks": "Task details and filtering will land here in a later slice. The dashboard currently uses the existing task JSON contract without introducing write actions.",
-    "worker-queue": "Worker lanes and queue drill-down will land here in a later slice. Current queue facts already power the Overview worker utilization section.",
-    "alerts": "Alert summaries will land here in a later slice. This MVP only surfaces terminal-state and follow-up semantics indirectly through Overview data.",
-    "health": "Daemon and storage health views will land here in a later slice. The shell is ready, but this page is intentionally a placeholder in MVP v1.",
-}
 
 templates = Jinja2Templates(directory=str(files("task_bridge.dashboard").joinpath("templates")))
 
 
 def create_dashboard_app(home: Path | None = None) -> Starlette:
-    service = DashboardQueryService(home)
+    service = DashboardQueryService(home, locale=DEFAULT_LOCALE)
     app = Starlette(
         debug=False,
         routes=[
@@ -69,13 +62,13 @@ async def redirect_to_overview(request: Request):
 
 
 async def overview_page(request: Request):
-    context = _base_context(request, "overview", "Overview")
+    context = _base_context(request, "overview")
     try:
         overview = request.app.state.dashboard_query_service.overview()
     except Exception as exc:  # pragma: no cover - exercised via browser smoke path
         context.update(
             {
-                "error_title": "Dashboard unavailable",
+                "page_title": context["ui"]["overview"]["error_title"],
                 "error_message": str(exc),
             }
         )
@@ -93,8 +86,10 @@ async def overview_page(request: Request):
 async def placeholder_page(request: Request):
     page_key = request.url.path.strip("/") or "overview"
     active = page_key if any(item.key == page_key for item in NAV_ITEMS) else "overview"
-    context = _base_context(request, active, next(item.label for item in NAV_ITEMS if item.key == active))
-    context["placeholder_copy"] = PLACEHOLDER_COPY[active]
+    context = _base_context(request, active)
+    ui = context["ui"]
+    context["placeholder_copy"] = ui["placeholder"]["copy"][active]
+    context["placeholder_heading"] = ui["placeholder"]["shell_heading"].format(page_title=context["page_title"])
     return templates.TemplateResponse(request=request, name="placeholder.html", context=context)
 
 
@@ -112,10 +107,20 @@ def run_dashboard(
     )
 
 
-def _base_context(request: Request, active_page: str, page_title: str) -> dict[str, object]:
+def _base_context(request: Request, active_page: str) -> dict[str, object]:
+    ui = get_messages(DEFAULT_LOCALE)
     return {
         "request": request,
         "active_page": active_page,
-        "page_title": page_title,
-        "nav_items": NAV_ITEMS,
+        "page_title": ui["nav"][active_page],
+        "nav_items": [
+            {
+                "key": item.key,
+                "label": ui["nav"][item.key],
+                "href": item.href,
+            }
+            for item in NAV_ITEMS
+        ],
+        "ui": ui,
+        "html_lang": ui["html_lang"],
     }

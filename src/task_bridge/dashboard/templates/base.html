@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ html_lang }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,23 +7,23 @@
     <link rel="stylesheet" href="{{ request.url_for('static', path='/dashboard.css') }}">
   </head>
   <body>
-    <a class="skip-link" href="#content">Skip to content</a>
+    <a class="skip-link" href="#content">{{ ui.shell.skip_link }}</a>
     <div class="page-shell" data-testid="dashboard-shell">
       <header class="masthead">
         <div class="masthead-copy">
-          <p class="eyebrow">task-bridge / read-only dispatch wall</p>
-          <h1>Dashboard foundation</h1>
-          <p class="masthead-note" data-testid="dashboard-boundary-note">
-            Built on the existing job/task JSON store, worker queue semantics, and daemon state model.
+          <p class="eyebrow">{{ ui.shell.eyebrow }}</p>
+          <h1>{{ ui.shell.title }}</h1>
+          <p class="masthead-note">
+            {{ ui.shell.note }}
           </p>
         </div>
         <aside class="masthead-aside" aria-label="Dashboard framing">
-          <p class="aside-label">MVP Scope</p>
-          <p class="aside-body">Overview is live. The other primary destinations are shell-ready and intentionally read-only.</p>
+          <p class="aside-label">{{ ui.shell.scope_label }}</p>
+          <p class="aside-body" data-testid="dashboard-boundary-note">{{ ui.shell.scope_note }}</p>
         </aside>
       </header>
 
-      <nav class="top-nav" aria-label="Primary" data-testid="dashboard-primary-nav">
+      <nav class="top-nav" aria-label="{{ ui.shell.primary_nav_label }}" data-testid="dashboard-primary-nav">
         <ul>
           {% for item in nav_items %}
           <li>

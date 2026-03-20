@@ -6,18 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from .i18n import DEFAULT_LOCALE, get_messages
 from ..store import TaskStore, infer_worker_status, now_iso, queue_for_agent
 
 CORE_TASK_STATES = ("queued", "running", "done", "blocked", "failed")
 TERMINAL_TASK_STATES = {"done", "blocked", "failed"}
 RECENT_UPDATES_LIMIT = 6
-STATUS_META = {
-    "queued": ("Queued", "Awaiting dispatch"),
-    "running": ("Running", "Currently in progress"),
-    "done": ("Done", "Closed successfully"),
-    "blocked": ("Blocked", "Needs intervention"),
-    "failed": ("Failed", "Closed with failure"),
-}
 
 
 @dataclass(frozen=True)
@@ -73,9 +67,11 @@ class DashboardQueryService:
         home: Path | None = None,
         *,
         now_provider: Callable[[], str] = now_iso,
+        locale: str = DEFAULT_LOCALE,
     ) -> None:
         self.store = TaskStore(home)
         self._now_provider = now_provider
+        self._messages = get_messages(locale)
 
     @property
     def home_path(self) -> str:
@@ -89,8 +85,8 @@ class DashboardQueryService:
         metrics = [
             TaskStatusMetric(
                 state=state,
-                label=STATUS_META[state][0],
-                description=STATUS_META[state][1],
+                label=self._messages["status"][state]["label"],
+                description=self._messages["status"][state]["description"],
                 count=status_counts.get(state, 0),
             )
             for state in CORE_TASK_STATES
@@ -126,7 +122,7 @@ class DashboardQueryService:
         return OverviewSnapshot(
             home_path=self.home_path,
             current_job_id=current_job_id,
-            generated_at=_format_timestamp(self._now_provider()),
+            generated_at=_format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"]),
             jobs_count=len(jobs),
             tasks_count=len(tasks),
             terminal_count=sum(status_counts.get(state, 0) for state in TERMINAL_TASK_STATES),
@@ -144,20 +140,23 @@ class DashboardQueryService:
         result_text = _optional_text(task.get("result"))
         requirement_text = _optional_text(task.get("requirement"))
         if result_text:
-            summary_label = "Result"
+            summary_label = self._messages["recent_update"]["result"]
             summary_text = result_text
         elif requirement_text:
-            summary_label = "Requirement"
+            summary_label = self._messages["recent_update"]["requirement"]
             summary_text = requirement_text
         else:
-            summary_label = "Update"
-            summary_text = "No detail recorded yet."
+            summary_label = self._messages["recent_update"]["update"]
+            summary_text = self._messages["recent_update"]["no_detail"]
         return RecentUpdate(
             task_id=str(task["id"]),
             job_id=str(task["job_id"]),
-            assigned_agent=_optional_text(task.get("assigned_agent")) or "unassigned",
+            assigned_agent=_optional_text(task.get("assigned_agent")) or self._messages["recent_update"]["unassigned"],
             state=str(task.get("state") or "queued"),
-            updated_at=_format_timestamp(str(task.get("updatedAt") or task.get("createdAt") or "")),
+            updated_at=_format_timestamp(
+                str(task.get("updatedAt") or task.get("createdAt") or ""),
+                fallback=self._messages["common"]["unknown"],
+            ),
             summary_label=summary_label,
             summary_text=_truncate(summary_text, 180),
         )
@@ -174,9 +173,9 @@ def _truncate(value: str, limit: int) -> str:
     return value[: limit - 3].rstrip() + "..."
 
 
-def _format_timestamp(value: str) -> str:
+def _format_timestamp(value: str, *, fallback: str) -> str:
     if not value:
-        return "Unknown"
+        return fallback
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
     except ValueError:

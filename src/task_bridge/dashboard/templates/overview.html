@@ -3,32 +3,31 @@
 {% block content %}
 <section class="hero-panel" aria-labelledby="overview-title" data-testid="dashboard-overview-hero">
   <div class="hero-copy">
-    <p class="eyebrow">Overview</p>
-    <h2 id="overview-title" data-testid="dashboard-page-title">Live dispatch posture for the current task bridge.</h2>
+    <p class="eyebrow">{{ ui.overview.eyebrow }}</p>
+    <h2 id="overview-title" data-testid="dashboard-page-title">{{ ui.overview.title }}</h2>
     <p class="hero-text">
-      This page stays read-only and reports only what already exists in the local task-bridge store:
-      task states, worker utilization, queue depth, and recent task updates.
+      {{ ui.overview.intro }}
     </p>
   </div>
-  <dl class="hero-stats" aria-label="Overview framing">
+  <dl class="hero-stats" aria-label="{{ ui.overview.stats_label }}">
     <div>
-      <dt>Current job</dt>
-      <dd>{{ overview.current_job_id or "None selected" }}</dd>
+      <dt>{{ ui.overview.current_job }}</dt>
+      <dd>{{ overview.current_job_id or ui.overview.current_job_empty }}</dd>
     </div>
     <div>
-      <dt>Jobs tracked</dt>
+      <dt>{{ ui.overview.jobs_tracked }}</dt>
       <dd>{{ overview.jobs_count }}</dd>
     </div>
     <div>
-      <dt>Tasks tracked</dt>
+      <dt>{{ ui.overview.tasks_tracked }}</dt>
       <dd>{{ overview.tasks_count }}</dd>
     </div>
     <div>
-      <dt>Generated</dt>
+      <dt>{{ ui.overview.generated_at }}</dt>
       <dd>{{ overview.generated_at }}</dd>
     </div>
     <div class="hero-home">
-      <dt>Store home</dt>
+      <dt>{{ ui.overview.store_home }}</dt>
       <dd>{{ overview.home_path }}</dd>
     </div>
   </dl>
@@ -36,8 +35,8 @@
 
 <section class="section-block" aria-labelledby="task-status-title" data-testid="dashboard-overview-task-status">
   <div class="section-heading">
-    <p class="eyebrow">Task states</p>
-    <h2 id="task-status-title">Task Status Summary</h2>
+    <p class="eyebrow">{{ ui.overview.task_states_eyebrow }}</p>
+    <h2 id="task-status-title">{{ ui.overview.task_states_title }}</h2>
   </div>
   <div class="summary-grid">
     {% for metric in overview.task_status_metrics %}
@@ -52,29 +51,30 @@
 
 <section class="section-block util-section" aria-labelledby="worker-utilization-title" data-testid="dashboard-overview-worker-utilization">
   <div class="section-heading">
-    <p class="eyebrow">Workers</p>
-    <h2 id="worker-utilization-title">Worker Utilization Summary</h2>
+    <p class="eyebrow">{{ ui.overview.workers_eyebrow }}</p>
+    <h2 id="worker-utilization-title">{{ ui.overview.workers_title }}</h2>
   </div>
 
   <div class="util-grid">
     <article class="util-card">
-      <p class="summary-label">Busy / total</p>
+      <p class="summary-label">{{ ui.overview.busy_total }}</p>
       <p class="summary-value">{{ overview.busy_workers }} / {{ overview.worker_count }}</p>
-      <p class="summary-note">{{ overview.idle_workers }} idle workers remain available.</p>
+      <p class="summary-note">{{ ui.overview.busy_note.format(idle_workers=overview.idle_workers) }}</p>
     </article>
     <article class="util-card">
-      <p class="summary-label">Queued tasks</p>
+      <p class="summary-label">{{ ui.overview.queued_tasks }}</p>
       <p class="summary-value">{{ overview.queued_tasks }}</p>
-      <p class="summary-note">Counted from existing per-agent queue semantics.</p>
+      <p class="summary-note">{{ ui.overview.queued_note }}</p>
     </article>
     <article class="util-card">
-      <p class="summary-label">Terminal tasks</p>
+      <p class="summary-label">{{ ui.overview.terminal_tasks }}</p>
       <p class="summary-value">{{ overview.terminal_count }}</p>
-      <p class="summary-note">Derived from done / blocked / failed task states.</p>
+      <p class="summary-note">{{ ui.overview.terminal_note }}</p>
     </article>
   </div>
 
-  <div class="worker-list" aria-label="Worker lanes" data-testid="dashboard-overview-worker-list">
+  <div class="worker-list" aria-label="{{ ui.overview.worker_list_label }}" data-testid="dashboard-overview-worker-list">
+    {% if overview.workers %}
     {% for worker in overview.workers %}
     <article class="worker-card">
       <header>
@@ -83,42 +83,45 @@
       </header>
       <dl>
         <div>
-          <dt>Running</dt>
-          <dd>{{ worker.running_task_id or "None" }}</dd>
+          <dt>{{ ui.overview.worker_running }}</dt>
+          <dd>{{ worker.running_task_id or ui.common.none }}</dd>
         </div>
         <div>
-          <dt>Queued</dt>
+          <dt>{{ ui.overview.worker_queued }}</dt>
           <dd>{{ worker.queued }}</dd>
         </div>
         <div>
-          <dt>Head of line</dt>
+          <dt>{{ ui.overview.worker_head_of_line }}</dt>
           <dd>
             {% if worker.next_queued_task_id %}
             {{ worker.next_queued_task_id }} / {{ worker.next_queued_job_id }}
             {% else %}
-            None
+            {{ ui.common.none }}
             {% endif %}
           </dd>
         </div>
       </dl>
     </article>
     {% endfor %}
+    {% else %}
+    <div class="state-panel" role="status" aria-live="polite">
+      <h3>{{ ui.overview.no_workers_title }}</h3>
+      <p>{{ ui.overview.no_workers_body }}</p>
+    </div>
+    {% endif %}
   </div>
 </section>
 
 <section class="section-block recent-section" aria-labelledby="recent-updates-title" data-testid="dashboard-overview-recent-updates">
   <div class="section-heading">
-    <p class="eyebrow">Activity</p>
-    <h2 id="recent-updates-title">Recent Updates</h2>
+    <p class="eyebrow">{{ ui.overview.activity_eyebrow }}</p>
+    <h2 id="recent-updates-title">{{ ui.overview.activity_title }}</h2>
   </div>
 
   {% if overview.is_empty %}
   <div class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-overview-empty-state">
-    <h3>No jobs or tasks yet</h3>
-    <p>
-      The dashboard is connected and readable, but the store is currently empty. Create a job and tasks through
-      `task-bridge` to populate the dispatch wall.
-    </p>
+    <h3>{{ ui.overview.empty_title }}</h3>
+    <p>{{ ui.overview.empty_body }}</p>
   </div>
   {% elif overview.recent_updates %}
   <div class="recent-list">
@@ -140,8 +143,8 @@
   </div>
   {% else %}
   <div class="state-panel empty-state" role="status" aria-live="polite">
-    <h3>No recent updates available</h3>
-    <p>Tasks exist, but none expose a recent update summary yet.</p>
+    <h3>{{ ui.overview.no_recent_title }}</h3>
+    <p>{{ ui.overview.no_recent_body }}</p>
   </div>
   {% endif %}
 </section>

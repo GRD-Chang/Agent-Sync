@@ -3,11 +3,12 @@
 {% block content %}
 <section class="placeholder-panel" aria-labelledby="placeholder-title" data-testid="dashboard-{{ active_page }}-shell">
   <p class="eyebrow">{{ page_title }}</p>
-  <h2 id="placeholder-title" data-testid="dashboard-page-title">{{ page_title }} page shell is in place.</h2>
+  <h2 id="placeholder-title" data-testid="dashboard-page-title">{{ placeholder_heading }}</h2>
   <p>{{ placeholder_copy }}</p>
   <div class="state-panel">
-    <h3>MVP boundary</h3>
-    <p>No write controls, no speculative metrics, and no extra domain fields are introduced in this slice.</p>
+    <p class="eyebrow">{{ ui.placeholder.boundary_eyebrow }}</p>
+    <h3>{{ ui.placeholder.boundary_title }}</h3>
+    <p>{{ ui.placeholder.boundary_body }}</p>
   </div>
 </section>
 {% endblock %}

@@ -28,6 +28,20 @@ def test_dashboard_help_describes_read_only_shell(capsys: pytest.CaptureFixture[
     assert "--port" in help_text
 
 
+def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "<html lang=\"en\">" in body
+    assert "Live dispatch posture for the current task bridge." in body
+    assert "Recent updates" in body
+    assert "MVP scope" in body
+    assert "Task status summary" in body
+    assert "Dashboard foundation" in body
+
+
 def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) -> None:
     store = TaskStore(home)
     store.ensure_dirs()
@@ -88,6 +102,29 @@ def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
     assert overview.queued_tasks == 0
     assert overview.recent_updates == []
     assert [metric.count for metric in overview.task_status_metrics] == [0, 0, 0, 0, 0]
+
+
+def test_dashboard_overview_route_renders_live_facts_for_existing_store(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="dashboard-summary")
+    queued = store.create_task(job_id=job["id"], requirement="queued req", assigned_agent="code-agent")
+    running = store.create_task(job_id=job["id"], requirement="running req", assigned_agent="quality-agent")
+    blocked = store.create_task(job_id=job["id"], requirement="blocked req", assigned_agent="review-agent")
+
+    store.update_task(running["id"], job_id=job["id"], state="running", result="actively working")
+    store.update_task(blocked["id"], job_id=job["id"], state="blocked", result="waiting on input")
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/overview")
+
+    assert response.status_code == 200
+    body = response.text
+    assert job["id"] in body
+    assert queued["id"] in body
+    assert "quality-agent" in body
+    assert "waiting on input" in body
+    assert 'data-testid="dashboard-overview-empty-state"' not in body
 
 
 def test_dashboard_root_redirects_to_overview(home: Path) -> None:
@@ -167,3 +204,5 @@ def test_dashboard_overview_error_state_preserves_shell(home: Path) -> None:
     assert 'data-testid="dashboard-primary-nav"' in body
     assert 'data-testid="dashboard-page-title"' in body
     assert 'data-testid="dashboard-overview-error-state"' in body
+    assert "Overview unavailable" in body
+    assert "Store read failed" in body

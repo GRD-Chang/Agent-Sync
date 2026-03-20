@@ -1,13 +1,19 @@
 const { test, expect } = require("@playwright/test");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const pythonBin = path.join(repoRoot, ".venv", "bin", "python");
-const navKeys = ["overview", "jobs", "tasks", "worker-queue", "alerts", "health"];
-const placeholderKeys = ["jobs", "tasks", "worker-queue", "alerts", "health"];
+const navItems = [
+  { key: "overview", label: "Overview", route: "/overview" },
+  { key: "jobs", label: "Jobs", route: "/jobs" },
+  { key: "tasks", label: "Tasks", route: "/tasks" },
+  { key: "worker-queue", label: "Worker & Queue", route: "/worker-queue" },
+  { key: "alerts", label: "Alerts", route: "/alerts" },
+  { key: "health", label: "Health", route: "/health" },
+];
 
 async function startDashboard(homeDir, port) {
   const child = spawn(
@@ -71,137 +77,139 @@ async function waitForServer(url, getLogs) {
   throw new Error(`Dashboard server did not start in time.\n${getLogs()}`);
 }
 
-async function makeHome(prefix) {
-  return fs.mkdtemp(path.join(os.tmpdir(), prefix));
+function bridgeEnv(homeDir) {
+  return {
+    ...process.env,
+    PYTHONPATH: path.join(repoRoot, "src"),
+    TASK_BRIDGE_HOME: homeDir,
+    PYTHONUNBUFFERED: "1",
+  };
 }
 
-async function seedOverviewHome(homeDir) {
-  const jobDir = path.join(homeDir, "jobs", "job-seeded");
-  const taskDir = path.join(jobDir, "tasks", "task-running");
-  await fs.mkdir(taskDir, { recursive: true });
-  await fs.writeFile(
-    path.join(jobDir, "job.json"),
-    JSON.stringify(
-      {
-        id: "job-seeded",
-        title: "Seeded dashboard job",
-        created_at: "2026-03-20T00:00:00Z",
-        updated_at: "2026-03-20T00:05:00Z",
-        status: "running",
-      },
-      null,
-      2,
-    ),
-    "utf-8",
-  );
-  await fs.writeFile(
-    path.join(taskDir, "task.json"),
-    JSON.stringify(
-      {
-        id: "task-running",
-        job_id: "job-seeded",
-        title: "Seeded running task",
-        status: "running",
-        assigned_agent: "worker-1",
-        created_at: "2026-03-20T00:00:00Z",
-        updated_at: "2026-03-20T00:05:00Z",
-        result: "Running verification",
-      },
-      null,
-      2,
-    ),
-    "utf-8",
-  );
+function runBridgeJson(homeDir, args) {
+  const completed = spawnSync(pythonBin, ["-m", "task_bridge", ...args], {
+    cwd: repoRoot,
+    env: bridgeEnv(homeDir),
+    encoding: "utf-8",
+  });
+  if (completed.status !== 0) {
+    throw new Error(`task_bridge ${args.join(" ")} failed.\n${completed.stderr}`);
+  }
+  return JSON.parse(completed.stdout);
 }
 
-test("dashboard redirects root to overview and renders seeded overview shell", async ({ page }) => {
-  const homeDir = await makeHome("task-bridge-dashboard-happy-");
-  await seedOverviewHome(homeDir);
+function seedHappyOverview(homeDir) {
+  const job = runBridgeJson(homeDir, ["create-job", "--title", "dashboard-summary"]);
+  runBridgeJson(homeDir, ["create-task", "--job", job.id, "--requirement", "queued req", "--assign", "code-agent"]);
+  const running = runBridgeJson(homeDir, [
+    "create-task",
+    "--job",
+    job.id,
+    "--requirement",
+    "running req",
+    "--assign",
+    "quality-agent",
+  ]);
+  const blocked = runBridgeJson(homeDir, [
+    "create-task",
+    "--job",
+    job.id,
+    "--requirement",
+    "blocked req",
+    "--assign",
+    "review-agent",
+  ]);
+  runBridgeJson(homeDir, ["start", running.id, "--job", job.id, "--result", "actively working"]);
+  runBridgeJson(homeDir, ["block", blocked.id, "--job", job.id, "--result", "waiting on input"]);
+}
+
+test("overview renders the live happy path shell", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-happy-"));
+  seedHappyOverview(homeDir);
   const server = await startDashboard(homeDir, 4173);
 
   try {
-    const response = await page.goto(`${server.baseUrl}/`);
-    expect(response).not.toBeNull();
+    await page.goto(`${server.baseUrl}/`);
     await expect(page).toHaveURL(`${server.baseUrl}/overview`);
     await expect(page.getByTestId("dashboard-shell")).toBeVisible();
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
-    for (const navKey of navKeys) {
-      await expect(page.getByTestId(`dashboard-nav-${navKey}`)).toBeVisible();
+    await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
+      "Overview is live. The other primary destinations are shell-ready and intentionally read-only.",
+    );
+    for (const item of navItems) {
+      await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveText(item.label);
     }
     await expect(page.getByTestId("dashboard-nav-overview")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText(
+      "Live dispatch posture for the current task bridge.",
+    );
     await expect(page.getByTestId("dashboard-overview-hero")).toBeVisible();
-    await expect(page.getByTestId("dashboard-overview-task-status")).toBeVisible();
-    await expect(page.getByTestId("dashboard-overview-worker-utilization")).toBeVisible();
-    await expect(page.getByTestId("dashboard-overview-worker-list")).toBeVisible();
-    await expect(page.getByTestId("dashboard-overview-recent-updates")).toBeVisible();
+    await expect(page.getByTestId("dashboard-overview-task-status")).toContainText(
+      "Task status summary",
+    );
+    await expect(page.getByTestId("dashboard-overview-worker-utilization")).toContainText(
+      "Worker utilization summary",
+    );
+    await expect(page.getByTestId("dashboard-overview-worker-list")).toContainText("quality-agent");
+    await expect(page.getByTestId("dashboard-overview-recent-updates")).toContainText("Recent updates");
+    await expect(page.getByTestId("dashboard-overview-recent-updates")).toContainText("waiting on input");
     await expect(page.getByTestId("dashboard-overview-empty-state")).toHaveCount(0);
-    await expect(page.getByTestId("dashboard-overview-error-state")).toHaveCount(0);
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
   }
 });
 
-test("dashboard overview empty state keeps read-only shell", async ({ page }) => {
-  const homeDir = await makeHome("task-bridge-dashboard-empty-");
+test("overview renders the explicit empty state", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-empty-"));
   const server = await startDashboard(homeDir, 4174);
 
   try {
-    const response = await page.goto(`${server.baseUrl}/overview`);
-    expect(response).not.toBeNull();
-    expect(response.status()).toBe(200);
-    await expect(page.getByTestId("dashboard-shell")).toBeVisible();
-    await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
+    await page.goto(`${server.baseUrl}/overview`);
     await expect(page.getByTestId("dashboard-nav-overview")).toHaveAttribute("aria-current", "page");
-    await expect(page.getByTestId("dashboard-overview-empty-state")).toBeVisible();
-    await expect(page.getByTestId("dashboard-overview-error-state")).toHaveCount(0);
+    await expect(page.getByTestId("dashboard-overview-empty-state")).toContainText("No jobs or tasks yet");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
   }
 });
 
-test("dashboard overview unreadable store preserves shell and exposes error state", async ({ page }) => {
-  const homeDir = await makeHome("task-bridge-dashboard-error-");
+test("placeholder routes stay shell-only and keep the active nav state", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-shell-"));
+  const server = await startDashboard(homeDir, 4175);
+
+  try {
+    for (const item of navItems.filter((entry) => entry.key !== "overview")) {
+      await page.goto(`${server.baseUrl}${item.route}`);
+      await expect(page.getByTestId(`dashboard-${item.key}-shell`)).toBeVisible();
+      await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
+      await expect(page.getByTestId("dashboard-boundary-note")).toBeVisible();
+      await expect(page.getByTestId("dashboard-page-title")).toContainText(item.label);
+      await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
+    }
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("overview renders an error state when store data is unreadable", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-error-"));
   const jobDir = path.join(homeDir, "jobs", "job-broken");
   await fs.mkdir(jobDir, { recursive: true });
   await fs.writeFile(path.join(jobDir, "job.json"), "{broken", "utf-8");
-  const server = await startDashboard(homeDir, 4175);
+
+  const server = await startDashboard(homeDir, 4176);
 
   try {
     const response = await page.goto(`${server.baseUrl}/overview`);
     expect(response).not.toBeNull();
     expect(response.status()).toBe(500);
-    await expect(page.getByTestId("dashboard-shell")).toBeVisible();
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
-    await expect(page.getByTestId("dashboard-nav-overview")).toHaveAttribute("aria-current", "page");
-    await expect(page.getByTestId("dashboard-page-title")).toBeVisible();
-    await expect(page.getByTestId("dashboard-overview-error-state")).toBeVisible();
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("Overview unavailable");
+    await expect(page.getByTestId("dashboard-overview-error-state")).toContainText("Store read failed");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
   }
 });
-
-for (const [index, pageKey] of placeholderKeys.entries()) {
-  test(`dashboard placeholder route ${pageKey} keeps shell-only contract`, async ({ page }) => {
-    const homeDir = await makeHome(`task-bridge-dashboard-${pageKey}-`);
-    const server = await startDashboard(homeDir, 4180 + index);
-
-    try {
-      const response = await page.goto(`${server.baseUrl}/${pageKey}`);
-      expect(response).not.toBeNull();
-      expect(response.status()).toBe(200);
-      await expect(page.getByTestId("dashboard-shell")).toBeVisible();
-      await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
-      await expect(page.getByTestId("dashboard-boundary-note")).toBeVisible();
-      await expect(page.getByTestId("dashboard-page-title")).toBeVisible();
-      await expect(page.getByTestId(`dashboard-${pageKey}-shell`)).toBeVisible();
-      await expect(page.getByTestId(`dashboard-nav-${pageKey}`)).toHaveAttribute("aria-current", "page");
-      await expect(page.locator("form, button, input, textarea, select")).toHaveCount(0);
-    } finally {
-      await stopDashboard(server);
-      await fs.rm(homeDir, { recursive: true, force: true });
-    }
-  });
-}
