@@ -111,6 +111,12 @@ class JobListItem:
 
 
 @dataclass(frozen=True)
+class DetailBackLink:
+    label: str
+    href: str
+
+
+@dataclass(frozen=True)
 class JobTaskPreview:
     task_id: str
     state: str
@@ -150,6 +156,7 @@ class JobsPageSnapshot:
     view_options: list[LinkOption]
     jobs: list[JobListItem]
     selected_job: JobDetailSnapshot | None
+    detail_back_link: DetailBackLink | None
     is_empty: bool
     filtered_empty: bool
     selection_missing: bool
@@ -214,6 +221,7 @@ class TaskDetailSnapshot:
     detail_status_label: str
     detail_preview: DetailPreview
     timeline: list[TaskTimelineEvent]
+    back_links: list[DetailBackLink]
 
 
 @dataclass(frozen=True)
@@ -229,6 +237,7 @@ class TasksPageSnapshot:
     clear_filters_href: str
     tasks: list[TaskListItem]
     selected_task: TaskDetailSnapshot | None
+    detail_back_link: DetailBackLink | None
     is_empty: bool
     filtered_empty: bool
     selection_missing: bool
@@ -421,6 +430,14 @@ class DashboardQueryService:
             if self._job_matches_view(job, tasks_by_job.get(str(job["id"]), []), active_view)
         ]
         resolved_job_id, selection_missing = self._resolve_selected_job_id(ordered_jobs, selected_job_id)
+        detail_back_link = (
+            DetailBackLink(
+                label=self._messages["jobs"]["back_to_list"],
+                href=self._jobs_path(view=active_view),
+            )
+            if resolved_job_id
+            else None
+        )
         job_rows = [
             self._build_job_row(
                 job,
@@ -450,6 +467,7 @@ class DashboardQueryService:
             selected_job=self._build_job_detail(selected_job_raw, tasks_by_job.get(resolved_job_id or "", []))
             if selected_job_raw
             else None,
+            detail_back_link=detail_back_link,
             is_empty=not jobs,
             filtered_empty=bool(jobs and not ordered_jobs),
             selection_missing=selection_missing,
@@ -488,6 +506,14 @@ class DashboardQueryService:
         ]
         resolved_task, selection_missing = self._resolve_selected_task(filtered_tasks, selected_task_id, selected_job_id)
         resolved_task_id = str(resolved_task["id"]) if resolved_task else None
+        detail_back_link = (
+            DetailBackLink(
+                label=self._messages["tasks"]["back_to_list"],
+                href=self._tasks_path(job_id=selected_job_id, state=active_state, agent=active_agent),
+            )
+            if resolved_task_id
+            else None
+        )
         task_rows = [
             self._build_task_row(
                 task,
@@ -529,6 +555,7 @@ class DashboardQueryService:
             )
             if resolved_task
             else None,
+            detail_back_link=detail_back_link,
             is_empty=not tasks,
             filtered_empty=bool(tasks and not filtered_tasks),
             selection_missing=selection_missing,
@@ -890,6 +917,13 @@ class DashboardQueryService:
             detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_preview.status],
             detail_preview=detail_preview,
             timeline=self._build_task_timeline(task),
+            back_links=self._build_task_back_links(
+                task_id=str(task["id"]),
+                job_id=job_id,
+                selected_job_id=selected_job_id,
+                selected_state=selected_state,
+                selected_agent=selected_agent,
+            ),
         )
 
     def _build_task_timeline(self, task: dict[str, object]) -> list[TaskTimelineEvent]:
@@ -1035,11 +1069,9 @@ class DashboardQueryService:
             requested_job = next((job for job in jobs if str(job["id"]) == requested_job_id), None)
             if requested_job:
                 return requested_job_id, False
+            return None, True
 
-        current_job = next((job for job in jobs if job.get("is_current")), None)
-        if current_job:
-            return str(current_job["id"]), bool(requested_job_id)
-        return str(jobs[-1]["id"]), bool(requested_job_id)
+        return None, False
 
     @staticmethod
     def _resolve_selected_task(
@@ -1062,13 +1094,9 @@ class DashboardQueryService:
             )
             if selected is not None:
                 return selected, False
+            return None, True
 
-        if requested_job_id:
-            same_job = next((task for task in tasks if str(task["job_id"]) == requested_job_id), None)
-            if same_job is not None:
-                return same_job, bool(requested_task_id)
-
-        return tasks[0], bool(requested_task_id)
+        return None, False
 
     def _job_matches_view(
         self,
@@ -1280,6 +1308,31 @@ class DashboardQueryService:
             FilterGroup(key="state", label=task_messages["filter_group_state"], options=state_options),
             FilterGroup(key="agent", label=task_messages["filter_group_agent"], options=agent_options),
         ]
+
+    def _build_task_back_links(
+        self,
+        *,
+        task_id: str,
+        job_id: str,
+        selected_job_id: str | None,
+        selected_state: str | None,
+        selected_agent: str | None,
+    ) -> list[DetailBackLink]:
+        links = [
+            DetailBackLink(
+                label=self._messages["tasks"]["back_to_tasks"],
+                href=self._tasks_path(job_id=selected_job_id, state=selected_state, agent=selected_agent),
+            )
+        ]
+        job_link = self._jobs_path(job_id=job_id)
+        if selected_job_id != job_id:
+            job_link = self._path_with_locale(
+                "/jobs",
+                ("job", job_id),
+                ("source_task", task_id),
+            )
+        links.append(DetailBackLink(label=self._messages["tasks"]["back_to_job"], href=job_link))
+        return links
 
     def _build_task_applied_filters(
         self,

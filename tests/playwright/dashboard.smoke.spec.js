@@ -80,6 +80,27 @@ async function waitForServer(url, getLogs) {
   throw new Error(`Dashboard server did not start in time.\n${getLogs()}`);
 }
 
+async function expectNoHorizontalOverflow(page) {
+  const metrics = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    root: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }));
+
+  expect(metrics.root).toBeLessThanOrEqual(metrics.viewport + 1);
+  expect(metrics.body).toBeLessThanOrEqual(metrics.viewport + 1);
+}
+
+async function getTestIdWidth(page, testId) {
+  return page.evaluate((value) => {
+    const element = document.querySelector(`[data-testid="${value}"]`);
+    if (!element) {
+      return 0;
+    }
+    return element.getBoundingClientRect().width;
+  }, testId);
+}
+
 function bridgeEnv(homeDir) {
   return {
     ...process.env,
@@ -227,6 +248,24 @@ test("overview renders the live happy path shell", async ({ page }) => {
   }
 });
 
+test("dashboard startup logs expose access guidance", async () => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-logs-"));
+  const server = await startDashboard(homeDir, 4182);
+
+  try {
+    await expect.poll(() => server.getLogs()).toContain("Dashboard 启动中");
+    await expect.poll(() => server.getLogs()).toContain("监听地址: 127.0.0.1");
+    await expect.poll(() => server.getLogs()).toContain("监听端口: 4182");
+    await expect.poll(() => server.getLogs()).toContain("本机访问: http://127.0.0.1:4182/overview");
+    await expect.poll(() => server.getLogs()).toContain("SSH 端口转发: ssh -L 4182:127.0.0.1:4182 <remote-host>");
+    await expect.poll(() => server.getLogs()).toContain("当前命令不会自动打开浏览器");
+    await expect.poll(() => server.getLogs()).toContain("停止方式: Ctrl+C");
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("overview renders the explicit empty state", async ({ page }) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-empty-"));
   const server = await startDashboard(homeDir, 4174);
@@ -247,32 +286,41 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
   const server = await startDashboard(homeDir, 4175);
 
   try {
-    await page.goto(`${server.baseUrl}/jobs?view=active&job=${seeded.jobA.id}`);
+    await page.goto(`${server.baseUrl}/jobs?view=active`);
     await expect(page.getByTestId("dashboard-nav-jobs")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-jobs-page")).toBeVisible();
     await expect(page.getByTestId("dashboard-jobs-filters")).toBeVisible();
     await expect(page.getByTestId("dashboard-page-chrome")).toBeVisible();
-    await expect(page.getByTestId("dashboard-back-link")).toContainText("Back to Jobs");
     await expect(page.getByTestId("dashboard-jobs-view-active")).toHaveClass(/is-active/);
     await expect(page.getByTestId(`dashboard-jobs-list-card-${seeded.jobA.id}`)).toBeVisible();
     await expect(page.getByTestId(`dashboard-jobs-list-card-${seeded.jobB.id}`)).toHaveCount(0);
+    await expect(page.getByTestId("dashboard-jobs-detail")).toHaveCount(0);
+
+    await page.getByTestId(`dashboard-jobs-list-card-${seeded.jobA.id}`).click();
+    await expect(page).toHaveURL(new RegExp(`/jobs\\?(?:job=${seeded.jobA.id}&view=active|view=active&job=${seeded.jobA.id})$`));
     await expect(page.getByTestId("dashboard-jobs-detail")).toContainText("Open latest task detail");
+    await expect(page.getByText("Back to job cards")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
       "A single place to review the live picture across jobs, tasks, queues, alerts, and health.",
     );
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
 
     await page.goto(
-      `${server.baseUrl}/tasks?job=${seeded.jobA.id}&state=running&agent=quality-agent&task=${seeded.taskA2.id}`,
+      `${server.baseUrl}/tasks?job=${seeded.jobA.id}&state=running&agent=quality-agent`,
     );
     await expect(page.getByTestId("dashboard-nav-tasks")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-tasks-page")).toBeVisible();
     await expect(page.getByTestId("dashboard-tasks-filters")).toBeVisible();
-    await expect(page.getByTestId("dashboard-back-link")).toContainText("Back to Tasks");
     await expect(page.getByTestId(`dashboard-tasks-list-card-${seeded.taskA2.id}`)).toBeVisible();
     await expect(page.getByTestId(`dashboard-tasks-list-card-${seeded.taskA1.id}`)).toHaveCount(0);
+    await expect(page.getByTestId("dashboard-tasks-detail")).toHaveCount(0);
+
+    await page.getByTestId(`dashboard-tasks-list-card-${seeded.taskA2.id}`).click();
+    await expect(page).toHaveURL(new RegExp(`/tasks\\?(?=.*job=${seeded.jobA.id})(?=.*state=running)(?=.*agent=quality-agent)(?=.*task=${seeded.taskA2.id}).*$`));
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("actively working");
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("Preview ready");
+    await expect(page.getByText("Back to filtered task cards")).toBeVisible();
+    await expect(page.getByText("Back to job detail")).toBeVisible();
     await expect(page.getByTestId("dashboard-tasks-detail-preview")).toContainText("Runbook");
     await expect(page.getByTestId("dashboard-tasks-timeline")).toContainText("Last dispatch recorded");
     await expect(page.locator("main button, main form, main input, main select, main textarea")).toHaveCount(0);
@@ -355,20 +403,53 @@ test("worker queue, alerts, and health render live read-only base pages", async 
 
     await page.goto(`${server.baseUrl}/worker-queue`);
     await expect(page.getByTestId("dashboard-worker-queue-hero")).toBeVisible();
-    await expect(page.getByTestId("dashboard-worker-queue-summary")).toContainText("Running tasks");
+    await expect(page.getByTestId("dashboard-worker-queue-summary")).toContainText("Current load and queue depth");
     await expect(page.getByTestId("dashboard-worker-queue-lanes")).toContainText("quality-agent");
     await expect(page.getByTestId("dashboard-worker-queue-unassigned")).toContainText(seeded.taskA3.id);
 
     await page.goto(`${server.baseUrl}/alerts`);
     await expect(page.getByTestId("dashboard-alerts-hero")).toBeVisible();
-    await expect(page.getByTestId("dashboard-alerts-summary")).toContainText("Blocked tasks");
+    await expect(page.getByTestId("dashboard-alerts-summary")).toContainText("What needs attention now");
     await expect(page.getByTestId("dashboard-alerts-risk-list")).toContainText(seeded.taskB2.id);
     await expect(page.getByTestId("dashboard-alerts-followups")).toContainText(seeded.taskB1.id);
 
     await page.goto(`${server.baseUrl}/health`);
     await expect(page.getByTestId("dashboard-health-hero")).toBeVisible();
-    await expect(page.getByTestId("dashboard-health-summary")).toContainText("Worker prompt cache entries");
+    await expect(page.getByTestId("dashboard-health-summary")).toContainText("Key runtime facts");
     await expect(page.getByTestId("dashboard-health-checks")).toContainText("daemon_state.json");
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("worker queue, alerts, and health stay within the viewport on desktop widths", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-layout-"));
+  await seedLiveDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4183);
+  const viewports = [1440, 1280, 1100];
+
+  try {
+    for (const width of viewports) {
+      await page.setViewportSize({ width, height: 960 });
+
+      await page.goto(`${server.baseUrl}/worker-queue`);
+      await expect(page.getByTestId("dashboard-worker-queue-lanes")).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+
+      await page.goto(`${server.baseUrl}/alerts`);
+      await expect(page.getByTestId("dashboard-alerts-risk-list")).toBeVisible();
+      await expect(page.getByTestId("dashboard-alerts-followups")).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      const riskWidth = await getTestIdWidth(page, "dashboard-alerts-risk-list");
+      const followupWidth = await getTestIdWidth(page, "dashboard-alerts-followups");
+      expect(riskWidth).toBeGreaterThan(420);
+      expect(followupWidth).toBeGreaterThan(340);
+
+      await page.goto(`${server.baseUrl}/health`);
+      await expect(page.getByTestId("dashboard-health-checks")).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+    }
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

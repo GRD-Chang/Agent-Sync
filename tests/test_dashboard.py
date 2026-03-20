@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import socket
 from pathlib import Path
 
 import pytest
@@ -58,18 +59,65 @@ def flatten_message_keys(value: object, prefix: str = "") -> set[str]:
     return set()
 
 
-def test_dashboard_help_describes_read_only_shell(capsys: pytest.CaptureFixture[str]) -> None:
+def test_dashboard_help_describes_access_and_launch_guidance(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["dashboard", "-h"])
 
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
-    assert "启动 task-bridge 的只读 dashboard" in help_text
-    assert "Overview / Jobs / Tasks / Worker & Queue / Alerts / Health 为只读 MVP 页面" in help_text
+    assert "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Worker Queue / Alerts / Health。" in help_text
     assert "支持通过页面内切换器在 en / zh-CN 之间切换界面语言" in help_text
-    assert "Worker & Queue / Alerts / Health 保持基础只读范围" in help_text
+    assert "启动后会输出访问地址、数据目录和远程 SSH 端口转发提示" in help_text
     assert "--host" in help_text
     assert "--port" in help_text
+
+
+def test_dashboard_command_prints_actionable_launch_output(
+    home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import task_bridge.dashboard as dashboard_package
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        dashboard_package,
+        "run_dashboard",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    assert main(["dashboard", "--host", "127.0.0.1", "--port", str(port)]) == 0
+    output = capsys.readouterr().out
+
+    assert "Dashboard 启动中" in output
+    assert "监听地址: 127.0.0.1" in output
+    assert f"监听端口: {port}" in output
+    assert f"本机访问: http://127.0.0.1:{port}/overview" in output
+    assert f"数据目录: {home}" in output
+    assert f"ssh -L {port}:127.0.0.1:{port} <remote-host>" in output
+    assert "当前命令不会自动打开浏览器" in output
+    assert "Ctrl+C" in output
+    assert captured == {"home": home, "host": "127.0.0.1", "port": port}
+
+
+def test_dashboard_command_reports_occupied_port(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+        port = sock.getsockname()[1]
+
+        assert main(["dashboard", "--host", "127.0.0.1", "--port", str(port)]) == 2
+
+    error_text = capsys.readouterr().err
+    assert f"127.0.0.1:{port}" in error_text
+    assert "已被占用" in error_text
+    assert re.search(r"task-bridge dashboard --host 127\.0\.0\.1 --port \d+", error_text)
 
 
 def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
@@ -132,15 +180,15 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
     seeded = seed_operational_dashboard_store(home)
     page_specs = [
         ("/overview?lang=zh-CN", "dashboard-overview-hero", "任务状态汇总"),
-        (f"/jobs?job={seeded['job_a']['id']}&lang=zh-CN", "dashboard-jobs-page", "作业列表"),
+        (f"/jobs?job={seeded['job_a']['id']}&lang=zh-CN", "dashboard-jobs-page", "作业详情"),
         (
             f"/tasks?job={seeded['job_a']['id']}&task={seeded['task_a2']['id']}&lang=zh-CN",
             "dashboard-tasks-page",
             "时间线",
         ),
-        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "代理占用与队列深度"),
-        ("/alerts?lang=zh-CN", "dashboard-alerts-hero", "终态与跟进汇总"),
-        ("/health?lang=zh-CN", "dashboard-health-hero", "存储与 daemon 摘要"),
+        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "当前负载与队列深度"),
+        ("/alerts?lang=zh-CN", "dashboard-alerts-hero", "当前需要处理的事项"),
+        ("/health?lang=zh-CN", "dashboard-health-hero", "关键运行摘要"),
     ]
 
     with TestClient(create_dashboard_app(home)) as client:
@@ -171,8 +219,8 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
         ("/overview?lang=zh-CN", "dashboard-overview-empty-state", "还没有作业或任务"),
         ("/jobs?lang=zh-CN", "dashboard-jobs-empty-state", "还没有作业"),
         ("/tasks?lang=zh-CN", "dashboard-tasks-empty-state", "还没有任务"),
-        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-empty-state", "还没有代理或队列活动"),
-        ("/alerts?lang=zh-CN", "dashboard-alerts-empty-state", "当前没有告警态势"),
+        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-empty-state", "还没有 agent 活动"),
+        ("/alerts?lang=zh-CN", "dashboard-alerts-empty-state", "当前没有需要处理的风险"),
     ],
 )
 def test_dashboard_chinese_locale_renders_empty_states(
@@ -251,6 +299,8 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
     assert jobs.selection_missing is False
     assert jobs.selected_job is not None
     assert jobs.selected_job.job_id == seeded["job_a"]["id"]
+    assert jobs.detail_back_link is not None
+    assert jobs.detail_back_link.href == "/jobs"
     assert jobs.selected_job.task_count == 2
     assert jobs.selected_job.active_task_count == 2
     assert jobs.selected_job.terminal_task_count == 0
@@ -273,8 +323,8 @@ def test_dashboard_jobs_query_filters_by_active_view(home: Path) -> None:
     assert jobs.visible_jobs_count == 1
     assert jobs.filtered_empty is False
     assert [item.job_id for item in jobs.jobs] == [seeded["job_a"]["id"]]
-    assert jobs.selected_job is not None
-    assert jobs.selected_job.job_id == seeded["job_a"]["id"]
+    assert jobs.selected_job is None
+    assert jobs.detail_back_link is None
 
 
 def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
@@ -292,6 +342,9 @@ def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
     assert tasks.selection_missing is False
     assert tasks.selected_task is not None
     assert tasks.selected_task.task_id == seeded["task_a2"]["id"]
+    assert tasks.detail_back_link is not None
+    assert tasks.detail_back_link.href == f"/tasks?job={seeded['job_a']['id']}"
+    assert [item.label for item in tasks.selected_task.back_links] == ["Back to filtered task cards", "Back to job detail"]
     assert tasks.selected_task.detail_status_label == "Preview ready"
     assert tasks.selected_task.detail_preview.status == "rendered"
     assert [block.kind for block in tasks.selected_task.detail_preview.blocks] == ["heading", "list"]
@@ -312,6 +365,7 @@ def test_dashboard_jobs_page_chrome_exposes_breadcrumbs_and_back_link(home: Path
     assert 'data-testid="dashboard-back-link"' in body
     assert "Back to Jobs" in body
     assert "job-a" in body
+    assert "Back to job cards" in body
     assert re.search(r'data-testid="dashboard-back-link"[^>]*href="/jobs\?view=active"', body)
 
 
@@ -329,6 +383,8 @@ def test_dashboard_tasks_page_chrome_preserves_filters_in_back_link(home: Path) 
     assert 'data-testid="dashboard-breadcrumbs"' in body
     assert 'data-testid="dashboard-back-link"' in body
     assert "Back to Tasks" in body
+    assert "Back to filtered task cards" in body
+    assert "Back to job detail" in body
     assert seeded["task_a2"]["id"] in body
     assert re.search(
         rf'data-testid="dashboard-back-link"[^>]*href="/tasks\?job={seeded["job_a"]["id"]}&amp;state=running&amp;agent=quality-agent"',
@@ -373,6 +429,8 @@ def test_dashboard_tasks_query_filters_by_job_state_and_agent(home: Path) -> Non
     assert tasks.visible_tasks_count == 1
     assert tasks.filtered_empty is False
     assert [item.task_id for item in tasks.tasks] == [seeded["task_a2"]["id"]]
+    assert tasks.selected_task is None
+    assert tasks.detail_back_link is None
     assert {item.label: item.value for item in tasks.applied_filters} == {
         "Job": "job-a",
         "State": "Running",
@@ -543,7 +601,7 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     body = response.text
     assert 'data-testid="dashboard-jobs-page"' in body
     assert 'data-testid="dashboard-jobs-filters"' in body
-    assert 'data-testid="dashboard-jobs-list"' in body
+    assert 'data-testid="dashboard-jobs-detail-shell"' in body
     assert 'data-testid="dashboard-jobs-detail"' in body
     assert seeded["job_a"]["id"] in body
     assert seeded["job_b"]["id"] in body
@@ -565,6 +623,7 @@ def test_dashboard_jobs_route_filters_existing_records_by_view(home: Path) -> No
     assert 'data-testid="dashboard-jobs-view-active"' in body
     assert 'data-testid="dashboard-jobs-list-card-{}"'.format(seeded["job_a"]["id"]) in body
     assert 'data-testid="dashboard-jobs-list-card-{}"'.format(seeded["job_b"]["id"]) not in body
+    assert 'data-testid="dashboard-jobs-detail"' not in body
 
 
 def test_dashboard_jobs_route_explicit_empty_state(home: Path) -> None:
@@ -588,7 +647,7 @@ def test_dashboard_tasks_route_renders_live_list_detail_preview_and_timeline(hom
     body = response.text
     assert 'data-testid="dashboard-tasks-page"' in body
     assert 'data-testid="dashboard-tasks-filters"' in body
-    assert 'data-testid="dashboard-tasks-list"' in body
+    assert 'data-testid="dashboard-tasks-detail-shell"' in body
     assert 'data-testid="dashboard-tasks-detail"' in body
     assert 'data-testid="dashboard-tasks-detail-preview"' in body
     assert 'data-testid="dashboard-tasks-detail-preview-rendered"' in body
@@ -613,8 +672,9 @@ def test_dashboard_tasks_route_filters_and_handles_missing_detail(home: Path) ->
 
     assert response.status_code == 200
     body = response.text
-    assert 'data-testid="dashboard-tasks-list-card-{}"'.format(seeded["task_a1"]["id"]) in body
-    assert 'data-testid="dashboard-tasks-list-card-{}"'.format(seeded["task_a2"]["id"]) not in body
+    assert 'data-testid="dashboard-tasks-detail-shell"' in body
+    assert seeded["task_a1"]["id"] in body
+    assert seeded["task_a2"]["id"] not in body
     assert 'data-testid="dashboard-tasks-detail-preview-missing"' in body
     assert "File missing" in body
 
@@ -628,6 +688,7 @@ def test_dashboard_tasks_route_shows_filter_empty_state(home: Path) -> None:
     assert response.status_code == 200
     body = response.text
     assert 'data-testid="dashboard-tasks-filter-empty"' in body
+    assert 'data-testid="dashboard-tasks-detail"' not in body
     assert "No tasks match these filters" in body
 
 
@@ -657,6 +718,10 @@ def test_dashboard_worker_queue_route_renders_live_base_page(home: Path) -> None
     assert seeded["task_a1"]["id"] in body
     assert seeded["task_a3"]["id"] in body
     assert "quality-agent" in body
+    assert "Worker queue across agents." in body
+    assert 'class="queue-layout"' in body
+    assert "browse-layout" not in body
+    assert "Each card shows the task in progress plus queued work for that agent." in body
     assert 'data-testid="dashboard-worker-queue-empty-state"' not in body
     assert re.search(r'data-testid="dashboard-nav-worker-queue"[^>]*aria-current="page"', body)
     assert "<form" not in body
@@ -681,6 +746,9 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert seeded["task_b1"]["id"] in body
     assert seeded["task_b2"]["id"] in body
     assert "worker crashed" in body
+    assert 'class="alerts-layout"' in body
+    assert "browse-layout" not in body
+    assert "Review the latest task summary before deciding the next action." in body
     assert re.search(r'data-testid="dashboard-nav-alerts"[^>]*aria-current="page"', body)
     assert "<form" not in body
     assert "<button" not in body
@@ -702,6 +770,8 @@ def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:
     assert 'data-testid="dashboard-health-checks"' in body
     assert "daemon_state.json" in body
     assert "2026-03-20 11:45 UTC" in body
+    assert "Readability checks" in body
+    assert "Warnings here come only from readable local files." in body
     assert re.search(r'data-testid="dashboard-nav-health"[^>]*aria-current="page"', body)
     assert "<form" not in body
     assert "<button" not in body

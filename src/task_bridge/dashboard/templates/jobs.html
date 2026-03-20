@@ -73,60 +73,11 @@
   </div>
 </section>
 
-<div class="browse-layout">
-  <section class="browse-panel" aria-labelledby="jobs-list-title" data-testid="dashboard-jobs-list">
-    <div class="section-heading">
-      <p class="eyebrow">{{ ui.jobs.list_eyebrow }}</p>
-      <h2 id="jobs-list-title">{{ ui.jobs.list_title }}</h2>
-      <p class="section-note">{{ ui.jobs.list_note }}</p>
-    </div>
-
-    {% if jobs.filtered_empty %}
-    <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-jobs-filter-empty">
-      <h3>{{ ui.jobs.view_empty_title }}</h3>
-      <p>{{ ui.jobs.view_empty_body }}</p>
-    </div>
-    {% else %}
-    <div class="item-list">
-      {% for item in jobs.jobs %}
-      <a
-        class="list-card{% if item.is_selected %} is-selected{% endif %}"
-        data-testid="dashboard-jobs-list-card-{{ item.job_id }}"
-        href="{{ item.detail_href }}"
-      >
-        <div class="list-card-header">
-          <div>
-            <h3>{{ item.title }}</h3>
-            <p class="list-card-meta">{{ item.job_id }}</p>
-          </div>
-          <div class="list-card-badges">
-            {% if item.is_current %}
-            <span class="status-pill status-current">{{ ui.jobs.current_badge }}</span>
-            {% endif %}
-          </div>
-        </div>
-        <p class="list-card-summary">{{ ui.jobs.notify_target }}: {{ item.notify_target }}</p>
-        <dl class="list-card-stats">
-          <div>
-            <dt>{{ ui.jobs.tasks_total }}</dt>
-            <dd>{{ item.task_count }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.jobs.tasks_active }}</dt>
-            <dd>{{ item.active_task_count }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.jobs.tasks_terminal }}</dt>
-            <dd>{{ item.terminal_task_count }}</dd>
-          </div>
-        </dl>
-        <p class="list-card-foot">{{ ui.jobs.updated_at }}: {{ item.updated_at }}</p>
-      </a>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </section>
-
+{% if jobs.selected_job %}
+<section class="detail-shell" aria-labelledby="jobs-detail-title" data-testid="dashboard-jobs-detail-shell">
+  {% if jobs.detail_back_link %}
+  <a class="inline-back-link" href="{{ jobs.detail_back_link.href }}">{{ jobs.detail_back_link.label }}</a>
+  {% endif %}
   <section class="detail-panel" aria-labelledby="jobs-detail-title" data-testid="dashboard-jobs-detail">
     <div class="section-heading">
       <p class="eyebrow">{{ ui.jobs.detail_eyebrow }}</p>
@@ -134,7 +85,6 @@
       <p class="section-note">{{ ui.jobs.detail_note }}</p>
     </div>
 
-    {% if jobs.selected_job %}
     <div class="detail-stack">
       <article class="detail-card">
         <div class="detail-title-row">
@@ -214,9 +164,9 @@
         </div>
 
         {% if jobs.selected_job.task_previews %}
-        <div class="task-preview-list">
+        <div class="task-preview-grid">
           {% for item in jobs.selected_job.task_previews %}
-          <a class="task-preview-card" href="{{ item.detail_href }}">
+          <a class="task-preview-card" data-testid="dashboard-jobs-task-card-{{ item.task_id }}" href="{{ item.detail_href }}">
             <div class="task-preview-header">
               <div>
                 <h4>{{ item.task_id }}</h4>
@@ -239,13 +189,61 @@
         {% endif %}
       </article>
     </div>
-    {% else %}
-    <div class="state-panel" role="status" aria-live="polite">
-      <h3>{{ ui.jobs.detail_title }}</h3>
-      <p>{{ ui.jobs.view_empty_body }}</p>
-    </div>
-    {% endif %}
   </section>
-</div>
+</section>
+{% else %}
+<section class="browse-panel jobs-list-shell" aria-labelledby="jobs-list-title" data-testid="dashboard-jobs-list">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.jobs.list_eyebrow }}</p>
+    <h2 id="jobs-list-title">{{ ui.jobs.list_title }}</h2>
+    <p class="section-note">{{ ui.jobs.list_note }}</p>
+  </div>
+
+  {% if jobs.filtered_empty %}
+  <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-jobs-filter-empty">
+    <h3>{{ ui.jobs.view_empty_title }}</h3>
+    <p>{{ ui.jobs.view_empty_body }}</p>
+  </div>
+  {% else %}
+  <div class="jobs-card-grid item-grid">
+    {% for item in jobs.jobs %}
+    <a
+      class="list-card job-card"
+      data-testid="dashboard-jobs-list-card-{{ item.job_id }}"
+      href="{{ item.detail_href }}"
+    >
+      <div class="list-card-header">
+        <div>
+          <h3>{{ item.title }}</h3>
+          <p class="list-card-meta">{{ item.job_id }}</p>
+        </div>
+        <div class="list-card-badges">
+          {% if item.is_current %}
+          <span class="status-pill status-current">{{ ui.jobs.current_badge }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <p class="list-card-summary">{{ ui.jobs.notify_target }}: {{ item.notify_target }}</p>
+      <dl class="list-card-stats">
+        <div>
+          <dt>{{ ui.jobs.tasks_total }}</dt>
+          <dd>{{ item.task_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.jobs.tasks_active }}</dt>
+          <dd>{{ item.active_task_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.jobs.tasks_terminal }}</dt>
+          <dd>{{ item.terminal_task_count }}</dd>
+        </div>
+      </dl>
+      <p class="list-card-foot">{{ ui.jobs.updated_at }}: {{ item.updated_at }}</p>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 {% endif %}
 {% endblock %}

@@ -86,58 +86,11 @@
   </div>
 </section>
 
-<div class="browse-layout">
-  <section class="browse-panel" aria-labelledby="tasks-list-title" data-testid="dashboard-tasks-list">
-    <div class="section-heading">
-      <p class="eyebrow">{{ ui.tasks.list_eyebrow }}</p>
-      <h2 id="tasks-list-title">{{ ui.tasks.list_title }}</h2>
-      <p class="section-note">{{ ui.tasks.list_note }}</p>
-    </div>
-
-    {% if tasks.filtered_empty %}
-    <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-tasks-filter-empty">
-      <h3>{{ ui.tasks.filters_empty_title }}</h3>
-      <p>{{ ui.tasks.filters_empty_body }}</p>
-    </div>
-    {% else %}
-    <div class="item-list">
-      {% for item in tasks.tasks %}
-      <a
-        class="list-card{% if item.is_selected %} is-selected{% endif %}"
-        data-testid="dashboard-tasks-list-card-{{ item.task_id }}"
-        href="{{ item.detail_href }}"
-      >
-        <div class="list-card-header">
-          <div>
-            <h3>{{ item.task_id }}</h3>
-            <p class="list-card-meta">{{ item.job_id }} / {{ item.assigned_agent }}</p>
-          </div>
-          <div class="list-card-badges">
-            <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
-          </div>
-        </div>
-        <p class="list-card-summary">{{ item.summary_label }}: {{ item.summary_text }}</p>
-        <dl class="list-card-stats">
-          <div>
-            <dt>{{ ui.tasks.created_at }}</dt>
-            <dd>{{ item.created_at }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.updated_at }}</dt>
-            <dd>{{ item.updated_at }}</dd>
-          </div>
-          <div>
-            <dt>{{ ui.tasks.detail_status }}</dt>
-            <dd>{{ item.detail_status_label }}</dd>
-          </div>
-        </dl>
-        <p class="list-card-foot">{{ ui.tasks.job_id }}: {{ item.job_id }}</p>
-      </a>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </section>
-
+{% if tasks.selected_task %}
+<section class="detail-shell" aria-labelledby="tasks-detail-title" data-testid="dashboard-tasks-detail-shell">
+  {% if tasks.detail_back_link %}
+  <a class="inline-back-link" href="{{ tasks.detail_back_link.href }}">{{ tasks.detail_back_link.label }}</a>
+  {% endif %}
   <section class="detail-panel" aria-labelledby="tasks-detail-title" data-testid="dashboard-tasks-detail">
     <div class="section-heading">
       <p class="eyebrow">{{ ui.tasks.detail_eyebrow }}</p>
@@ -145,7 +98,12 @@
       <p class="section-note">{{ ui.tasks.detail_note }}</p>
     </div>
 
-    {% if tasks.selected_task %}
+    <div class="detail-nav-chips">
+      {% for item in tasks.selected_task.back_links %}
+      <a class="route-link" href="{{ item.href }}">{{ item.label }}</a>
+      {% endfor %}
+    </div>
+
     <div class="detail-stack">
       <article class="detail-card">
         <div class="detail-title-row">
@@ -155,10 +113,6 @@
           </div>
           <span class="status-pill status-{{ tasks.selected_task.state }}">{{ ui.status[tasks.selected_task.state].label }}</span>
         </div>
-
-        <p class="section-note">
-          <a class="text-link" href="{{ tasks.selected_task.job_href }}">{{ ui.tasks.open_job }}</a>
-        </p>
 
         <dl class="meta-grid">
           <div>
@@ -287,13 +241,59 @@
         </div>
       </article>
     </div>
-    {% else %}
-    <div class="state-panel" role="status" aria-live="polite">
-      <h3>{{ ui.tasks.detail_title }}</h3>
-      <p>{{ ui.tasks.filters_empty_body }}</p>
-    </div>
-    {% endif %}
   </section>
-</div>
+</section>
+{% else %}
+<section class="browse-panel tasks-list-shell" aria-labelledby="tasks-list-title" data-testid="dashboard-tasks-list">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.tasks.list_eyebrow }}</p>
+    <h2 id="tasks-list-title">{{ ui.tasks.list_title }}</h2>
+    <p class="section-note">{{ ui.tasks.list_note }}</p>
+  </div>
+
+  {% if tasks.filtered_empty %}
+  <div class="state-panel" role="status" aria-live="polite" data-testid="dashboard-tasks-filter-empty">
+    <h3>{{ ui.tasks.filters_empty_title }}</h3>
+    <p>{{ ui.tasks.filters_empty_body }}</p>
+  </div>
+  {% else %}
+  <div class="tasks-card-grid item-grid">
+    {% for item in tasks.tasks %}
+    <a
+      class="list-card task-card"
+      data-testid="dashboard-tasks-list-card-{{ item.task_id }}"
+      href="{{ item.detail_href }}"
+    >
+      <div class="list-card-header">
+        <div>
+          <h3>{{ item.task_id }}</h3>
+          <p class="list-card-meta">{{ item.job_id }} / {{ item.assigned_agent }}</p>
+        </div>
+        <div class="list-card-badges">
+          <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
+        </div>
+      </div>
+      <p class="list-card-summary">{{ item.summary_label }}: {{ item.summary_text }}</p>
+      <dl class="list-card-stats">
+        <div>
+          <dt>{{ ui.tasks.created_at }}</dt>
+          <dd>{{ item.created_at }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.tasks.updated_at }}</dt>
+          <dd>{{ item.updated_at }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.tasks.detail_status }}</dt>
+          <dd>{{ item.detail_status_label }}</dd>
+        </div>
+      </dl>
+      <p class="list-card-foot">{{ ui.tasks.job_id }}: {{ item.job_id }}</p>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 {% endif %}
 {% endblock %}
