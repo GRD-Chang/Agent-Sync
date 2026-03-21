@@ -67,14 +67,12 @@ function sanitize(name) {
 test.describe("dashboard UI snapshots for task-bridge job/task", () => {
   test("capture tasks job-scope and jobs dispatch timeline", async ({ page }) => {
     const homeDir = process.env.TASK_BRIDGE_HOME;
-    const outDir = process.env.UI_SNAPSHOT_DIR;
+    const outDir = process.env.UI_SNAPSHOT_DIR || path.join(repoRoot, "artifacts", "ui-snapshots");
     const phase = process.env.UI_SNAPSHOT_PHASE || "snapshot";
     const jobId = process.env.UI_SNAPSHOT_JOB_ID;
     const taskId = process.env.UI_SNAPSHOT_TASK_ID;
 
     if (!homeDir) throw new Error("TASK_BRIDGE_HOME is required");
-    if (!outDir) throw new Error("UI_SNAPSHOT_DIR is required");
-    if (!jobId) throw new Error("UI_SNAPSHOT_JOB_ID is required");
 
     await fs.mkdir(outDir, { recursive: true });
 
@@ -99,9 +97,10 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
       await page.goto(jobDetailUrl);
       await page.waitForLoadState("networkidle");
 
-      const timeline = page.getByTestId("dashboard-dispatch-timeline");
-      await expect(timeline).toBeVisible();
+      const timeline = page.getByTestId("dashboard-jobs-dispatch-timeline");
+      await expect(timeline).toHaveCount(1);
       await timeline.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(150);
       await timeline.screenshot({
         path: path.join(outDir, `${phase}-job-dispatch-timeline.png`),
       });

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -311,7 +312,15 @@ def _query_param_value(request: Request, key: str) -> str | None:
 
 
 def _dashboard_service(request: Request) -> DashboardQueryService:
-    return DashboardQueryService(request.app.state.dashboard_home, locale=_request_locale(request))
+    locale = _request_locale(request)
+    now_override = os.environ.get("TASK_BRIDGE_DASHBOARD_NOW")
+    if now_override:
+        return DashboardQueryService(
+            request.app.state.dashboard_home,
+            locale=locale,
+            now_provider=lambda: now_override,
+        )
+    return DashboardQueryService(request.app.state.dashboard_home, locale=locale)
 
 
 def _request_locale(request: Request) -> str:

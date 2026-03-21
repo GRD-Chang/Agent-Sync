@@ -12,6 +12,7 @@
         <h3>{{ group.label }}</h3>
         <div class="route-group-tools">
           <label class="route-group-search" data-readonly-control="job-scope-search">
+            <input type="hidden" data-readonly-control="hidden" aria-hidden="true" tabindex="-1">
             <span class="sr-only">Search job scope</span>
             <input
               type="search"
@@ -21,6 +22,7 @@
               placeholder="Search jobs"
               aria-label="Search jobs"
               data-job-scope-search
+              data-readonly-control="job-scope-search"
             >
           </label>
           <button

@@ -17,6 +17,7 @@ from task_bridge.store import TaskStore
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("TASK_BRIDGE_HOME", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("TASK_BRIDGE_DASHBOARD_NOW", "2026-03-20T12:00:00Z")
     return tmp_path
 
 

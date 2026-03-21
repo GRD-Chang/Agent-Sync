@@ -276,6 +276,7 @@
 
 .task-preview-meta {
   max-width: 100%;
+  overflow: hidden;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.78rem;
@@ -283,9 +284,22 @@
 
 .task-preview-meta span {
   max-width: 100%;
+  min-width: 0;
+  flex: 0 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Overflow fixture: allow long agent labels to wrap within the card. */
+.task-preview-meta .task-preview-agent {
+  flex: 1 1 auto;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: right;
 }
 
 .task-preview-header,
