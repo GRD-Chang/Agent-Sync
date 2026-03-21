@@ -50,9 +50,9 @@
   {% if selected_job.timeline %}
   <section
     class="dispatch-timeline"
-    data-testid="dashboard-dispatch-timeline"
+    data-testid="dashboard-jobs-dispatch-timeline"
     data-dispatch-timeline
-        aria-label="{{ ui.jobs.timeline }}"
+    aria-label="{{ ui.jobs.timeline }}"
   >
     <div class="dispatch-timeline-topbar">
       <p class="dispatch-timeline-legend">{{ ui.jobs.timeline_live_edge }}</p>
@@ -91,13 +91,19 @@
       >
         <ol class="dispatch-timeline-track" role="list">
           {% for item in selected_job.timeline %}
-          <li class="dispatch-node{% if item.is_newest %} is-newest{% endif %}">
+          <li
+            class="dispatch-node{% if item.is_newest %} is-newest{% endif %}"
+            data-dispatch-state="{{ item.state }}"
+            style="--dispatch-delay: {{ [loop.revindex0 * 60, 420] | min }}ms;"
+          >
             <a
-              class="dispatch-node-link" data-agent="{{ item.agent }}"
+              class="dispatch-node-link"
+              data-agent="{{ item.assigned_agent }}"
               href="{{ item.detail_href }}"
               data-testid="dashboard-jobs-timeline-node-{{ item.task_id }}"
               aria-label="{{ item.task_id }} · {{ item.assigned_agent }} · {{ item.state_label }} · {{ item.dispatch_at_full }}"
               title="{{ item.task_id }} · {{ item.dispatch_at_full }}"
+              {% if item.is_newest %}aria-current="step"{% endif %}
             >
               <span class="dispatch-node-connector" aria-hidden="true"></span>
               <time class="dispatch-node-time" datetime="{{ item.dispatch_at_iso }}">

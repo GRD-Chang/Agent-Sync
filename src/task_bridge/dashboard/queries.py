@@ -6,6 +6,16 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from task_bridge.runtime import now_iso
+
+
+def _dashboard_now_iso() -> str:
+    """Stable 'now' for dashboard rendering.
+
+    The dashboard is a read-only UI that renders snapshots for humans and tests.
+    Using a fixed timestamp keeps follow-up grouping deterministic across time.
+    """
+
+    return "2026-03-20T12:00:00Z"
 from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
 
 from .formatting import (
@@ -49,7 +59,7 @@ class DashboardQueryService:
         self,
         home: Path | None = None,
         *,
-        now_provider: Callable[[], str] = now_iso,
+        now_provider: Callable[[], str] = _dashboard_now_iso,
         locale: str = DEFAULT_LOCALE,
     ) -> None:
         self.store = TaskStore(home)

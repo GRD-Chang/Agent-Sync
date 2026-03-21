@@ -247,6 +247,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0.45rem;
+  min-width: 0;
 }
 
 .list-card-stats {
@@ -281,7 +282,10 @@
 }
 
 .task-preview-meta span {
+  max-width: 100%;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-preview-header,
@@ -520,6 +524,7 @@
   padding: 0.45rem 0.75rem;
   font-size: 0.85rem;
   line-height: 1.1;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
 .route-group-search input::placeholder {
@@ -527,7 +532,7 @@
 }
 
 .route-group-search input:focus-visible {
-  outline: 2px solid rgba(150, 205, 255, 0.9);
+  outline: 2px solid rgba(44, 109, 112, 0.45);
   outline-offset: 2px;
 }
 
@@ -540,15 +545,19 @@
   font-size: 0.82rem;
   letter-spacing: 0.01em;
   cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease,
+    background 160ms ease;
 }
 
 .route-group-toggle:hover {
-  border-color: rgba(200, 185, 168, 0.5);
-  background: rgba(30, 26, 22, 0.72);
+  transform: translateY(-1px);
+  border-color: rgba(30, 26, 22, 0.26);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18px 32px rgba(44, 31, 16, 0.12);
 }
 
 .route-group-toggle:focus-visible {
-  outline: 2px solid rgba(150, 205, 255, 0.9);
+  outline: 2px solid rgba(44, 109, 112, 0.45);
   outline-offset: 2px;
 }
 
@@ -568,6 +577,36 @@
 
 .job-scope-chip {
   white-space: nowrap;
+}
+
+/* Job scope list: let chips breathe and prevent metadata truncation. */
+.job-scope-chips {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+}
+
+.job-scope-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.job-scope-chip-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.job-scope-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-scope-chip-count {
+  min-width: 1.75rem;
+  text-align: right;
 }
 
 /* subtle scrollbar styling */
