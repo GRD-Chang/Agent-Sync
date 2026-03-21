@@ -6,6 +6,53 @@
   </div>
   <div class="route-groups">
     {% for group in tasks.filter_groups %}
+    {% if group.key == "job" %}
+    <article class="route-group route-group--job-scope" data-testid="dashboard-tasks-filter-job">
+      <div class="route-group-heading">
+        <h3>{{ group.label }}</h3>
+        <div class="route-group-tools">
+          <label class="route-group-search" data-readonly-control="job-scope-search">
+            <span class="sr-only">Search job scope</span>
+            <input
+              type="search"
+              inputmode="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Search jobs"
+              aria-label="Search jobs"
+              data-job-scope-search
+            >
+          </label>
+          <button
+            class="route-group-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="job-scope-panel"
+            data-job-scope-toggle
+          >
+            <span class="route-group-toggle-label" data-collapsed-label>Show more</span>
+            <span class="route-group-toggle-label" data-expanded-label hidden>Show less</span>
+          </button>
+        </div>
+      </div>
+      <p class="route-group-note">
+        <span data-job-scope-summary></span>
+      </p>
+      <div class="filter-chip-group job-scope-chips" id="job-scope-panel" data-job-scope-panel>
+        {% for option in group.options %}
+        <a
+          class="filter-chip job-scope-chip{% if option.is_active %} is-active{% endif %}"
+          data-testid="dashboard-tasks-filter-{{ group.key }}-{{ option.key }}"
+          data-job-scope-chip
+          href="{{ option.href }}"
+        >
+          <span>{{ option.label }}</span>
+          <strong>{{ option.count }}</strong>
+        </a>
+        {% endfor %}
+      </div>
+    </article>
+    {% else %}
     <article class="route-group">
       <h3>{{ group.label }}</h3>
       <div class="filter-chip-group">
@@ -21,6 +68,7 @@
         {% endfor %}
       </div>
     </article>
+    {% endif %}
     {% endfor %}
     <article class="route-group route-group-boundary">
       <p class="eyebrow">{{ ui.tasks.read_only_boundary }}</p>

@@ -229,6 +229,97 @@
     });
   }
 
+
+
+  function initJobScopePanels() {
+    const root = document;
+    root.querySelectorAll('[data-testid="dashboard-tasks-filter-job"]').forEach((panel) => {
+      const toggle = panel.querySelector('[data-job-scope-toggle]');
+      const list = panel.querySelector('[data-job-scope-panel]');
+      const search = panel.querySelector('[data-job-scope-search]');
+      const summary = panel.querySelector('[data-job-scope-summary]');
+      const collapsedLabel = panel.querySelector('[data-collapsed-label]');
+      const expandedLabel = panel.querySelector('[data-expanded-label]');
+      const chips = Array.from(panel.querySelectorAll('[data-job-scope-chip]'));
+
+      if (!toggle || !list || chips.length === 0) {
+        return;
+      }
+
+      const DEFAULT_VISIBLE = 10;
+      let expanded = false;
+      let query = '';
+
+      const activeChip = chips.find((chip) => chip.classList.contains('is-active'));
+      const activeLabel = activeChip ? (activeChip.querySelector('span')?.textContent || '').trim() : '';
+
+      function updateSummary() {
+        const total = chips.length;
+        const shown = expanded ? total : Math.min(DEFAULT_VISIBLE, total);
+        const suffix = total > shown ? ` · showing ${shown}/${total}` : ` · ${total} jobs`;
+        summary && (summary.textContent = activeLabel ? `Selected: ${activeLabel}${suffix}` : `Job scope${suffix}`);
+      }
+
+      function applyFilter() {
+        const q = query.trim().toLowerCase();
+        let visibleCount = 0;
+        chips.forEach((chip, index) => {
+          const label = (chip.querySelector('span')?.textContent || '').trim();
+          const matches = !q || label.toLowerCase().includes(q);
+          const inCollapsedWindow = expanded || index < DEFAULT_VISIBLE;
+          const show = matches && inCollapsedWindow;
+          chip.hidden = !show;
+          if (show) {
+            visibleCount += 1;
+          }
+        });
+        if (summary) {
+          const total = chips.length;
+          const windowed = expanded ? total : Math.min(DEFAULT_VISIBLE, total);
+          const filterSuffix = q ? ` · ${visibleCount} match${visibleCount === 1 ? '' : 'es'}` : '';
+          const suffix = total > windowed ? ` · showing ${windowed}/${total}` : ` · ${total} jobs`;
+          summary.textContent = activeLabel ? `Selected: ${activeLabel}${suffix}${filterSuffix}` : `Job scope${suffix}${filterSuffix}`;
+        }
+      }
+
+      function setExpanded(next) {
+        expanded = next;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        list.classList.toggle('is-collapsed', !expanded);
+        list.classList.toggle('is-expanded', expanded);
+        if (collapsedLabel && expandedLabel) {
+          collapsedLabel.hidden = expanded;
+          expandedLabel.hidden = !expanded;
+        }
+        applyFilter();
+      }
+
+      updateSummary();
+      setExpanded(false);
+
+      toggle.addEventListener('click', () => {
+        setExpanded(!expanded);
+      });
+
+      if (search) {
+        search.addEventListener('input', () => {
+          query = search.value || '';
+          // Auto-expand when searching to avoid hiding matches.
+          if (query.trim() && !expanded) {
+            setExpanded(true);
+          } else {
+            applyFilter();
+          }
+        });
+      }
+
+      // Ensure keyboard users can reach the scrollport area.
+      list.setAttribute('tabindex', '0');
+      list.setAttribute('role', 'region');
+      list.setAttribute('aria-label', 'Job scope options');
+    });
+  }
+
   document.addEventListener("click", (event) => {
     const link = event.target.closest("a[href]");
     if (!link) {
@@ -253,6 +344,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     initFontSwitcher();
     restoreScrollIntent();
+    initJobScopePanels();
     initDispatchTimelines();
   });
 })();

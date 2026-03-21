@@ -76,3 +76,16 @@ body::before {
     linear-gradient(130deg, rgba(255, 255, 255, 0.24), transparent 40%),
     radial-gradient(circle at bottom right, rgba(122, 56, 56, 0.16), transparent 26%);
 }
+
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
