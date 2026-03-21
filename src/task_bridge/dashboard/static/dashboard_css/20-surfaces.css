@@ -170,7 +170,7 @@
 .recent-item-link:focus-visible {
   transform: translateY(-1px);
   border-color: rgba(30, 26, 22, 0.24);
-  box-shadow: 0 16px 32px rgba(44, 31, 16, 0.1);
+  box-shadow: var(--shadow-hover);
 }
 
 .state-panel .eyebrow {
@@ -222,7 +222,7 @@
   gap: 0.35rem;
   max-width: 100%;
   padding: 0.32rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.01em;
