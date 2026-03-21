@@ -39,20 +39,6 @@
       <dd>{{ selected_job.terminal_task_count }}</dd>
     </div>
   </dl>
-
-  <div class="detail-callout compact-grid">
-    <p class="eyebrow">{{ ui.jobs.status_section }}</p>
-    <p>{{ ui.jobs.status_note }}</p>
-    <div class="summary-grid">
-      {% for metric in selected_job.task_status_metrics %}
-      <article class="summary-card summary-{{ metric.state }}">
-        <p class="summary-label">{{ metric.label }}</p>
-        <p class="summary-value">{{ metric.count }}</p>
-        <p class="summary-note">{{ metric.description }}</p>
-      </article>
-      {% endfor %}
-    </div>
-  </div>
 </article>
 
 <article class="detail-card" data-testid="dashboard-jobs-timeline">
@@ -61,20 +47,83 @@
     <h3>{{ ui.jobs.timeline }}</h3>
     <p class="section-note">{{ ui.jobs.timeline_note }}</p>
   </div>
-  <div class="timeline-list">
-    {% for item in selected_job.timeline %}
-    <article class="timeline-item">
-      <div class="timeline-dot" aria-hidden="true"></div>
-      <div class="timeline-copy">
-        <header>
-          <h4>{{ item.title }}</h4>
-          <time datetime="{{ item.timestamp_display }}">{{ item.timestamp_display }}</time>
-        </header>
-        <p>{{ item.note }}</p>
+  {% if selected_job.timeline %}
+  <section
+    class="dispatch-timeline"
+    data-dispatch-timeline
+    data-testid="dashboard-jobs-dispatch-timeline"
+    aria-label="{{ ui.jobs.timeline }}"
+  >
+    <div class="dispatch-timeline-topbar">
+      <p class="dispatch-timeline-legend">{{ ui.jobs.timeline_live_edge }}</p>
+      <div class="dispatch-timeline-controls" aria-label="{{ ui.jobs.timeline_controls }}">
+        <button
+          type="button"
+          class="dispatch-timeline-button"
+          data-dispatch-scroll="older"
+          data-testid="dashboard-jobs-timeline-older"
+          data-readonly-control="timeline-scroll"
+          aria-label="{{ ui.jobs.timeline_scroll_older }}"
+        >
+          <span aria-hidden="true">&larr;</span>
+        </button>
+        <button
+          type="button"
+          class="dispatch-timeline-button"
+          data-dispatch-scroll="newer"
+          data-testid="dashboard-jobs-timeline-newer"
+          data-readonly-control="timeline-scroll"
+          aria-label="{{ ui.jobs.timeline_scroll_newer }}"
+        >
+          <span aria-hidden="true">&rarr;</span>
+        </button>
       </div>
-    </article>
-    {% endfor %}
+    </div>
+
+    <div class="dispatch-timeline-frame">
+      <div class="dispatch-timeline-fade dispatch-timeline-fade--older" aria-hidden="true"></div>
+      <div class="dispatch-timeline-fade dispatch-timeline-fade--newer" aria-hidden="true"></div>
+      <div
+        class="dispatch-timeline-scroll"
+        data-dispatch-scrollport
+        data-testid="dashboard-jobs-timeline-scrollport"
+        tabindex="0"
+      >
+        <ol class="dispatch-timeline-track" role="list">
+          {% for item in selected_job.timeline %}
+          <li class="dispatch-node{% if item.is_newest %} is-newest{% endif %}">
+            <a
+              class="dispatch-node-link"
+              href="{{ item.detail_href }}"
+              data-testid="dashboard-jobs-timeline-node-{{ item.task_id }}"
+              aria-label="{{ item.task_id }} · {{ item.assigned_agent }} · {{ item.state_label }} · {{ item.dispatch_at_full }}"
+              title="{{ item.task_id }} · {{ item.dispatch_at_full }}"
+            >
+              <span class="dispatch-node-connector" aria-hidden="true"></span>
+              <time class="dispatch-node-time" datetime="{{ item.dispatch_at_iso }}">
+                <span>{{ item.dispatch_date_display }}</span>
+                {% if item.dispatch_time_display %}
+                <span>{{ item.dispatch_time_display }}</span>
+                {% endif %}
+              </time>
+              <strong class="dispatch-node-id">{{ item.task_short_id }}</strong>
+              <span class="dispatch-node-agent">{{ item.assigned_agent }}</span>
+              <span class="status-pill status-{{ item.state }}">{{ item.state_label }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+
+    <p class="dispatch-timeline-hint">{{ ui.jobs.timeline_browse_hint }}</p>
+  </section>
+  {% else %}
+  <div class="state-panel" role="status" aria-live="polite">
+    <h3>{{ ui.jobs.timeline }}</h3>
+    <p>{{ ui.jobs.timeline_empty }}</p>
   </div>
+  {% endif %}
 </article>
 
 {% if selected_job.detail_view_options %}

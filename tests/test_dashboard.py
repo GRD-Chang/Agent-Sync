@@ -441,11 +441,13 @@ def test_dashboard_jobs_query_builds_live_read_only_snapshot(home: Path) -> None
     assert jobs.selected_job.detail_view == "tasks"
     assert jobs.selected_job.detail_view_options == []
     assert jobs.selected_job.work_plan is None
-    assert [event.key for event in jobs.selected_job.timeline] == [
-        "created",
-        "task-activity",
-        "dispatch",
+    assert [node.task_id for node in jobs.selected_job.timeline] == [
+        seeded["task_a2"]["id"],
     ]
+    assert jobs.selected_job.timeline[0].task_short_id.startswith("#")
+    assert jobs.selected_job.timeline[0].assigned_agent == "quality-agent"
+    assert jobs.selected_job.timeline[0].dispatch_at_iso.endswith("Z")
+    assert jobs.selected_job.timeline[0].is_newest is True
     assert jobs.selected_job.tasks_href.endswith(f"/tasks?job={seeded['job_a']['id']}#tasks-registry")
     assert jobs.selected_job.latest_task_href is not None
     assert [item.task_id for item in jobs.selected_job.task_previews] == [
@@ -1030,6 +1032,10 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert 'data-testid="dashboard-jobs-detail-shell"' in body
     assert 'data-testid="dashboard-jobs-detail"' in body
     assert 'data-testid="dashboard-jobs-timeline"' in body
+    assert 'data-testid="dashboard-jobs-dispatch-timeline"' in body
+    assert 'data-testid="dashboard-jobs-timeline-scrollport"' in body
+    assert 'data-testid="dashboard-jobs-timeline-older"' in body
+    assert 'data-testid="dashboard-jobs-timeline-newer"' in body
     assert 'data-testid="dashboard-jobs-task-groups"' in body
     assert 'data-testid="dashboard-jobs-detail-view-switch"' not in body
     assert 'data-testid="dashboard-jobs-work-plan"' not in body
@@ -1037,7 +1043,9 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert seeded["job_b"]["id"] in body
     assert "job-a" in body
     assert "queued req" in body
-    assert "Job timeline" in body
+    assert "Dispatch timeline" in body
+    assert "Newest dispatches stay pinned on the live edge" in body
+    assert "Showing the latest dispatch slice first" in body
     assert body.index('data-testid="dashboard-jobs-timeline"') < body.index('data-testid="dashboard-jobs-task-groups"')
     assert f"/jobs?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}#job-task-detail" in body
     assert "Open latest task here" not in body

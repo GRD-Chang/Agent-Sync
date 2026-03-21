@@ -6,6 +6,14 @@
     grid-template-columns: 1fr;
   }
 
+  .dispatch-timeline-track {
+    grid-auto-columns: minmax(146px, 156px);
+  }
+
+  .dispatch-timeline-frame {
+    border-radius: 1rem;
+  }
+
   .item-grid,
   .task-preview-grid,
   .queue-layout,
@@ -56,6 +64,39 @@
   .page-shell {
     width: min(100% - 1rem, 1180px);
     padding-top: 1rem;
+  }
+
+  .dispatch-timeline-topbar {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .dispatch-timeline-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .dispatch-timeline-scroll {
+    padding: 1rem 3.35rem 1.15rem 0.85rem;
+  }
+
+  .dispatch-timeline-track {
+    grid-auto-columns: minmax(136px, 144px);
+    gap: 0.8rem;
+  }
+
+  .dispatch-node-link {
+    min-height: 10.75rem;
+    padding: 0.92rem 0.82rem 0.85rem;
+  }
+
+  .dispatch-node-agent {
+    min-height: 2.5rem;
+    font-size: 0.92rem;
+  }
+
+  .dispatch-timeline-hint {
+    font-size: 0.92rem;
   }
 
   .masthead,

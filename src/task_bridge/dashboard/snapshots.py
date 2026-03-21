@@ -147,6 +147,21 @@ class WorkPlanSnapshot:
 
 
 @dataclass(frozen=True)
+class JobDispatchTimelineNode:
+    task_id: str
+    task_short_id: str
+    assigned_agent: str
+    state: str
+    state_label: str
+    dispatch_at_iso: str
+    dispatch_at_full: str
+    dispatch_date_display: str
+    dispatch_time_display: str
+    detail_href: str
+    is_newest: bool
+
+
+@dataclass(frozen=True)
 class JobDetailSnapshot:
     job_id: str
     title: str
@@ -160,7 +175,7 @@ class JobDetailSnapshot:
     tasks_href: str
     latest_task_href: str | None
     task_status_metrics: list[TaskStatusMetric]
-    timeline: list["TaskTimelineEvent"]
+    timeline: list[JobDispatchTimelineNode]
     task_previews: list[JobTaskPreview]
     detail_view: str
     detail_view_options: list[LinkOption]

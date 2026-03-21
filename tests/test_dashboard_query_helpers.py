@@ -130,53 +130,55 @@ def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_cont
     assert detail.back_links[0].href == "/tasks#tasks-registry"
 
 
-def test_dashboard_jobs_query_derives_read_only_timeline_from_existing_job_task_facts(
+def test_dashboard_jobs_query_builds_horizontal_dispatch_timeline_nodes_from_scheduler_dispatches(
     tmp_path: Path,
 ) -> None:
     store = TaskStore(tmp_path)
     store.ensure_dirs()
 
     job = store.create_job(title="timeline-job")
-    task = store.create_task(
+    older = store.create_task(
         job_id=job["id"],
-        requirement="timeline requirement",
+        requirement="older timeline requirement",
         assigned_agent="quality-agent",
     )
-    store.update_task(
-        task["id"],
+    newer = store.create_task(
         job_id=job["id"],
-        state="blocked",
-        result="waiting on external input",
+        requirement="newer timeline requirement",
+        assigned_agent="code-agent",
     )
 
-    job_record = store.load_job(job["id"])
-    job_record["createdAt"] = "2026-03-20T12:00:00Z"
-    job_record["updatedAt"] = "2026-03-20T12:45:00Z"
-    store.save_job(job_record)
+    older_record = store.load_task(older["id"], job_id=job["id"])
+    older_record["createdAt"] = "2026-03-20T12:05:00Z"
+    older_record["updatedAt"] = "2026-03-20T12:45:00Z"
+    older_record["state"] = "blocked"
+    older_record["_scheduler"]["last_dispatch_at"] = "2026-03-20T12:20:00Z"
+    store.save_task(older_record)
 
-    task_record = store.load_task(task["id"], job_id=job["id"])
-    task_record["createdAt"] = "2026-03-20T12:05:00Z"
-    task_record["updatedAt"] = "2026-03-20T12:15:00Z"
-    task_record["_scheduler"]["last_dispatch_at"] = "2026-03-20T12:20:00Z"
-    task_record["_scheduler"]["final_notified_at"] = "2026-03-20T12:30:00Z"
-    task_record["_scheduler"]["leader_followup_due_at"] = "2026-03-20T12:40:00Z"
-    task_record["_scheduler"]["leader_followup_sent_at"] = "2026-03-20T12:50:00Z"
-    store.save_task(task_record)
+    newer_record = store.load_task(newer["id"], job_id=job["id"])
+    newer_record["createdAt"] = "2026-03-20T12:25:00Z"
+    newer_record["updatedAt"] = "2026-03-20T13:25:00Z"
+    newer_record["state"] = "running"
+    newer_record["_scheduler"]["last_dispatch_at"] = "2026-03-20T13:10:00Z"
+    store.save_task(newer_record)
 
-    snapshot = DashboardQueryService(tmp_path).jobs(selected_job_id=job["id"])
+    snapshot = DashboardQueryService(tmp_path).jobs(selected_job_id=job["id"], selected_view="active")
 
     assert snapshot.selected_job is not None
-    assert [event.key for event in snapshot.selected_job.timeline] == [
-        "created",
-        "task-activity",
-        "dispatch",
-        "final-notified",
-        "followup-due",
-        "followup-sent",
-    ]
-    assert snapshot.selected_job.timeline[0].title == "Job created"
-    assert snapshot.selected_job.timeline[1].title == "Latest task activity"
-    assert task["id"] in snapshot.selected_job.timeline[1].note
-    assert "quality-agent" in snapshot.selected_job.timeline[2].note
-    assert "team-leader" in snapshot.selected_job.timeline[3].note
-    assert task["id"] in snapshot.selected_job.timeline[4].note
+    timeline = snapshot.selected_job.timeline
+    assert [node.task_id for node in timeline] == [older["id"], newer["id"]]
+    assert timeline[0].task_short_id.startswith("#")
+    assert timeline[0].assigned_agent == "quality-agent"
+    assert timeline[0].state == "blocked"
+    assert timeline[0].state_label == "Blocked"
+    assert timeline[0].dispatch_at_iso == "2026-03-20T12:20:00Z"
+    assert timeline[0].dispatch_date_display == "03-20"
+    assert timeline[0].dispatch_time_display == "12:20 UTC"
+    assert timeline[0].detail_href.endswith(
+        f"/jobs?job={job['id']}&task={older['id']}&view=active#job-task-detail"
+    )
+    assert timeline[0].is_newest is False
+    assert timeline[1].assigned_agent == "code-agent"
+    assert timeline[1].state_label == "Running"
+    assert timeline[1].dispatch_at_iso == "2026-03-20T13:10:00Z"
+    assert timeline[1].is_newest is True

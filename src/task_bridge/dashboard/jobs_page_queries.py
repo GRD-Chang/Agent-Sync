@@ -9,16 +9,17 @@ from .formatting import (
     file_timestamp_iso as _file_timestamp_iso,
     format_timestamp as _format_timestamp,
     optional_text as _optional_text,
+    parse_timestamp as _parse_timestamp,
 )
 from .snapshots import (
     DetailBackLink,
+    JobDispatchTimelineNode,
     JobDetailSnapshot,
     JobListItem,
     JobsPageSnapshot,
     JobTaskGroup,
     JobTaskPreview,
     LinkOption,
-    TaskTimelineEvent,
     TaskStatusMetric,
     WorkPlanSnapshot,
 )
@@ -262,7 +263,7 @@ class JobsPageQueryAssembler:
             tasks_href=self._service._tasks_path(job_id=str(job["id"])) + "#tasks-registry",
             latest_task_href=latest_task_href,
             task_status_metrics=status_metrics,
-            timeline=self._build_job_timeline(job, job_tasks),
+            timeline=self._build_job_timeline(job_tasks, active_view=active_view),
             task_previews=task_previews,
             detail_view=active_detail_view,
             detail_view_options=self._build_job_detail_view_options(
@@ -279,193 +280,74 @@ class JobsPageQueryAssembler:
 
     def _build_job_timeline(
         self,
-        job: dict[str, object],
         job_tasks: list[dict[str, object]],
-    ) -> list[TaskTimelineEvent]:
+        *,
+        active_view: str,
+    ) -> list[JobDispatchTimelineNode]:
         from .queries import _task_scheduler
 
-        messages = self._messages["jobs"]
         status_messages = self._messages["status"]
         task_messages = self._messages["tasks"]
 
-        events: list[tuple[str, int, TaskTimelineEvent]] = []
-        created_at = _optional_text(job.get("createdAt"))
-        if created_at:
-            events.append(
-                (
-                    created_at,
-                    0,
-                    TaskTimelineEvent(
-                        key="created",
-                        title=messages["timeline_created"],
-                        timestamp_display=_format_timestamp(
-                            created_at,
-                            fallback=self._messages["common"]["unknown"],
-                        ),
-                        note=messages["timeline_created_note"].format(
-                            title=str(job.get("title") or job["id"]),
-                        ),
-                    ),
-                )
-            )
-
-        latest_task = max(
-            job_tasks,
-            key=lambda item: str(item.get("updatedAt") or item.get("createdAt") or ""),
-            default=None,
-        )
-        if latest_task is not None:
-            latest_task_at = _optional_text(latest_task.get("updatedAt")) or _optional_text(latest_task.get("createdAt"))
-            if latest_task_at:
-                summary_label, summary_text = self._service._task_summary(latest_task)
-                state = str(latest_task.get("state") or "queued")
-                events.append(
-                    (
-                        latest_task_at,
-                        1,
-                        TaskTimelineEvent(
-                            key="task-activity",
-                            title=messages["timeline_task_activity"],
-                            timestamp_display=_format_timestamp(
-                                latest_task_at,
-                                fallback=self._messages["common"]["unknown"],
-                            ),
-                            note=messages["timeline_task_activity_note"].format(
-                                task_id=str(latest_task["id"]),
-                                state_label=status_messages.get(state, status_messages["queued"])["label"],
-                                summary_label=summary_label,
-                                summary=summary_text,
-                            ),
-                        ),
-                    )
-                )
-
-        latest_dispatch_task = max(
+        timeline_tasks = sorted(
             (
                 task
                 for task in job_tasks
                 if _optional_text(_task_scheduler(task).get("last_dispatch_at"))
             ),
-            key=lambda item: str(_task_scheduler(item).get("last_dispatch_at") or ""),
-            default=None,
+            key=lambda item: (
+                str(_task_scheduler(item).get("last_dispatch_at") or ""),
+                str(item.get("createdAt") or ""),
+                str(item["id"]),
+            ),
         )
-        if latest_dispatch_task is not None:
-            dispatch_at = _optional_text(_task_scheduler(latest_dispatch_task).get("last_dispatch_at"))
-            if dispatch_at:
-                events.append(
-                    (
+        newest_index = len(timeline_tasks) - 1
+        nodes: list[JobDispatchTimelineNode] = []
+        for index, task in enumerate(timeline_tasks):
+            dispatch_at = _optional_text(_task_scheduler(task).get("last_dispatch_at"))
+            if not dispatch_at:
+                continue
+
+            state = str(task.get("state") or "queued")
+            dispatch_date_display, dispatch_time_display = self._format_dispatch_parts(dispatch_at)
+            task_id = str(task["id"])
+            nodes.append(
+                JobDispatchTimelineNode(
+                    task_id=task_id,
+                    task_short_id=self._short_task_id(task_id),
+                    assigned_agent=_optional_text(task.get("assigned_agent"))
+                    or task_messages["assigned_agent_empty"],
+                    state=state,
+                    state_label=status_messages.get(state, status_messages["queued"])["label"],
+                    dispatch_at_iso=dispatch_at,
+                    dispatch_at_full=_format_timestamp(
                         dispatch_at,
-                        2,
-                        TaskTimelineEvent(
-                            key="dispatch",
-                            title=messages["timeline_dispatch"],
-                            timestamp_display=_format_timestamp(
-                                dispatch_at,
-                                fallback=self._messages["common"]["unknown"],
-                            ),
-                            note=messages["timeline_dispatch_note"].format(
-                                task_id=str(latest_dispatch_task["id"]),
-                                agent=_optional_text(latest_dispatch_task.get("assigned_agent"))
-                                or task_messages["assigned_agent_empty"],
-                            ),
-                        ),
+                        fallback=self._messages["common"]["unknown"],
+                    ),
+                    dispatch_date_display=dispatch_date_display,
+                    dispatch_time_display=dispatch_time_display,
+                    detail_href=self._service._jobs_path(
+                        job_id=str(task["job_id"]),
+                        task_id=task_id,
+                        view=active_view,
                     )
+                    + "#job-task-detail",
+                    is_newest=index == newest_index,
                 )
+            )
+        return nodes
 
-        latest_final_notified_task = max(
-            (
-                task
-                for task in job_tasks
-                if _optional_text(_task_scheduler(task).get("final_notified_at"))
-            ),
-            key=lambda item: str(_task_scheduler(item).get("final_notified_at") or ""),
-            default=None,
-        )
-        if latest_final_notified_task is not None:
-            final_notified_at = _optional_text(_task_scheduler(latest_final_notified_task).get("final_notified_at"))
-            if final_notified_at:
-                events.append(
-                    (
-                        final_notified_at,
-                        3,
-                        TaskTimelineEvent(
-                            key="final-notified",
-                            title=messages["timeline_final_notified"],
-                            timestamp_display=_format_timestamp(
-                                final_notified_at,
-                                fallback=self._messages["common"]["unknown"],
-                            ),
-                            note=messages["timeline_final_notified_note"].format(
-                                task_id=str(latest_final_notified_task["id"]),
-                                target=_optional_text(latest_final_notified_task.get("notify_target"))
-                                or self._messages["common"]["unknown"],
-                            ),
-                        ),
-                    )
-                )
+    def _format_dispatch_parts(self, value: str) -> tuple[str, str]:
+        parsed = _parse_timestamp(value)
+        if parsed is None:
+            fallback = value or self._messages["common"]["unknown"]
+            return fallback, ""
+        return parsed.strftime("%m-%d"), parsed.strftime("%H:%M UTC")
 
-        latest_followup_due_task = max(
-            (
-                task
-                for task in job_tasks
-                if _optional_text(_task_scheduler(task).get("leader_followup_due_at"))
-            ),
-            key=lambda item: str(_task_scheduler(item).get("leader_followup_due_at") or ""),
-            default=None,
-        )
-        if latest_followup_due_task is not None:
-            followup_due_at = _optional_text(_task_scheduler(latest_followup_due_task).get("leader_followup_due_at"))
-            if followup_due_at:
-                events.append(
-                    (
-                        followup_due_at,
-                        4,
-                        TaskTimelineEvent(
-                            key="followup-due",
-                            title=messages["timeline_followup_due"],
-                            timestamp_display=_format_timestamp(
-                                followup_due_at,
-                                fallback=self._messages["common"]["unknown"],
-                            ),
-                            note=messages["timeline_followup_due_note"].format(
-                                task_id=str(latest_followup_due_task["id"]),
-                            ),
-                        ),
-                    )
-                )
-
-        latest_followup_sent_task = max(
-            (
-                task
-                for task in job_tasks
-                if _optional_text(_task_scheduler(task).get("leader_followup_sent_at"))
-            ),
-            key=lambda item: str(_task_scheduler(item).get("leader_followup_sent_at") or ""),
-            default=None,
-        )
-        if latest_followup_sent_task is not None:
-            followup_sent_at = _optional_text(_task_scheduler(latest_followup_sent_task).get("leader_followup_sent_at"))
-            if followup_sent_at:
-                events.append(
-                    (
-                        followup_sent_at,
-                        5,
-                        TaskTimelineEvent(
-                            key="followup-sent",
-                            title=messages["timeline_followup_sent"],
-                            timestamp_display=_format_timestamp(
-                                followup_sent_at,
-                                fallback=self._messages["common"]["unknown"],
-                            ),
-                            note=messages["timeline_followup_sent_note"].format(
-                                task_id=str(latest_followup_sent_task["id"]),
-                            ),
-                        ),
-                    )
-                )
-
-        events.sort(key=lambda item: (item[0], item[1]))
-        return [event for _, _, event in events]
+    @staticmethod
+    def _short_task_id(task_id: str) -> str:
+        suffix = task_id.rsplit("-", 1)[-1]
+        return f"#{suffix}"
 
     @staticmethod
     def _resolve_selected_job_id(

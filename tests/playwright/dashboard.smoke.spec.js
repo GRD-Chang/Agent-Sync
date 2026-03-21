@@ -120,11 +120,10 @@ async function expectLocatorContained(locator) {
 async function expectReadOnlyContent(page) {
   await expect(page.getByTestId("dashboard-page-chrome")).toBeVisible();
   await expect(page.getByTestId("dashboard-page-tools")).toBeVisible();
-  await expect(
-    page
-      .locator('main > :not([data-testid="dashboard-page-chrome"])')
-      .locator("button, form, input, select, textarea"),
-  ).toHaveCount(0);
+  const interactive = page
+    .locator('main > :not([data-testid="dashboard-page-chrome"])')
+    .locator('form, input, select, textarea, button:not([data-readonly-control="timeline-scroll"])');
+  await expect(interactive).toHaveCount(0);
 }
 
 async function getFontSnapshot(page) {
@@ -461,7 +460,19 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     );
     await expect(page.getByTestId("dashboard-jobs-detail")).toBeVisible();
     await expect(page.getByTestId("dashboard-jobs-timeline")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-dispatch-timeline")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-timeline-scrollport")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-timeline-older")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-timeline-newer")).toBeVisible();
+    await expect(page.getByText("Newest dispatches stay pinned on the live edge")).toBeVisible();
+    await expect(page.getByText("Showing the latest dispatch slice first.")).toBeVisible();
     await expect(page.getByTestId("dashboard-jobs-task-groups")).toBeVisible();
+    const scrollMetrics = await page.getByTestId("dashboard-jobs-timeline-scrollport").evaluate((node) => ({
+      left: node.scrollLeft,
+      max: node.scrollWidth - node.clientWidth,
+    }));
+    expect(scrollMetrics.left).toBeGreaterThanOrEqual(0);
+    expect(scrollMetrics.left).toBeGreaterThanOrEqual(Math.max(0, scrollMetrics.max - 40));
     const jobTimelineTop = await page.getByTestId("dashboard-jobs-timeline").evaluate((node) =>
       Math.round(node.getBoundingClientRect().top),
     );
