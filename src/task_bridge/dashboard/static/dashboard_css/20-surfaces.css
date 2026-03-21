@@ -218,9 +218,18 @@
 .status-pill {
   display: inline-flex;
   align-items: center;
-  padding: 0.32rem 0.55rem;
+  justify-content: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.32rem 0.6rem;
   border-radius: 999px;
   font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: rgba(30, 26, 22, 0.08);
 }
 
