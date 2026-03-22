@@ -134,7 +134,7 @@ EN_MESSAGES: dict[str, Any] = {
         "status_section": "Status breakdown",
         "status_note": "Counts are derived from existing task JSON files for this job.",
         "timeline": "Dispatch timeline",
-        "timeline_note": "Track dispatch order from each task’s `_scheduler.last_dispatch_at`. Newest tasks sit on the live edge, while older dispatches stay available to the left.",
+        "timeline_note": "Track dispatch order from each task’s `_scheduler.last_dispatch_at`. Newest tasks stay pinned on the live edge, while older dispatches remain available to the left.",
         "timeline_live_edge": "Newest dispatches stay pinned on the live edge →",
         "timeline_controls": "Dispatch timeline controls",
         "timeline_scroll_older": "Scroll left to older dispatched tasks",

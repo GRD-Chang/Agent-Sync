@@ -139,69 +139,137 @@ async function seedSnapshotHome(homeDir) {
   const timelineJob = runBridgeJson(homeDir, [
     "create-job",
     "--title",
-    "Dispatch timeline job (UI snapshot) - hierarchy, rail, and agent colors",
+    "Dispatch timeline job (UI snapshot) - horizontal scroll and live edge",
   ]);
 
-  const t1 = runBridgeJson(homeDir, [
-    "create-task",
-    "--job",
-    timelineJob.id,
-    "--requirement",
-    "queued req",
-    "--assign",
-    "code-agent",
-  ]);
+  const timelineEvents = [
+    {
+      requirement: "queued req 1",
+      assign: "code-agent",
+      state: "queued",
+      dispatchAt: "2026-03-19T02:12:00Z",
+    },
+    {
+      requirement: "running req 2",
+      assign: "quality-agent",
+      state: "running",
+      result: "actively working",
+      dispatchAt: "2026-03-19T03:44:00Z",
+    },
+    {
+      requirement: "blocked req 3",
+      assign: "review-agent",
+      state: "blocked",
+      result: "waiting on input",
+      dispatchAt: "2026-03-19T05:08:00Z",
+    },
+    {
+      requirement: "failed req 4",
+      assign: "ops-agent",
+      state: "failed",
+      result: "worker crashed",
+      dispatchAt: "2026-03-19T06:37:00Z",
+    },
+    {
+      requirement: "done req 5",
+      assign: "team-leader",
+      state: "done",
+      result: "wrapped up",
+      dispatchAt: "2026-03-19T07:55:00Z",
+    },
+    {
+      requirement: "running req 6",
+      assign: "code-agent",
+      state: "running",
+      result: "collecting evidence",
+      dispatchAt: "2026-03-19T09:16:00Z",
+    },
+    {
+      requirement: "blocked req 7",
+      assign: "quality-agent",
+      state: "blocked",
+      result: "pending fixture refresh",
+      dispatchAt: "2026-03-19T10:28:00Z",
+    },
+    {
+      requirement: "done req 8",
+      assign: "review-agent",
+      state: "done",
+      result: "review signed off",
+      dispatchAt: "2026-03-19T11:54:00Z",
+    },
+    {
+      requirement: "queued req 9",
+      assign: "ops-agent",
+      state: "queued",
+      dispatchAt: "2026-03-19T13:12:00Z",
+    },
+    {
+      requirement: "running req 10",
+      assign: "team-leader",
+      state: "running",
+      result: "triaging live edge",
+      dispatchAt: "2026-03-19T14:40:00Z",
+    },
+    {
+      requirement: "done req 11",
+      assign: "code-agent",
+      state: "done",
+      result: "history slice archived",
+      dispatchAt: "2026-03-19T16:05:00Z",
+    },
+    {
+      requirement: "blocked req 12",
+      assign: "review-agent",
+      state: "blocked",
+      result: "awaiting final ack",
+      dispatchAt: "2026-03-19T17:18:00Z",
+    },
+    {
+      requirement: "queued req 13 with a deliberately long descriptive summary to force timeline width on desktop",
+      assign: "ops-agent",
+      state: "queued",
+      dispatchAt: "2026-03-19T18:26:00Z",
+    },
+    {
+      requirement: "running req 14 with long evidence collection note for horizontal overflow validation",
+      assign: "quality-agent",
+      state: "running",
+      result: "capturing overflow verification evidence for timeline regression coverage",
+      dispatchAt: "2026-03-19T19:44:00Z",
+    },
+    {
+      requirement: "done req 15 with long archive note for historical visibility coverage",
+      assign: "team-leader",
+      state: "done",
+      result: "archived historical timeline slice after confirming older cards remain readable",
+      dispatchAt: "2026-03-19T20:58:00Z",
+    },
+  ];
 
-  const t2 = runBridgeJson(homeDir, [
-    "create-task",
-    "--job",
-    timelineJob.id,
-    "--requirement",
-    "running req",
-    "--assign",
-    "quality-agent",
-  ]);
-  runBridgeJson(homeDir, ["start", t2.id, "--job", timelineJob.id, "--result", "actively working"]);
+  for (const event of timelineEvents) {
+    const task = runBridgeJson(homeDir, [
+      "create-task",
+      "--job",
+      timelineJob.id,
+      "--requirement",
+      event.requirement,
+      "--assign",
+      event.assign,
+    ]);
 
-  const t3 = runBridgeJson(homeDir, [
-    "create-task",
-    "--job",
-    timelineJob.id,
-    "--requirement",
-    "blocked req",
-    "--assign",
-    "review-agent",
-  ]);
-  runBridgeJson(homeDir, ["block", t3.id, "--job", timelineJob.id, "--result", "waiting on input"]);
+    if (event.state === "running") {
+      runBridgeJson(homeDir, ["start", task.id, "--job", timelineJob.id, "--result", event.result]);
+    } else if (event.state === "blocked") {
+      runBridgeJson(homeDir, ["block", task.id, "--job", timelineJob.id, "--result", event.result]);
+    } else if (event.state === "failed") {
+      runBridgeJson(homeDir, ["fail", task.id, "--job", timelineJob.id, "--result", event.result]);
+    } else if (event.state === "done") {
+      runBridgeJson(homeDir, ["complete", task.id, "--job", timelineJob.id, "--result", event.result]);
+    }
 
-  const t4 = runBridgeJson(homeDir, [
-    "create-task",
-    "--job",
-    timelineJob.id,
-    "--requirement",
-    "failed req",
-    "--assign",
-    "ops-agent",
-  ]);
-  runBridgeJson(homeDir, ["fail", t4.id, "--job", timelineJob.id, "--result", "worker crashed"]);
-
-  const t5 = runBridgeJson(homeDir, [
-    "create-task",
-    "--job",
-    timelineJob.id,
-    "--requirement",
-    "done req",
-    "--assign",
-    "team-leader",
-  ]);
-  runBridgeJson(homeDir, ["complete", t5.id, "--job", timelineJob.id, "--result", "wrapped up"]);
-
-  // Ensure deterministic timeline ordering.
-  await patchLastDispatchAt(homeDir, timelineJob.id, t1.id, "2026-03-19T02:12:00Z");
-  await patchLastDispatchAt(homeDir, timelineJob.id, t2.id, "2026-03-19T06:44:00Z");
-  await patchLastDispatchAt(homeDir, timelineJob.id, t3.id, "2026-03-19T09:08:00Z");
-  await patchLastDispatchAt(homeDir, timelineJob.id, t4.id, "2026-03-19T11:37:00Z");
-  await patchLastDispatchAt(homeDir, timelineJob.id, t5.id, "2026-03-19T13:55:00Z");
+    await patchLastDispatchAt(homeDir, timelineJob.id, task.id, event.dispatchAt);
+  }
 
   return { jobId: timelineJob.id };
 }
@@ -209,8 +277,14 @@ async function seedSnapshotHome(homeDir) {
 const {
   expectNoHorizontalOverflow,
   expectChipsContained,
-  expectTimelineHorizontallyScrollable,
+  getTimelineWindowState,
+  expectTimelineRailContinuous,
+  expectTimelineCardsReadable,
 } = require("./ui-layout-assertions");
+
+function getVisibleTimelineIds(state) {
+  return state.fullyVisibleIds.length > 0 ? state.fullyVisibleIds : state.mostlyVisibleIds;
+}
 
 test.describe("dashboard UI snapshots for task-bridge job/task", () => {
   test("capture tasks job-scope and jobs dispatch timeline", async ({ page }) => {
@@ -229,20 +303,23 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
     let homeDir = process.env.TASK_BRIDGE_HOME;
     let ownsHomeDir = false;
     let jobId = process.env.UI_SNAPSHOT_JOB_ID;
+    let seededHome = false;
 
     if (!homeDir) {
       homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-ui-snapshot-"));
       ownsHomeDir = true;
-      const seeded = await seedSnapshotHome(homeDir);
-      jobId = jobId || seeded.jobId;
+      await seedSnapshotHome(homeDir);
+      seededHome = true;
     }
 
     // If TASK_BRIDGE_HOME is provided but no jobId is specified, seed a minimal home.
     // This keeps CI/local runs frictionless while still allowing callers to provide
     // an explicit jobId for targeted snapshots.
     if (!jobId) {
-      const seeded = await seedSnapshotHome(homeDir);
-      jobId = seeded.jobId;
+      if (!seededHome) {
+        await seedSnapshotHome(homeDir);
+      }
+      jobId = runBridgeJson(homeDir, ["current-job"]).id;
     }
 
     await fs.mkdir(outDir, { recursive: true });
@@ -302,32 +379,81 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
         await timeline.scrollIntoViewIfNeeded();
         await page.waitForTimeout(150);
 
-        await timeline.screenshot({
-          path: path.join(
-            outDir,
-            `job-dispatch-timeline-${viewport.label}-${viewport.width}x${viewport.height}.png`,
-          ),
-        });
-
-        const timelineScrollport = page.getByTestId("dashboard-jobs-timeline-scrollport");
-        await timelineScrollport.evaluate((node) => {
-          node.scrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
-          node.dispatchEvent(new Event("scroll", { bubbles: true }));
-        });
-        await page.waitForTimeout(150);
-
-        await timeline.screenshot({
-          path: path.join(
-            outDir,
-            `job-dispatch-timeline-scrolled-${viewport.label}-${viewport.width}x${viewport.height}.png`,
-          ),
-        });
-
         if (strict) {
-          await expectNoHorizontalOverflow(page, timeline, { tolerancePx: 2, allowInternalScroll: true });
-          await expectTimelineHorizontallyScrollable(timeline, {
+          const timelineScrollport = page.getByTestId("dashboard-jobs-timeline-scrollport");
+          await expectNoHorizontalOverflow(page, timeline, {
+            tolerancePx: 2,
+            allowInternalScroll: true,
+          });
+          await expectTimelineRailContinuous(timeline, {
             railSelector: ".dispatch-timeline-rail",
             cardSelector: ".dispatch-node-link",
+          });
+
+          await expect
+            .poll(async () => {
+              const state = await getTimelineWindowState(timeline);
+              return Math.round(state.maxScrollLeft - state.scrollLeft);
+            })
+            .toBeLessThanOrEqual(48);
+
+          await timeline.screenshot({
+            path: path.join(
+              outDir,
+              `job-dispatch-timeline-${viewport.label}-${viewport.width}x${viewport.height}.png`,
+            ),
+          });
+
+          const latestState = await expectTimelineCardsReadable(timeline, {
+            minVisibleCards: viewport.label === "desktop" ? 2 : 1,
+          });
+          const latestVisibleIds = getVisibleTimelineIds(latestState);
+          expect(latestState.cardIds.length).toBeGreaterThan(8);
+          expect(latestVisibleIds.length).toBeGreaterThanOrEqual(viewport.label === "desktop" ? 2 : 1);
+          if (latestVisibleIds.length < latestState.cardIds.length) {
+            expect(latestVisibleIds).toEqual(
+              latestState.cardIds.slice(-latestVisibleIds.length),
+            );
+            expect(latestVisibleIds).toContain(latestState.cardIds.at(-1));
+            expect(latestState.mostlyVisibleIds).not.toContain(latestState.cardIds[0]);
+          } else {
+            expect(latestVisibleIds).toEqual(latestState.cardIds);
+          }
+
+          await timelineScrollport.evaluate((node) => {
+            node.scrollTo({ left: 0, behavior: "auto" });
+            node.dispatchEvent(new Event("scroll", { bubbles: true }));
+          });
+          await expect
+            .poll(async () => {
+              const state = await getTimelineWindowState(timeline);
+              return Math.round(state.scrollLeft);
+            })
+            .toBeLessThanOrEqual(2);
+
+          await timeline.screenshot({
+            path: path.join(
+              outDir,
+              `job-dispatch-timeline-scrolled-${viewport.label}-${viewport.width}x${viewport.height}.png`,
+            ),
+          });
+
+          const olderState = await getTimelineWindowState(timeline);
+          const olderVisibleIds = getVisibleTimelineIds(olderState);
+          if (olderVisibleIds.length < olderState.cardIds.length) {
+            expect(olderVisibleIds).not.toEqual(latestVisibleIds);
+            expect(olderState.mostlyVisibleIds).toContain(olderState.cardIds[0]);
+            expect(olderState.mostlyVisibleIds[0]).toBe(olderState.cardIds[0]);
+            expect(olderState.mostlyVisibleIds).not.toContain(olderState.cardIds.at(-1));
+          } else {
+            expect(olderVisibleIds).toEqual(olderState.cardIds);
+          }
+        } else {
+          await timeline.screenshot({
+            path: path.join(
+              outDir,
+              `job-dispatch-timeline-${viewport.label}-${viewport.width}x${viewport.height}.png`,
+            ),
           });
         }
       }

@@ -93,8 +93,8 @@
   .dispatch-node-header,
   .dispatch-node-main {
     display: grid;
-    gap: 0.55rem;
     align-items: flex-start;
+    gap: 0.55rem;
   }
 
   .dispatch-node-action {

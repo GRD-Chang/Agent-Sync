@@ -134,7 +134,7 @@ ZH_CN_MESSAGES: dict[str, Any] = {
         "status_section": "状态分布",
         "status_note": "计数来自这个 job 现有的 task JSON 文件。",
         "timeline": "Dispatch 时间线",
-        "timeline_note": "按 task 的 `_scheduler.last_dispatch_at` 展示派发顺序。最新任务固定在右侧 live edge，更早的派发记录可向左继续浏览。",
+        "timeline_note": "按 task 的 `_scheduler.last_dispatch_at` 展示派发顺序。最新任务固定在右侧 live edge，更早的派发记录可继续向左浏览。",
         "timeline_live_edge": "最新派发固定在右侧 live edge →",
         "timeline_controls": "Dispatch 时间线控制",
         "timeline_scroll_older": "向左查看更早派发的任务",
