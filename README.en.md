@@ -1,6 +1,6 @@
-# task-bridge
+# OpenClaw multi-agent orchestration for Codex
 
-> OpenClaw multi-agent orchestration for Codex.
+> Build an OpenClaw multi-agent development team that can actually deliver, by fixing the state-loss problem that appears when agents orchestrate tools like Codex.
 
 [English](README.en.md) | [中文](README.md)
 

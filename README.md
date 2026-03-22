@@ -1,4 +1,4 @@
-# task-bridge
+# 大聪明军团：Openclaw 多 agent 指挥 codex
 
 > 构建真正能交付的 OpenClaw 多 Agent 开发团队，解决由 Agent 驱动 Codex 等工具协作时的状态丢失问题。
 
