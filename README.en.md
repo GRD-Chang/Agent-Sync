@@ -1,10 +1,22 @@
 # task-bridge
 
-> Build an OpenClaw multi-agent development team that can actually deliver, by fixing the state-loss problem that appears when agents orchestrate tools like Codex.
+> OpenClaw multi-agent orchestration for Codex.
 
 [English](README.en.md) | [中文](README.md)
 
 `task-bridge` is a local-first, lightweight task coordination system designed for OpenClaw multi-agent workflows. Its core mission is simple: **make an OpenClaw-built agent team reliably orchestrate lower-level coding engines such as Codex or Claude Code to complete real long-running development work.**
+
+## Dashboard Preview
+
+Turn local jobs, tasks, worker queues, alerts, and health into a visual read-only workspace with one command:
+
+```bash
+task-bridge dashboard
+```
+
+| Overview | Job detail |
+|---|---|
+| ![Dashboard overview](docs/assets/dashboard/overview.png) | ![Dashboard job detail](docs/assets/dashboard/job_detail.png) |
 
 If you are trying to build an agent team with OpenClaw, the main problem is usually not the lack of agents. The problem is that agents struggle to keep a long engineering workflow under control. State gets lost, asynchronous execution breaks the chain, and the workflow stops moving.
 
@@ -103,6 +115,30 @@ Parameter notes:
 - `--poll-seconds 10`: how often the daemon polls the task queue. Default: 10 seconds.
 - `--worker-reminder-seconds 900`: anti-stall reminder interval for workers running tasks. Default: 15 minutes.
 - `--leader-reminder-seconds 3600`: reminder interval for the leader when long-running tasks are still in progress. Default: 60 minutes.
+
+### 2.5 Optional: Dashboard (Read-only)
+
+If you want a web UI to inspect jobs, tasks, worker queues, alerts, and health, start the read-only dashboard:
+
+```bash
+task-bridge dashboard
+
+# override bind / port
+task-bridge dashboard --host 127.0.0.1 --port 8000
+
+# point to an isolated store
+TASK_BRIDGE_HOME=/tmp/task-bridge-demo task-bridge dashboard
+```
+
+- Defaults to `127.0.0.1:8000` and prints the local URL on startup.
+- The dashboard is read-only over your local store and exposes no mutation endpoints.
+- In-page switcher for `en` / `zh-CN` and local font style.
+
+| Overview | Jobs |
+|---|---|
+| ![Dashboard overview](docs/assets/dashboard/overview.png) | ![Dashboard jobs list](docs/assets/dashboard/job_list.png) |
+| Job detail | Task detail |
+| ![Dashboard job detail](docs/assets/dashboard/job_detail.png) | ![Dashboard task detail](docs/assets/dashboard/task_detail.png) |
 
 ### 3. Give the Team Leader a Requirement
 

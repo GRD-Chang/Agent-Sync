@@ -6,6 +6,18 @@
 
 `task-bridge` 是一个本地优先、专为 OpenClaw 多 Agent 协作设计的轻量任务协作系统。**它的核心使命是：让 OpenClaw 构建的多 Agent 协作团队，能够稳定地指挥底层开发引擎（如 Codex 或 Claude Code）去完成实际的长流程开发工作。**
 
+## Dashboard 预览（只读）
+
+用一条命令把本地 job / tasks / worker queue / alerts / health 变成可视化页面：
+
+```bash
+task-bridge dashboard
+```
+
+| 总览 | Job 详情 |
+|---|---|
+| ![Dashboard 总览（中文）](docs/assets/dashboard/overview_zh.png) | ![Dashboard Job 详情（中文）](docs/assets/dashboard/job_detail_zh.png) |
+
 如果你正在尝试用 OpenClaw 组建 Agent 团队，你可能会发现一个核心痛点：问题往往不在于有没有 Agent，而在于 Agent 无法稳定地把控一个长流程的开发任务，极易因为状态丢失或异步执行而导致工作流断裂。
 
 `task-bridge` 解决的正是这个问题。**在实际的协作链路中，OpenClaw 的各个 Agent 只需要使用 `task-bridge` 建立任务或更新状态，而不再负责交互，由后台常驻的 `task-bridge daemon` 进程负责执行全生命周期的任务监督和串行分发。** 它为多 Agent 协作补充了一层稳定的任务状态机与本地持久化能力，用可追溯的本地文件取代脆弱的聊天记录状态，让“派发-执行-回收-跟进”的开发闭环变得绝对可靠。
@@ -115,6 +127,30 @@ echo $! > .task-bridge/daemon.pid
 - 查看进程：`ps -fp "$(cat .task-bridge/daemon.pid)"`
 - 停止 Daemon：`kill "$(cat .task-bridge/daemon.pid)"`
 - 若需要自定义数据目录，可在命令前加环境变量，例如：`TASK_BRIDGE_HOME=/tmp/task-bridge-demo nohup task-bridge daemon ...`
+
+### 2.5 可视化 Dashboard（只读，可选）
+
+如果你想用网页集中查看当前 job / tasks / worker queue / alerts / health，可以启动只读 dashboard：
+
+```bash
+task-bridge dashboard
+
+# 或指定监听地址与端口
+task-bridge dashboard --host 127.0.0.1 --port 8000
+
+# 查看另一个隔离数据目录
+TASK_BRIDGE_HOME=/tmp/task-bridge-demo task-bridge dashboard
+```
+
+- 默认监听 `127.0.0.1:8000`，启动后会输出本机访问地址。
+- Dashboard 只读取本地数据，不提供任何写操作，适合审计、定位卡点与回归检查。
+- 页面内支持 `en` / `zh-CN` 与本地字体风格切换。
+
+| 总览 | Job 列表 |
+|---|---|
+| ![Dashboard 总览（中文）](docs/assets/dashboard/overview_zh.png) | ![Dashboard Job 列表（中文）](docs/assets/dashboard/job_list_zh.png) |
+| Job 详情 | Task 详情 |
+| ![Dashboard Job 详情（中文）](docs/assets/dashboard/job_detail_zh.png) | ![Dashboard Task 详情（中文）](docs/assets/dashboard/task_detail_zh.png) |
 
 ### 3. 给 Team Leader 下发需求
 
