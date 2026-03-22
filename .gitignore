@@ -2,6 +2,7 @@
 artifacts/ui-polish-20260321/
 artifacts/ui-screenshots/
 artifacts/ui-snapshots/
+specs/
 build/
 .coverage
 .coverage.*
