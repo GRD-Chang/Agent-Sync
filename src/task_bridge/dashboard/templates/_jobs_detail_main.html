@@ -89,36 +89,48 @@
         data-testid="dashboard-jobs-timeline-scrollport"
         tabindex="0"
       >
-        <ol class="dispatch-timeline-track" role="list">
-          {% for item in selected_job.timeline %}
-          <li
-            class="dispatch-node{% if item.is_newest %} is-newest{% endif %}"
-            data-dispatch-state="{{ item.state }}"
-            style="--dispatch-delay: {{ [loop.revindex0 * 60, 420] | min }}ms;"
-          >
-            <a
-              class="dispatch-node-link"
-              data-agent="{{ item.assigned_agent }}"
-              href="{{ item.detail_href }}"
-              data-testid="dashboard-jobs-timeline-node-{{ item.task_id }}"
-              aria-label="{{ item.task_id }} · {{ item.assigned_agent }} · {{ item.state_label }} · {{ item.dispatch_at_full }}"
-              title="{{ item.task_id }} · {{ item.dispatch_at_full }}"
-              {% if item.is_newest %}aria-current="step"{% endif %}
+        <div class="dispatch-timeline-track-wrap">
+          <span class="dispatch-timeline-rail" aria-hidden="true"></span>
+          <ol class="dispatch-timeline-track" role="list">
+            {% for item in selected_job.timeline %}
+            <li
+              class="dispatch-node{% if item.is_newest %} is-newest{% endif %}"
+              data-dispatch-state="{{ item.state }}"
+              style="--dispatch-delay: {{ [loop.revindex0 * 60, 420] | min }}ms;"
             >
-              <span class="dispatch-node-dot" aria-hidden="true"></span>
-              <time class="dispatch-node-time" datetime="{{ item.dispatch_at_iso }}">
-                <span>{{ item.dispatch_date_display }}</span>
-                {% if item.dispatch_time_display %}
-                <span>{{ item.dispatch_time_display }}</span>
-                {% endif %}
-              </time>
-              <strong class="dispatch-node-id">{{ item.task_short_id }}</strong>
-              <span class="dispatch-node-agent">{{ item.assigned_agent }}</span>
-              <span class="status-pill status-{{ item.state }}">{{ item.state_label }}</span>
-            </a>
-          </li>
-          {% endfor %}
-        </ol>
+              <a
+                class="dispatch-node-link"
+                data-agent="{{ item.assigned_agent }}"
+                href="{{ item.detail_href }}"
+                data-testid="dashboard-jobs-timeline-node-{{ item.task_id }}"
+                aria-label="{{ item.task_id }} · {{ item.assigned_agent }} · {{ item.state_label }} · {{ item.dispatch_at_full }}"
+                title="{{ item.task_id }} · {{ item.dispatch_at_full }}"
+                {% if item.is_newest %}aria-current="step"{% endif %}
+              >
+                <span class="dispatch-node-dot" aria-hidden="true"></span>
+                <div class="dispatch-node-meta">
+                  <header class="dispatch-node-header">
+                    <time class="dispatch-node-time" datetime="{{ item.dispatch_at_iso }}">
+                      <span>{{ item.dispatch_date_display }}</span>
+                      {% if item.dispatch_time_display %}
+                      <span>{{ item.dispatch_time_display }}</span>
+                      {% endif %}
+                    </time>
+                    <span class="status-pill status-{{ item.state }}">{{ item.state_label }}</span>
+                  </header>
+                  <div class="dispatch-node-main">
+                    <span class="dispatch-node-agent">{{ item.assigned_agent }}</span>
+                    <span class="dispatch-node-action" aria-hidden="true">
+                      <span class="dispatch-node-action-label">Dispatch</span>
+                      <strong class="dispatch-node-id">{{ item.task_short_id }}</strong>
+                    </span>
+                  </div>
+                </div>
+              </a>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
       </div>
     </div>
 
