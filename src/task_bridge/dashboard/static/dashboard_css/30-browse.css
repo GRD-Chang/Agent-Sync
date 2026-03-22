@@ -603,6 +603,14 @@
   justify-content: space-between;
   gap: 0.65rem;
   white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.job-scope-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .job-scope-chip-meta {
