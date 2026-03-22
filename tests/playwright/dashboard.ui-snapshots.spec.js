@@ -119,6 +119,7 @@ async function seedSnapshotHome(homeDir) {
     "job-t",
     "Overflow containment review: this job title should never push chips outside the filter panel",
     "Unicode-safe-ASCII-only title with a surprisingly long segment: supercalifragilisticexpialidocious-and-beyond",
+    `NO_BREAK_${"X".repeat(180)}`,
   ];
 
   const jobs = jobTitles.map((title) => runBridgeJson(homeDir, ["create-job", "--title", title]));
@@ -208,12 +209,12 @@ async function seedSnapshotHome(homeDir) {
 const {
   expectNoHorizontalOverflow,
   expectChipsContained,
-  expectTimelineRailContinuous,
+  expectTimelineHorizontallyScrollable,
 } = require("./ui-layout-assertions");
 
 test.describe("dashboard UI snapshots for task-bridge job/task", () => {
   test("capture tasks job-scope and jobs dispatch timeline", async ({ page }) => {
-    const phase = process.env.UI_SNAPSHOT_PHASE || "snapshot";
+    const phase = process.env.UI_SNAPSHOT_PHASE || "after";
     const phaseKey = sanitize(String(phase || "snapshot")).toLowerCase();
     const strict = phaseKey !== "before";
 
@@ -280,11 +281,13 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
         });
 
         if (strict) {
-          await expectNoHorizontalOverflow(page, jobScope, { tolerancePx: 2, allowInternalScroll: true });
+          const jobScopePanel = jobScope.locator("[data-job-scope-panel]");
+          await expectNoHorizontalOverflow(page, jobScope, { tolerancePx: 2 });
+          await expectNoHorizontalOverflow(page, jobScopePanel, { tolerancePx: 2 });
 
           const chips = jobScope.locator("[data-job-scope-chip]");
           if ((await chips.count()) > 0) {
-            await expectChipsContained(jobScope, chips, { tolerancePx: 2 });
+            await expectChipsContained(jobScopePanel, chips, { tolerancePx: 2 });
           }
         }
 
@@ -306,11 +309,25 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
           ),
         });
 
+        const timelineScrollport = page.getByTestId("dashboard-jobs-timeline-scrollport");
+        await timelineScrollport.evaluate((node) => {
+          node.scrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
+          node.dispatchEvent(new Event("scroll", { bubbles: true }));
+        });
+        await page.waitForTimeout(150);
+
+        await timeline.screenshot({
+          path: path.join(
+            outDir,
+            `job-dispatch-timeline-scrolled-${viewport.label}-${viewport.width}x${viewport.height}.png`,
+          ),
+        });
+
         if (strict) {
-          await expectNoHorizontalOverflow(page, timeline, { tolerancePx: 2 });
-          await expectTimelineRailContinuous(timeline, {
-            railSelector: ".dispatch-timeline-track",
-            cardSelector: ".dispatch-node",
+          await expectNoHorizontalOverflow(page, timeline, { tolerancePx: 2, allowInternalScroll: true });
+          await expectTimelineHorizontallyScrollable(timeline, {
+            railSelector: ".dispatch-timeline-rail",
+            cardSelector: ".dispatch-node-link",
           });
         }
       }

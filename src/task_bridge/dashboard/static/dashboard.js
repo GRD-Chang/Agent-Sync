@@ -136,26 +136,26 @@
       const olderFade = timeline.querySelector('.dispatch-timeline-fade--older');
       const newerFade = timeline.querySelector('.dispatch-timeline-fade--newer');
       const newestNode = timeline.querySelector('.dispatch-node.is-newest');
-      const scrollStep = () => Math.max(scrollport.clientWidth * 0.72, 220);
+      const scrollStep = () => Math.max(scrollport.clientWidth * 0.72, 260);
       const maxScrollLeft = () => Math.max(0, scrollport.scrollWidth - scrollport.clientWidth);
 
       const updateChrome = () => {
         const maxLeft = maxScrollLeft();
         const left = scrollport.scrollLeft;
-        const nearStart = left <= 12;
-        const nearEnd = left >= maxLeft - 12;
+        const nearOlderEdge = left <= 12;
+        const nearNewerEdge = left >= maxLeft - 12;
 
         if (olderButton) {
-          olderButton.disabled = nearStart;
+          olderButton.disabled = nearOlderEdge;
         }
         if (newerButton) {
-          newerButton.disabled = nearEnd;
+          newerButton.disabled = nearNewerEdge;
         }
         if (olderFade) {
-          olderFade.classList.toggle('is-visible', !nearStart);
+          olderFade.classList.toggle('is-visible', !nearOlderEdge);
         }
         if (newerFade) {
-          newerFade.classList.toggle('is-visible', !nearEnd);
+          newerFade.classList.toggle('is-visible', !nearNewerEdge);
         }
       };
 
@@ -168,8 +168,8 @@
 
       if (newestNode) {
         window.requestAnimationFrame(() => {
-          const newestLeft = newestNode.offsetLeft + newestNode.offsetWidth - scrollport.clientWidth + 24;
-          scrollport.scrollLeft = Math.max(0, newestLeft);
+          const targetLeft = newestNode.offsetLeft + newestNode.offsetWidth - scrollport.clientWidth + 32;
+          scrollport.scrollLeft = Math.max(0, targetLeft);
           updateChrome();
         });
       } else {
@@ -182,10 +182,12 @@
       scrollport.addEventListener(
         'wheel',
         (event) => {
-          if (Math.abs(event.deltaY) > Math.abs(event.deltaX) || event.shiftKey) {
-            scrollport.scrollLeft += event.deltaY || event.deltaX;
-            event.preventDefault();
+          const shouldTranslateY = Math.abs(event.deltaY) > Math.abs(event.deltaX) || event.shiftKey;
+          if (!shouldTranslateY) {
+            return;
           }
+          scrollport.scrollLeft += event.deltaY || event.deltaX;
+          event.preventDefault();
         },
         { passive: false },
       );

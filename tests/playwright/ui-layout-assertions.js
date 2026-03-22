@@ -1,19 +1,23 @@
 const { expect } = require("@playwright/test");
 
 async function getBox(locator) {
-  const box = await locator.boundingBox();
-  if (!box) {
-    throw new Error("Expected locator to have a bounding box (element should be visible)");
+  const rect = await locator.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    return {
+      left: box.left,
+      top: box.top,
+      right: box.right,
+      bottom: box.bottom,
+      width: box.width,
+      height: box.height,
+    };
+  });
+
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    throw new Error("Expected locator to have a non-zero bounding box (element should be visible)");
   }
-  // Playwright returns {x,y,width,height}; normalize to {left,right,top,bottom,width,height}.
-  return {
-    left: box.x,
-    top: box.y,
-    right: box.x + box.width,
-    bottom: box.y + box.height,
-    width: box.width,
-    height: box.height,
-  };
+
+  return rect;
 }
 
 /**
@@ -62,67 +66,79 @@ async function expectNoHorizontalOverflow(
  * Assert a list of "chip" elements are visually contained within a container.
  */
 async function expectChipsContained(container, chips, { tolerancePx = 1 } = {}) {
-  // The job-scope filter often renders chips inside a horizontal scroll port.
-  // To keep this check stable, assert chips stay within the viewport.
-  const viewportWidth = await container.page().evaluate(() => window.innerWidth);
+  const containerBox = await getBox(container);
 
   const count = await chips.count();
   for (let i = 0; i < count; i += 1) {
     const chip = chips.nth(i);
-    const chipBox = await getBox(chip).catch(() => null);
-    if (!chipBox) continue;
+    const visible = await chip.evaluate((node) => {
+      const style = window.getComputedStyle(node);
+      return !(node.hidden || style.display === "none" || style.visibility === "hidden");
+    });
+    if (!visible) continue;
 
-    expect(chipBox.left).toBeGreaterThanOrEqual(-tolerancePx);
-    // Allow chips to extend beyond viewport if clipped; the key regression we care about
-    // is the *page* overflowing horizontally, which is checked separately.
+    const chipBox = await getBox(chip);
+
+    expect(chipBox.left).toBeGreaterThanOrEqual(containerBox.left - tolerancePx);
+    expect(chipBox.right).toBeLessThanOrEqual(containerBox.right + tolerancePx);
     expect(chipBox.width).toBeGreaterThan(8);
     expect(chipBox.height).toBeGreaterThan(8);
   }
 }
 
 /**
- * Dispatch timeline rail continuity check.
+ * Dispatch timeline horizontal scroll check.
  *
- * We avoid pixel-perfect assertions; instead we ensure:
+ * We ensure:
  * - timeline exists
- * - there are multiple cards with non-zero size
- * - the rail element exists and its height spans from first to last card region
+ * - multiple readable cards exist
+ * - the rail spans from first card to last card horizontally
+ * - scrollport is horizontally scrollable while staying vertically compact
  */
-async function expectTimelineRailContinuous(timeline, {
-  railSelector = ".timeline-rail",
-  cardSelector = ".timeline-card",
+async function expectTimelineHorizontallyScrollable(timeline, {
+  scrollportSelector = '[data-dispatch-scrollport]',
+  railSelector = '.dispatch-timeline-rail',
+  cardSelector = '.dispatch-node-link',
   tolerancePx = 6,
+  maxHeightPx = 340,
 } = {}) {
   await expect(timeline).toBeVisible();
 
   const cards = timeline.locator(cardSelector);
   const count = await cards.count();
-  expect(count).toBeGreaterThan(0);
+  expect(count).toBeGreaterThan(1);
 
-  const first = cards.first();
-  const last = cards.last();
-  const firstBox = await getBox(first);
-  const lastBox = await getBox(last);
-
-  // Cards should be readable without hover: non-trivial size.
+  const firstBox = await getBox(cards.first());
+  const lastBox = await getBox(cards.last());
   expect(firstBox.width).toBeGreaterThan(20);
   expect(firstBox.height).toBeGreaterThan(20);
 
   const rail = timeline.locator(railSelector);
   await expect(rail).toHaveCount(1);
   const railBox = await getBox(rail);
+  expect(railBox.width).toBeGreaterThan(80);
+  expect(railBox.height).toBeGreaterThan(0);
 
-  // Rail should overlap (span) the vertical region from first card to last card.
-  expect(railBox.top).toBeLessThanOrEqual(firstBox.top + tolerancePx);
-  expect(railBox.bottom).toBeGreaterThanOrEqual(lastBox.bottom - tolerancePx);
+  const scrollport = timeline.locator(scrollportSelector);
+  await expect(scrollport).toHaveCount(1);
+  const metrics = await scrollport.evaluate((node) => ({
+    clientWidth: node.clientWidth,
+    scrollWidth: node.scrollWidth,
+    clientHeight: node.clientHeight,
+    scrollHeight: node.scrollHeight,
+    overflowX: getComputedStyle(node).overflowX,
+    overflowY: getComputedStyle(node).overflowY,
+  }));
 
-  // Rail should be visible-ish (non-zero width/height).
-  expect(railBox.height).toBeGreaterThan(40);
-  expect(railBox.width).toBeGreaterThan(0);
+  expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth + 20);
+  expect(metrics.clientHeight).toBeLessThanOrEqual(maxHeightPx);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + tolerancePx);
+  expect(['auto', 'scroll', 'clip']).toContain(metrics.overflowX);
+  expect(['hidden', 'clip', 'auto']).toContain(metrics.overflowY);
 }
 
 module.exports = {
   expectNoHorizontalOverflow,
   expectChipsContained,
-  expectTimelineRailContinuous,
+  expectTimelineHorizontallyScrollable,
 };
