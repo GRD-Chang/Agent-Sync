@@ -236,8 +236,12 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
       jobId = jobId || seeded.jobId;
     }
 
+    // If TASK_BRIDGE_HOME is provided but no jobId is specified, seed a minimal home.
+    // This keeps CI/local runs frictionless while still allowing callers to provide
+    // an explicit jobId for targeted snapshots.
     if (!jobId) {
-      throw new Error("UI_SNAPSHOT_JOB_ID is required when TASK_BRIDGE_HOME is provided.");
+      const seeded = await seedSnapshotHome(homeDir);
+      jobId = seeded.jobId;
     }
 
     await fs.mkdir(outDir, { recursive: true });
