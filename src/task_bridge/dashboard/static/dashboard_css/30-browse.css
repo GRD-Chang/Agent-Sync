@@ -539,18 +539,24 @@
   flex-wrap: wrap;
 }
 
+.route-group-heading > * {
+  min-width: 0;
+}
+
 .route-group-tools {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .route-group-search {
   flex: 1 1 14rem;
-  min-width: min(14rem, 100%);
-  max-width: 24rem;
+  min-width: 0;
+  max-width: min(24rem, 100%);
 }
 
 .route-group-search input {
@@ -648,6 +654,8 @@
 }
 
 .job-scope-chip-title {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
