@@ -100,6 +100,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
+  min-width: 0;
+  max-width: 100%;
   min-height: 2.7rem;
   padding: 0.7rem 0.9rem;
   color: inherit;
@@ -115,6 +117,15 @@
 
 .filter-chip {
   border-radius: var(--radius-pill);
+}
+
+.filter-chip > span,
+.route-link > span,
+.token-link > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .route-link,
@@ -536,8 +547,15 @@
   justify-content: flex-end;
 }
 
+.route-group-search {
+  flex: 1 1 14rem;
+  min-width: min(14rem, 100%);
+  max-width: 24rem;
+}
+
 .route-group-search input {
-  width: min(14rem, 46vw);
+  width: 100%;
+  max-width: 100%;
   border-radius: var(--radius-pill);
   border: 1px solid rgba(148, 138, 127, 0.35);
   background: rgba(12, 11, 10, 0.35);
