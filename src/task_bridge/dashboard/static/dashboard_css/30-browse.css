@@ -525,12 +525,15 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .route-group-tools {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .route-group-search input {
@@ -583,14 +586,18 @@
 /* Job scope list: let chips breathe and prevent metadata truncation. */
 .job-scope-chips {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.55rem;
   padding: 0.75rem;
-  max-height: 14.5rem;
-  overflow: auto;
+  max-height: min(14.5rem, 45vh);
+  overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   border-radius: var(--radius-control);
   background: rgba(10, 9, 8, 0.2);
   border: 1px solid rgba(148, 138, 127, 0.22);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
 }
 
 .job-scope-chips.is-collapsed {
@@ -605,9 +612,12 @@
   white-space: nowrap;
   max-width: 100%;
   min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .job-scope-chip > span {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -625,6 +635,7 @@
 }
 
 .job-scope-chip-count {
+  flex: 0 0 auto;
   min-width: 1.75rem;
   text-align: right;
 }

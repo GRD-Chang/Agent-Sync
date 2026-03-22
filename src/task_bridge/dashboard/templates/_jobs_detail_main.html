@@ -105,7 +105,7 @@
               title="{{ item.task_id }} · {{ item.dispatch_at_full }}"
               {% if item.is_newest %}aria-current="step"{% endif %}
             >
-              <span class="dispatch-node-connector" aria-hidden="true"></span>
+              <span class="dispatch-node-dot" aria-hidden="true"></span>
               <time class="dispatch-node-time" datetime="{{ item.dispatch_at_iso }}">
                 <span>{{ item.dispatch_date_display }}</span>
                 {% if item.dispatch_time_display %}
