@@ -1,6 +1,6 @@
 # OpenClaw Agent 工作流指南
 
-这份文档用于帮助你快速理解 `task-bridge` 的架构体系，以及 `team-leader`、`code-agent`、`quality-agent` 之间的协作流转关系。
+这份文档用于帮助你快速理解 `task-bridge` 的架构体系，以及 `team-leader`、`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 之间的协作流转关系。
 
 ## 1. 为什么需要 Task Bridge？
 
@@ -32,16 +32,18 @@
   - 通过 `task-bridge CLI` 派发工单，选择合适的执行者。
   - 接收 Bridge 回调的任务终态，决定继续派发还是向用户交付验收。
 
-### 🧑‍💻 Code Agent & Quality Agent (执行者 Worker)
-- **定位**：全能工程执行者，直接与底层大模型（如 Codex、Claude Code）交互。
+### 🧑‍💻 Worker Agents (执行者 Worker)
+- **定位**：阶段化工程执行者，直接与底层大模型（如 Codex、Claude Code）交互。
 - **职责**：
   - 被 Daemon 唤醒后，接单并立刻将状态标记为 `running`。
   - 组织上下文，驱动底层引擎执行实际的工程任务。
   - **持续回写**：在执行过程中，通过 `task-bridge update-result` 不断更新关键进展和证据。
   - 验证成果，必要时提交代码 (commit)，最后将任务标记为 `done`、`blocked` 或 `failed`。
 - **分工侧重**：
+  - `planning-agent`：偏向需求澄清、计划评审、设计方向与方案收敛。
   - `code-agent`：偏向方案设计、代码实现、缺陷修复与重构。
   - `quality-agent`：偏向测试编写、回归验证、代码评审与文档梳理。
+  - `release-agent`：偏向发布准备、部署、上线验证与文档同步。
 
 ### 🤖 Task Bridge Daemon (任务中枢)
 - **定位**：后台监督者。
@@ -77,7 +79,7 @@ jobs/<job_id>/
 
 ```text
 +-------------+      +---------------+      +--------------+      +-----------------------+      +-------------+
-| User        |      | team-leader   |      | task-bridge  |      | code-agent / quality  |      | Codex / CLI |
+| User        |      | team-leader   |      | task-bridge  |      | planning / code / quality / release |      | Codex / CLI |
 |             |      |               |      |   (daemon)   |      |                       |      |             |
 +-------------+      +---------------+      +--------------+      +-----------------------+      +-------------+
        |                     |                      |                           |                       |
@@ -131,4 +133,4 @@ jobs/<job_id>/
 
 这套系统不是“Leader 直接盯紧 Worker”，而是：
 
-**`team-leader` 通过 `task-bridge` 建立清晰的工单契约，`code-agent` 等执行者接单后驱动底层引擎（Codex）闭环干活，中间的所有状态变化和证据均持久化到本地文件；最后，Daemon 会在工单了结时准确通知 `team-leader` 回收成果。**
+**`team-leader` 通过 `task-bridge` 建立清晰的工单契约，`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 等执行者按阶段接单并驱动底层引擎（Codex）闭环干活，中间的所有状态变化和证据均持久化到本地文件；最后，Daemon 会在工单了结时准确通知 `team-leader` 回收成果。**

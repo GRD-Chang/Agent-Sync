@@ -23,8 +23,10 @@
 ### team-leader 常用 task 操作
 
 - 创建任务：
+  - `task-bridge create-task --requirement "<self-contained requirement>" --assign planning-agent`
   - `task-bridge create-task --requirement "<self-contained requirement>" --assign code-agent`
   - `task-bridge create-task --requirement "<self-contained requirement>" --assign quality-agent`
+  - `task-bridge create-task --requirement "<self-contained requirement>" --assign release-agent`
 - 查看任务：
   - `task-bridge list-tasks [--job <job_id>] [--state queued|running|done|blocked|failed] [--agent <agent>] --json`
   - `task-bridge show-task <task_id> [--job <job_id>] --json`
@@ -50,8 +52,10 @@
 ## Assign Targets
 
 - 默认派单目标：
+  - `planning-agent`
   - `code-agent`
   - `quality-agent`
+  - `release-agent`
 - 你只需要在建 task 时写入合适的 `assigned_agent`。
 - `task-bridge` 会处理后续执行流转，并在任务终态时通知你。
 

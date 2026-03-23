@@ -2,8 +2,9 @@
 
 目标：
 
-- 用 OpenClaw CLI 创建 `team-leader`、`code-agent`、`quality-agent`
+- 用 OpenClaw CLI 创建 `team-leader`、`planning-agent`、`code-agent`、`quality-agent`、`release-agent`
 - 把本仓库里的 agent 定义迁过去
+- 安装 `https://github.com/garrytan/gstack` 中的 skill，供 Codex 执行
 - 安装并验证 `task-bridge`
 - 配置 `tools.exec.pathPrepend`，让 agent 可以直接执行 `task-bridge`
 
@@ -13,7 +14,7 @@
 - <https://docs.openclaw.ai/cli/agents>
 - <https://docs.openclaw.ai/tools/exec>
 
-## 1. 创建 3 个 agent
+## 1. 创建 5 个 agent
 
 先确认 OpenClaw CLI 可用：
 
@@ -22,12 +23,14 @@ openclaw --help
 openclaw agents --help
 ```
 
-创建 3 个独立 workspace：
+创建 5 个独立 workspace：
 
 ```bash
 openclaw agents add team-leader --non-interactive --workspace ~/.openclaw/workspaces/team-leader
+openclaw agents add planning-agent --non-interactive --workspace ~/.openclaw/workspaces/planning-agent
 openclaw agents add code-agent --non-interactive --workspace ~/.openclaw/workspaces/code-agent
 openclaw agents add quality-agent --non-interactive --workspace ~/.openclaw/workspaces/quality-agent
+openclaw agents add release-agent --non-interactive --workspace ~/.openclaw/workspaces/release-agent
 ```
 
 验证：
@@ -41,8 +44,10 @@ openclaw agents list --json
 本仓库已经包含：
 
 - `agents/team-leader/*`
+- `agents/planning-agent/*`
 - `agents/code-agent/*`
 - `agents/quality-agent/*`
+- `agents/release-agent/*`
 - `skills/local/team-leader-orchestrator/SKILL.md`
 - `skills/coding-agent/SKILL.md`
 
@@ -51,7 +56,7 @@ openclaw agents list --json
 ```bash
 REPO_ROOT=/path/to/task-bridge
 
-for agent in team-leader code-agent quality-agent; do
+for agent in team-leader planning-agent code-agent quality-agent release-agent; do
   mkdir -p "$HOME/.openclaw/workspaces/$agent/memory"
   cp "$REPO_ROOT/agents/$agent/AGENTS.md" "$HOME/.openclaw/workspaces/$agent/"
   cp "$REPO_ROOT/agents/$agent/SOUL.md" "$HOME/.openclaw/workspaces/$agent/"
@@ -64,7 +69,7 @@ done
 同步 identity：
 
 ```bash
-for agent in team-leader code-agent quality-agent; do
+for agent in team-leader planning-agent code-agent quality-agent release-agent; do
   openclaw agents set-identity --workspace "$HOME/.openclaw/workspaces/$agent" --from-identity
 done
 ```
@@ -76,14 +81,73 @@ mkdir -p "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator
 cp "$REPO_ROOT/skills/local/team-leader-orchestrator/SKILL.md" \
   "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator/SKILL.md"
 
-for agent in code-agent quality-agent; do
+for agent in planning-agent code-agent quality-agent release-agent; do
   mkdir -p "$HOME/.openclaw/workspaces/$agent/skills/coding-agent"
   cp "$REPO_ROOT/skills/coding-agent/SKILL.md" \
     "$HOME/.openclaw/workspaces/$agent/skills/coding-agent/SKILL.md"
 done
 ```
 
-## 3. 安装 `task-bridge`
+这里复制的是本仓库自己的 agent 定义和 `coding-agent` 桥接 skill。
+
+真正由 Codex 执行的 `office-hours`、`investigate`、`review`、`ship` 等 gstack skill，需要额外安装到 Codex 的 skill 目录，见下一步。
+
+## 3. 安装 `garrytan/gstack` skill（供 Codex 使用）
+
+`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 的 `TOOLS.md` 会指导 worker 在给 Codex 的 prompt 里使用：
+
+```text
+$技能名 任务说明
+```
+
+这些 skill 的真正执行主体是 Codex，因此需要先把 gstack 安装到 `~/.codex/skills`。
+
+不要把 gstack skill 直接复制进 `team-leader` 工作区；`team-leader` 只负责分发任务，不直接调用 Codex。
+
+gstack 自带 `setup` 脚本，会自动：
+
+- 构建 `/browse` 等 skill 依赖的二进制和运行时资源
+- 在 `~/.codex/skills/` 下创建 Codex 可发现的 gstack skill
+- 准备 `~/.codex/skills/gstack` 供这些 skill 的共享脚本使用
+
+先准备 gstack 仓库：
+
+```bash
+if [ ! -d "$HOME/.codex/skills/gstack/.git" ]; then
+  git clone https://github.com/garrytan/gstack.git ~/.codex/skills/gstack
+else
+  git -C ~/.codex/skills/gstack pull --ff-only
+fi
+```
+
+然后执行安装：
+
+```bash
+cd ~/.codex/skills/gstack
+./setup --host codex
+```
+
+补充说明：
+
+- 运行 `./setup --host codex` 前，机器上需要有 `bun`
+- Windows 额外需要 `node`
+- `./setup` 会把适配 Codex 的 skill 安装为 `gstack-*` 目录，但 skill 本身的名字仍然是 `office-hours`、`investigate`、`review`、`ship` 这类裸名称，因此 worker prompt 里继续使用 `$investigate ...`、`$review ...`、`$ship ...`
+
+验证：
+
+```bash
+find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack-(office-hours|autoplan|plan-ceo-review|plan-design-review|plan-eng-review|design-consultation|retro|investigate|review|cso|browse|setup-browser-cookies|qa|qa-only|design-review|benchmark|setup-deploy|ship|land-and-deploy|canary|document-release|careful|freeze|guard|unfreeze)$'
+```
+
+如果你只想快速确认安装成功，至少应该看到：
+
+- `gstack`
+- `gstack-office-hours`
+- `gstack-investigate`
+- `gstack-review`
+- `gstack-ship`
+
+## 4. 安装 `task-bridge`
 
 本项目是 Python 包，通常不需要单独编译二进制。推荐直接安装：
 
@@ -109,7 +173,7 @@ python -m pip install build
 python -m build
 ```
 
-## 4. 配置 `tools.exec.pathPrepend`
+## 5. 配置 `tools.exec.pathPrepend`
 
 先找到 `task-bridge` 所在目录：
 
@@ -136,7 +200,7 @@ openclaw config get tools.exec.pathPrepend
 systemctl --user restart openclaw-gateway.service
 ```
 
-## 5. 配置飞书权限并写入 `chat_id`
+## 6. 配置飞书权限并写入 `chat_id`
 
 参考飞书官方文章：
 
@@ -169,10 +233,11 @@ TASK_BRIDGE_USER_CHAT_ID=oc_xxx
 
 如果你主要通过 OpenClaw agent 使用，放到 `~/.openclaw/.env` 更稳妥。
 
-## 6. 最后检查
+## 7. 最后检查
 
 ```bash
 openclaw agents list --json
+find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack-' || true
 openclaw config get tools.exec.pathPrepend
 command -v task-bridge
 task-bridge -h

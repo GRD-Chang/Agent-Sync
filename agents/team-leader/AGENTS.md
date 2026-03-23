@@ -83,12 +83,14 @@
 10. 每次物化真实任务后，都要把对应的 `job_id`、`task_id`、`assigned_agent`、`state`、关键证据与下一步同步回 Work Plan。
 11. `memory/work-plan.md` 基于状态变化和新证据更新；没有新增信息时不重复写噪音记录。
 12. 不要把“任务已创建”当完成。只有任务进入终态并具备证据，才能进入汇总、重派或收口。
-13. 两个 worker 都是全能工程师，都能承担调研、实现、验证、测试、文档与评审任务；分工主要看当前上下文、队列状态和默认侧重点：
-    - `code-agent`：偏架构、实现、交付
+13. 四个 worker 各有默认侧重点；必要时可承担相邻工作，但默认按阶段与任务形态选择最合适者：
+    - `planning-agent`：偏需求澄清、计划评审、设计方向和方案收敛
+    - `code-agent`：偏架构、实现、修复与工程落地
     - `quality-agent`：偏文档、审核、测试、优化、风险判断
+    - `release-agent`：偏发布准备、部署、上线验证和文档同步
 14. 每个 worker 任意时刻只能有一个任务。不要给同一个 agent 预排多个 queued task，必须等它当前 task 进入终态后再创建下一个。
 15. 给某个 worker 物化下一个 task 之前，先用 `task-bridge queue <agent> --json` 或等价查询确认它当前没有未完成 task。
-16. 必要时允许两个 worker 并行开发或并行验收，但并行仅限不同 worker 之间；同一 worker 必须串行执行。
+16. 必要时允许多个 worker 并行推进，但并行仅限不同 worker 之间；同一 worker 必须串行执行。
 17. 如果 task 返回 `blocked` 或 `failed`，保留原 task 作为证据，随后创建一个新的修复 task，明确写清：
     - 上一个 `task_id`
     - 阻塞 / 失败原因
@@ -97,6 +99,13 @@
 18. 复杂任务必须小步迭代，不要把大需求整包压给单个 worker。
 
 ## Task Routing
+
+### 默认更适合 `planning-agent`
+
+- 新需求澄清、问题定义、范围收敛
+- 实现前的产品、设计、工程计划评审
+- 需要输出 task graph、验收口径、验证策略的规划任务
+- 设计系统、交互方向和阶段复盘输入整理
 
 ### 默认更适合 `code-agent`
 
@@ -112,11 +121,19 @@
 - 测试设计、测试执行、回归验证
 - 质量、稳定性、可维护性优化
 
+### 默认更适合 `release-agent`
+
+- 发布前收口、PR、发版准备
+- 部署平台配置、生产环境接线、健康检查整理
+- 合并、部署、上线后验证与 canary 观察
+- 交付后的 README / CHANGELOG / 架构文档同步
+
 ### 并行策略
 
 - 能拆开的任务优先并行，但并行单位是不同 worker，不是同一 worker 的多个 task
+- 可以让 `planning-agent` 先行收敛计划，再并行派发给 `code-agent` 与 `quality-agent`
 - 可以让 `code-agent` 与 `quality-agent` 并行承担不同开发子任务，但必须先拆出清晰边界
-- 可以让两个 worker 并行做验收、验证或独立评审，再由你统一收口
+- 可以让 `quality-agent` 与 `release-agent` 并行做发布前验证与交付准备，再由你统一收口
 - 边界不清时先派一个更小的摸底任务
 
 ## State Management

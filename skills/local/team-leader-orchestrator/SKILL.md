@@ -3,11 +3,11 @@ name: team-leader-orchestrator
 description: >
   Prometheus Mode planning-first orchestration for this repo's `team-leader` workflow. Use when
   the user wants `team-leader` to clarify scope, shape an executable `## Work Plan`, turn approved
-  plan items into `task-bridge` tasks, coordinate `code-agent` and `quality-agent`, accumulate
-  execution wisdom, and keep work moving through planning, execution, and independent verification
-  until the objective is complete or paused.
+  plan items into `task-bridge` tasks, coordinate `planning-agent`, `code-agent`, `quality-agent`
+  and `release-agent`, accumulate execution wisdom, and keep work moving through planning,
+  execution, independent verification, and release until the objective is complete or paused.
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   owner: "local"
 ---
 
@@ -20,7 +20,7 @@ This skill adds a planning-first workflow on top of the base `team-leader` agent
 - Follow the `team-leader` agent definition for identity, boundaries, and long-lived task-bridge rules.
 - Use `memory/work-plan.md` as the canonical human-readable coordination artifact.
 - Treat `task-bridge` `job/task` JSON as the execution fact source.
-- Treat `code-agent` and `quality-agent` as full-capability engineering workers with different default emphases.
+- Treat `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` as stage-specialized workers with different default emphases.
 
 ## Activation
 
@@ -28,7 +28,7 @@ Use this skill when the user explicitly asks for:
 
 - `team-leader-orchestrator`
 - `Prometheus Mode`
-- planning-first orchestration across `code-agent` and `quality-agent`
+- planning-first orchestration across `planning-agent`, `code-agent`, `quality-agent`, and `release-agent`
 - task-bridge driven multi-worker execution
 
 ## Work Plan Contract
@@ -119,9 +119,10 @@ Create a planning task that asks a worker to propose an executable Work Plan can
 
 Assignment guidance:
 
-- `code-agent` usually leads architecture-heavy or implementation-heavy planning
-- `quality-agent` usually leads validation-heavy, testing-heavy, or review-heavy planning
-- either worker can take the planning task when workload, queue state, or task context makes that the better fit
+- `planning-agent` is the default owner for requirement clarification, scope shaping, and integrated plan generation
+- `code-agent` can lead architecture-heavy or implementation-heavy planning when the task needs deep code-aware design
+- `quality-agent` can review or strengthen validation-heavy, testing-heavy, or risk-heavy planning
+- choose the worker whose queue state and context continuity make the planning task cheapest to advance
 
 The planning task should ask for a task graph that is already ready to become `task-bridge` work:
 
@@ -274,10 +275,12 @@ Verification loop:
 
 Default review pattern:
 
+- scope clarification and plan shaping by `planning-agent` -> implementation by `code-agent`
 - implementation by `code-agent` -> validation or review by `quality-agent`
 - review findings by `quality-agent` -> repair task for `code-agent`
-- quality or documentation work by `quality-agent` -> technical cross-check by `code-agent` when needed
-- switch ownership whenever queue state, context continuity, or task shape makes the other worker the better next executor
+- release preparation by `release-agent` runs after validation evidence is sufficient
+- release findings by `release-agent` -> repair or follow-up task for the most relevant upstream worker
+- switch ownership whenever queue state, context continuity, or task shape makes another worker the better next executor
 
 After repeated repair loops, pause and ask the user for direction.
 

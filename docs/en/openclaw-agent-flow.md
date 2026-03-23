@@ -1,6 +1,6 @@
 # OpenClaw Agent Workflow Guide
 
-This document helps you quickly understand the `task-bridge` architecture and the collaboration flow between `team-leader`, `code-agent`, and `quality-agent`.
+This document helps you quickly understand the `task-bridge` architecture and the collaboration flow between `team-leader`, `planning-agent`, `code-agent`, `quality-agent`, and `release-agent`.
 
 ## 1. Why Task Bridge?
 
@@ -34,17 +34,19 @@ In this system, collaboration does not happen through direct "talk" between agen
   - Dispatch work through the `task-bridge` CLI to the right executor.
   - Receive terminal-state callbacks from Bridge and decide whether to dispatch follow-up work or deliver the result to the user.
 
-### Code Agent and Quality Agent
+### Worker Agents
 
-- **Role**: execution workers. They interact directly with the underlying model or engine, such as Codex or Claude Code.
+- **Role**: stage-specialized execution workers. They interact directly with the underlying model or engine, such as Codex or Claude Code.
 - **Responsibilities**:
   - When awakened by the daemon, accept the task and immediately mark it as `running`.
   - Assemble context and drive the lower-level engine to perform the actual engineering work.
   - **Continuously write back progress**: during execution, keep updating key progress and evidence through `task-bridge update-result`.
   - Verify the outcome, commit changes if needed, and finally mark the task as `done`, `blocked`, or `failed`.
 - **Specialization**:
+  - `planning-agent`: requirement clarification, plan review, design direction, and solution shaping.
   - `code-agent`: solution design, implementation, bug fixing, and refactoring.
   - `quality-agent`: test authoring, regression validation, code review, and documentation cleanup.
+  - `release-agent`: release preparation, deployment, post-deploy verification, and documentation sync.
 
 ### Task Bridge Daemon
 
@@ -81,7 +83,7 @@ The following ASCII sequence diagram shows how a standard long-running task move
 
 ```text
 +-------------+      +---------------+      +--------------+      +-----------------------+      +-------------+
-| User        |      | team-leader   |      | task-bridge  |      | code-agent / quality  |      | Codex / CLI |
+| User        |      | team-leader   |      | task-bridge  |      | planning / code / quality / release |      | Codex / CLI |
 |             |      |               |      |   (daemon)   |      |                       |      |             |
 +-------------+      +---------------+      +--------------+      +-----------------------+      +-------------+
        |                     |                      |                           |                       |
@@ -139,4 +141,4 @@ To keep the pipeline from collapsing, the system depends on the following rules:
 
 This system is not "the leader constantly watching workers." Instead:
 
-**`team-leader` defines a clear work-order contract through `task-bridge`, executors such as `code-agent` drive the underlying engine (for example Codex) to complete the work, every state change and piece of evidence is persisted locally, and the daemon notifies `team-leader` exactly when the work item is concluded.**
+**`team-leader` defines a clear work-order contract through `task-bridge`, executors such as `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` drive the underlying engine (for example Codex) to complete the work, every state change and piece of evidence is persisted locally, and the daemon notifies `team-leader` exactly when the work item is concluded.**

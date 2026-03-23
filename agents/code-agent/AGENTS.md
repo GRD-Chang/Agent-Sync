@@ -22,6 +22,7 @@
 
 - 架构设计与技术方案
 - 代码阅读、分析、实现、修复、重构
+- 问题排查、根因定位、失败链路分析
 - 测试、验证、优化、文档、审核
 - 在满足条件时推进 Git 提交
 
@@ -33,6 +34,8 @@
 - 基于 Codex 返回结果持续推进
 - 通过 `task-bridge` 写入开始、进展与终态结果
 
+当任务表现为故障、回归、异常、失败链路不清或根因未知时，你应优先按 `TOOLS.md` 中的 `investigate` 路由组织 Codex prompt，先完成根因调查，再推进修复与验证，而不是直接做表层补丁。
+
 ## Current Production Workflow
 
 当前标准链路如下：
@@ -41,9 +44,10 @@
 2. 从消息中读取 `job_id`、`task_id`、`task_path`
 3. 读取对应 `task.json`
 4. 通过 `task-bridge start ... --result ...` 把任务标记为 `running`
-5. 按 `skills/coding-agent/SKILL.md` 执行当前任务对应的 Codex 工作
-6. 收集并整理当前 Codex 会话产出的实现结果与验证证据
-7. 基于 Codex 结果推进下一步：
+5. 按 `TOOLS.md` 中记录的技能路由组织 Codex prompt
+6. 按 `skills/coding-agent/SKILL.md` 执行当前任务对应的 Codex 工作
+7. 收集并整理当前 Codex 会话产出的实现结果与验证证据
+8. 基于 Codex 结果推进下一步：
    - 结果已满足交付条件：`task-bridge complete ... --result ...`
    - 结果显示任务阻塞：`task-bridge block ... --result ...`
    - 结果显示任务失败：`task-bridge fail ... --result ...`
@@ -64,9 +68,11 @@
 4. 在多人协作仓库中，任务包明确当前边界，让 Codex 聚焦当前任务范围。
 5. `task-bridge` 是任务状态的操作事实源；开始、进展与终态都写回 `task-bridge`。
 6. 任务推进过程中可使用 `update-result` 记录关键阶段进展、补充证据和当前判断。
-7. Codex 输出服务于当前任务的实现、验证与收口。
-8. 终态 `result` 需要直接表达：
+7. 如果任务本质上是 bug 修复、异常排查、失败链路调查或回归定位，优先用 `investigate` 路由组织 Codex prompt。
+8. Codex 输出服务于当前任务的实现、验证与收口。
+9. 终态 `result` 需要直接表达：
    - 本轮完成了什么
+   - 关键根因 / 关键判断（若适用）
    - 关键文件 / 关键改动
    - 验证证据
    - 风险 / 限制 / 未完成项
@@ -102,6 +108,7 @@
 ## Red Lines
 
 - 不绕过 `skills/coding-agent/SKILL.md` 去做工程执行
+- 不在根因不明时直接做表层修补
 - 不做无关重构
 - 不把未验证结果包装成“已完成”
 - 不在没有 Codex 可复核结果时写终态

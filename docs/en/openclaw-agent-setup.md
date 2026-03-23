@@ -2,8 +2,9 @@
 
 Goals:
 
-- Create `team-leader`, `code-agent`, and `quality-agent` with the OpenClaw CLI
+- Create `team-leader`, `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` with the OpenClaw CLI
 - Migrate the agent definitions from this repository
+- Install the skills from `https://github.com/garrytan/gstack` so Codex can execute them
 - Install and verify `task-bridge`
 - Configure `tools.exec.pathPrepend` so agents can run `task-bridge` directly
 
@@ -13,7 +14,7 @@ References:
 - <https://docs.openclaw.ai/cli/agents>
 - <https://docs.openclaw.ai/tools/exec>
 
-## 1. Create the 3 agents
+## 1. Create the 5 agents
 
 First verify that the OpenClaw CLI is available:
 
@@ -22,12 +23,14 @@ openclaw --help
 openclaw agents --help
 ```
 
-Create 3 isolated workspaces:
+Create 5 isolated workspaces:
 
 ```bash
 openclaw agents add team-leader --non-interactive --workspace ~/.openclaw/workspaces/team-leader
+openclaw agents add planning-agent --non-interactive --workspace ~/.openclaw/workspaces/planning-agent
 openclaw agents add code-agent --non-interactive --workspace ~/.openclaw/workspaces/code-agent
 openclaw agents add quality-agent --non-interactive --workspace ~/.openclaw/workspaces/quality-agent
+openclaw agents add release-agent --non-interactive --workspace ~/.openclaw/workspaces/release-agent
 ```
 
 Verify:
@@ -41,8 +44,10 @@ openclaw agents list --json
 This repository already includes:
 
 - `agents/team-leader/*`
+- `agents/planning-agent/*`
 - `agents/code-agent/*`
 - `agents/quality-agent/*`
+- `agents/release-agent/*`
 - `skills/local/team-leader-orchestrator/SKILL.md`
 - `skills/coding-agent/SKILL.md`
 
@@ -51,7 +56,7 @@ Copy those files into each workspace:
 ```bash
 REPO_ROOT=/path/to/task-bridge
 
-for agent in team-leader code-agent quality-agent; do
+for agent in team-leader planning-agent code-agent quality-agent release-agent; do
   mkdir -p "$HOME/.openclaw/workspaces/$agent/memory"
   cp "$REPO_ROOT/agents/$agent/AGENTS.md" "$HOME/.openclaw/workspaces/$agent/"
   cp "$REPO_ROOT/agents/$agent/SOUL.md" "$HOME/.openclaw/workspaces/$agent/"
@@ -64,7 +69,7 @@ done
 Sync `IDENTITY.md` into OpenClaw identity settings:
 
 ```bash
-for agent in team-leader code-agent quality-agent; do
+for agent in team-leader planning-agent code-agent quality-agent release-agent; do
   openclaw agents set-identity --workspace "$HOME/.openclaw/workspaces/$agent" --from-identity
 done
 ```
@@ -76,14 +81,73 @@ mkdir -p "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator
 cp "$REPO_ROOT/skills/local/team-leader-orchestrator/SKILL.md" \
   "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator/SKILL.md"
 
-for agent in code-agent quality-agent; do
+for agent in planning-agent code-agent quality-agent release-agent; do
   mkdir -p "$HOME/.openclaw/workspaces/$agent/skills/coding-agent"
   cp "$REPO_ROOT/skills/coding-agent/SKILL.md" \
     "$HOME/.openclaw/workspaces/$agent/skills/coding-agent/SKILL.md"
 done
 ```
 
-## 3. Install `task-bridge`
+Those copied files are only this repo's agent definitions plus the local `coding-agent` bridge skill.
+
+The actual `office-hours`, `investigate`, `review`, `ship`, and other gstack skills must still be installed for Codex itself, which is the runtime that executes them.
+
+## 3. Install `garrytan/gstack` skills for Codex
+
+The worker `TOOLS.md` files tell the worker to write Codex prompts in this form:
+
+```text
+$skill-name task description
+```
+
+Those skills are executed by Codex, so they need to be installed into `~/.codex/skills`.
+
+Do not copy gstack skills into the `team-leader` workspace. `team-leader` only dispatches work and does not call Codex directly.
+
+gstack ships with its own `setup` script. It will:
+
+- build the runtime assets and binaries needed by skills such as `/browse`
+- create Codex-discoverable gstack skills inside `~/.codex/skills/`
+- prepare `~/.codex/skills/gstack` for the shared helper scripts those skills call
+
+First prepare the gstack repository:
+
+```bash
+if [ ! -d "$HOME/.codex/skills/gstack/.git" ]; then
+  git clone https://github.com/garrytan/gstack.git ~/.codex/skills/gstack
+else
+  git -C ~/.codex/skills/gstack pull --ff-only
+fi
+```
+
+Then run the installer:
+
+```bash
+cd ~/.codex/skills/gstack
+./setup --host codex
+```
+
+Notes:
+
+- `bun` must be installed before running `./setup --host codex`
+- Windows also needs `node`
+- the installed directories are named `gstack-*`, but the actual skill names remain `office-hours`, `investigate`, `review`, `ship`, and so on, so your worker prompts should still use `$investigate ...`, `$review ...`, `$ship ...`
+
+Verify:
+
+```bash
+find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack-(office-hours|autoplan|plan-ceo-review|plan-design-review|plan-eng-review|design-consultation|retro|investigate|review|cso|browse|setup-browser-cookies|qa|qa-only|design-review|benchmark|setup-deploy|ship|land-and-deploy|canary|document-release|careful|freeze|guard|unfreeze)$'
+```
+
+For a quick smoke check, you should at least see:
+
+- `gstack`
+- `gstack-office-hours`
+- `gstack-investigate`
+- `gstack-review`
+- `gstack-ship`
+
+## 4. Install `task-bridge`
 
 This project is a Python package, so you usually do not need to build a standalone binary. The recommended setup is an editable install:
 
@@ -109,7 +173,7 @@ python -m pip install build
 python -m build
 ```
 
-## 4. Configure `tools.exec.pathPrepend`
+## 5. Configure `tools.exec.pathPrepend`
 
 Find the directory that contains `task-bridge`:
 
@@ -136,7 +200,7 @@ If you just changed `~/.openclaw/openclaw.json`, restart the Gateway:
 systemctl --user restart openclaw-gateway.service
 ```
 
-## 5. Configure Feishu permissions and store the `chat_id`
+## 6. Configure Feishu permissions and store the `chat_id`
 
 Reference:
 
@@ -169,10 +233,11 @@ If you run `task-bridge` directly from this repository, use the repo root `.env`
 
 If you mainly use OpenClaw agents, `~/.openclaw/.env` is the safer default.
 
-## 6. Final check
+## 7. Final check
 
 ```bash
 openclaw agents list --json
+find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack-' || true
 openclaw config get tools.exec.pathPrepend
 command -v task-bridge
 task-bridge -h
