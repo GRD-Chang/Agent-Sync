@@ -960,6 +960,58 @@ def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> N
     assert [task.task_id for task in worker_queue.unassigned_queued_tasks] == [seeded["task_a3"]["id"]]
 
 
+def test_dashboard_overview_and_worker_queue_queries_follow_registry_roster_order(
+    home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import task_bridge.dashboard.queries as dashboard_queries
+
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="registry-driven-roster")
+    running = store.create_task(
+        job_id=job["id"],
+        requirement="extension agent running task",
+        assigned_agent="extension-agent",
+    )
+    store.update_task(running["id"], job_id=job["id"], state="running", result="extension work in progress")
+    queued = store.create_task(
+        job_id=job["id"],
+        requirement="shadow agent queued task",
+        assigned_agent="shadow-agent",
+    )
+
+    calls: list[tuple[str, ...]] = []
+
+    def fake_roster(assigned_agents: object) -> tuple[str, ...]:
+        captured = tuple(str(agent) for agent in assigned_agents)
+        calls.append(captured)
+        return ("registry-alpha", "extension-agent", "shadow-agent", "registry-omega")
+
+    monkeypatch.setattr(dashboard_queries, "roster_with_assigned_agents", fake_roster)
+
+    service = DashboardQueryService(home)
+    overview = service.overview()
+    worker_queue = service.worker_queue()
+
+    expected_roster = ["registry-alpha", "extension-agent", "shadow-agent", "registry-omega"]
+    assert [worker.agent for worker in overview.workers] == expected_roster
+    assert [lane.agent for lane in worker_queue.lanes] == expected_roster
+    assert overview.worker_count == len(expected_roster)
+    assert overview.busy_workers == 1
+    assert overview.idle_workers == len(expected_roster) - 1
+    overview_workers = {worker.agent: worker for worker in overview.workers}
+    assert overview_workers["extension-agent"].running_task_id == running["id"]
+    assert overview_workers["shadow-agent"].next_queued_task_id == queued["id"]
+    worker_lanes = {lane.agent: lane for lane in worker_queue.lanes}
+    assert worker_lanes["extension-agent"].running_task_id == running["id"]
+    assert [task.task_id for task in worker_lanes["shadow-agent"].queued_tasks] == [queued["id"]]
+    assert calls == [
+        ("extension-agent", "shadow-agent"),
+        ("extension-agent", "shadow-agent"),
+    ]
+
+
 def test_dashboard_alerts_query_builds_live_base_snapshot(home: Path) -> None:
     seeded = seed_operational_dashboard_store(home)
 
@@ -1064,6 +1116,94 @@ def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
     assert overview.recent_updates == []
     assert [worker.agent for worker in overview.workers] == list(expected_workers)
     assert [metric.count for metric in overview.task_status_metrics] == [0, 0, 0, 0, 0]
+
+
+def test_dashboard_tasks_query_agent_filters_keep_unassigned_and_extension_agent_semantics(
+    home: Path,
+) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="agent-filter-semantics")
+    unassigned = store.create_task(job_id=job["id"], requirement="needs triage")
+    extension = store.create_task(
+        job_id=job["id"],
+        requirement="extension agent task",
+        assigned_agent="unknown-agent",
+    )
+    store.update_task(
+        extension["id"],
+        job_id=job["id"],
+        state="blocked",
+        result="waiting on extension follow-up",
+    )
+    known = store.create_task(
+        job_id=job["id"],
+        requirement="known worker task",
+        assigned_agent="code-agent",
+    )
+
+    unassigned_snapshot = DashboardQueryService(home).tasks(
+        selected_job_id=job["id"],
+        selected_agent="__unassigned__",
+    )
+
+    assert [item.task_id for item in unassigned_snapshot.tasks] == [unassigned["id"]]
+    unassigned_agent_group = next(group for group in unassigned_snapshot.filter_groups if group.key == "agent")
+    unassigned_options = {option.key: option for option in unassigned_agent_group.options}
+    assert unassigned_options["unassigned"].is_active is True
+    assert unassigned_options["unassigned"].count == 1
+    assert unassigned_options["unknown-agent"].count == 1
+    assert unassigned_options["code-agent"].count == 1
+    assert {item.label: item.value for item in unassigned_snapshot.applied_filters} == {
+        "Job": "agent-filter-semantics",
+        "Assigned agent": "Unassigned",
+    }
+
+    extension_snapshot = DashboardQueryService(home).tasks(
+        selected_job_id=job["id"],
+        selected_agent="unknown-agent",
+    )
+
+    assert [item.task_id for item in extension_snapshot.tasks] == [extension["id"]]
+    extension_agent_group = next(group for group in extension_snapshot.filter_groups if group.key == "agent")
+    extension_options = {option.key: option for option in extension_agent_group.options}
+    assert extension_options["unknown-agent"].is_active is True
+    assert extension_options["unknown-agent"].count == 1
+    assert extension_snapshot.filtered_empty is False
+    assert {item.label: item.value for item in extension_snapshot.applied_filters} == {
+        "Job": "agent-filter-semantics",
+        "Assigned agent": "unknown-agent",
+    }
+    assert known["id"] not in {item.task_id for item in extension_snapshot.tasks}
+
+
+def test_dashboard_jobs_query_timeline_visual_metadata_falls_back_for_unassigned_invalid_dispatch(
+    home: Path,
+) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="timeline-fallbacks")
+    task = store.create_task(job_id=job["id"], requirement="render timeline fallback")
+    task_record = store.load_task(task["id"], job_id=job["id"])
+    task_record["_scheduler"]["last_dispatch_at"] = "dispatch-pending"
+    store.save_task(task_record)
+
+    snapshot = DashboardQueryService(home).jobs(selected_job_id=job["id"])
+
+    assert snapshot.selected_job is not None
+    assert len(snapshot.selected_job.timeline) == 1
+    node = snapshot.selected_job.timeline[0]
+    assert node.task_id == task["id"]
+    assert node.task_short_id.startswith("#")
+    assert node.assigned_agent == "Unassigned"
+    assert node.state == "queued"
+    assert node.state_label == "Queued"
+    assert node.dispatch_at_iso == "dispatch-pending"
+    assert node.dispatch_at_full == "dispatch-pending"
+    assert node.dispatch_date_display == "dispatch-pending"
+    assert node.dispatch_time_display == ""
+    assert node.detail_href.endswith(f"/jobs?job={job['id']}&task={task['id']}#job-task-detail")
+    assert node.is_newest is True
 
 
 def test_dashboard_root_redirects_to_overview(home: Path) -> None:
@@ -1182,6 +1322,31 @@ def test_dashboard_jobs_route_renders_planning_and_release_dispatch_nodes(home: 
     assert body.index('data-agent="planning-agent"') < body.index('data-agent="release-agent"')
 
 
+def test_dashboard_jobs_route_unknown_agent_nodes_keep_default_theme_fallback(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="unknown-agent-theme")
+    task = store.create_task(
+        job_id=job["id"],
+        requirement="verify fallback theme",
+        assigned_agent="unknown-agent",
+    )
+    task_record = store.load_task(task["id"], job_id=job["id"])
+    task_record["_scheduler"]["last_dispatch_at"] = "2026-03-19T12:34:00Z"
+    store.save_task(task_record)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/jobs?job={job['id']}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-agent-theme"' in body
+    assert "--agent-default:" in body
+    assert "--agent-unknown-agent:" not in body
+    assert f'data-testid="dashboard-jobs-timeline-node-{task["id"]}"' in body
+    assert 'data-agent="unknown-agent"' in body
+
+
 def test_dashboard_jobs_route_swaps_to_focused_task_detail_in_job_context(home: Path) -> None:
     seeded = seed_dashboard_store_with_many_job_tasks(home)
     selected_task = str(seeded["tasks"][1]["id"])
@@ -1293,6 +1458,52 @@ def test_dashboard_tasks_route_filters_and_handles_missing_detail(home: Path) ->
     assert seeded["task_a2"]["id"] not in body
     assert 'data-testid="dashboard-tasks-detail-preview-missing"' in body
     assert "File missing" in body
+
+
+def test_dashboard_tasks_route_renders_unassigned_and_extension_agent_filter_states(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="agent-filter-route")
+    unassigned = store.create_task(job_id=job["id"], requirement="needs assignment")
+    extension = store.create_task(
+        job_id=job["id"],
+        requirement="extension agent visible in filters",
+        assigned_agent="unknown-agent",
+    )
+    store.update_task(
+        extension["id"],
+        job_id=job["id"],
+        state="running",
+        result="extension worker active",
+    )
+
+    with TestClient(create_dashboard_app(home)) as client:
+        unassigned_response = client.get(f"/tasks?job={job['id']}&agent=__unassigned__")
+        extension_response = client.get(f"/tasks?job={job['id']}&agent=unknown-agent")
+
+    assert unassigned_response.status_code == 200
+    unassigned_body = unassigned_response.text
+    unassigned_filter = re.search(
+        r'<a[^>]*data-testid="dashboard-tasks-filter-agent-unassigned"[^>]*>',
+        unassigned_body,
+    )
+    assert unassigned_filter is not None
+    assert "is-active" in unassigned_filter.group(0)
+    assert f'data-testid="dashboard-tasks-list-card-{unassigned["id"]}"' in unassigned_body
+    assert f'data-testid="dashboard-tasks-list-card-{extension["id"]}"' not in unassigned_body
+    assert "Assigned agent: Unassigned" in unassigned_body
+
+    assert extension_response.status_code == 200
+    extension_body = extension_response.text
+    extension_filter = re.search(
+        r'<a[^>]*data-testid="dashboard-tasks-filter-agent-unknown-agent"[^>]*>',
+        extension_body,
+    )
+    assert extension_filter is not None
+    assert "is-active" in extension_filter.group(0)
+    assert f'data-testid="dashboard-tasks-list-card-{extension["id"]}"' in extension_body
+    assert f'data-testid="dashboard-tasks-list-card-{unassigned["id"]}"' not in extension_body
+    assert "Assigned agent: unknown-agent" in extension_body
 
 
 def test_dashboard_tasks_route_shows_filter_empty_state(home: Path) -> None:

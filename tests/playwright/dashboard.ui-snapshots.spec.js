@@ -219,6 +219,13 @@ async function seedSnapshotHome(homeDir) {
       dispatchAt: "2026-03-19T16:05:00Z",
     },
     {
+      requirement: "done req 11b",
+      assign: "unknown-agent",
+      state: "done",
+      result: "extension agent should use the default timeline accent",
+      dispatchAt: "2026-03-19T16:42:00Z",
+    },
+    {
       requirement: "blocked req 12",
       assign: "review-agent",
       state: "blocked",
@@ -380,6 +387,10 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
         await page.waitForTimeout(150);
         await expect(timeline.locator('.dispatch-node-link[data-agent="planning-agent"]')).toHaveCount(1);
         await expect(timeline.locator('.dispatch-node-link[data-agent="release-agent"]')).toHaveCount(1);
+        await expect(timeline.locator('.dispatch-node-link[data-agent="unknown-agent"]')).toHaveCount(1);
+        const themeCss = await page.getByTestId("dashboard-agent-theme").textContent();
+        expect(themeCss).toContain("--agent-default:");
+        expect(themeCss).not.toContain("--agent-unknown-agent:");
 
         if (strict) {
           const timelineScrollport = page.getByTestId("dashboard-jobs-timeline-scrollport");
