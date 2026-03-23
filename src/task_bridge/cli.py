@@ -229,7 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         dest="leader_followup",
         default=LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
-        help="仅对 current job 的最新 terminal task 生效：若通知后窗口内仍无新 task，则向 team-leader 发送 unresolved follow-up；0 表示禁用",
+        help="仅对 current job 的 terminal tasks 按 job 聚合生效：若最新终态通知后窗口内仍无新 task，则向 team-leader 发送 1 条 unresolved follow-up；0 表示禁用",
     )
 
     dashboard = subparsers.add_parser(

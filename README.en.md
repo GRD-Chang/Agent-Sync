@@ -57,7 +57,7 @@ While integrating OpenClaw with engines such as Codex, two common approaches loo
 - Serial execution and controlled async behavior: the same worker handles only one task at a time. Workers are required to keep writing back execution records so a long asynchronous action becomes a stable, trackable task flow.
 - Periodic forward progress: to keep engines such as Codex moving on long tasks, the daemon periodically reminds the worker to continue, preventing stalls or silent hangs.
 - Precise terminal-state notifications: Bridge only notifies the leader when the task truly reaches `done`, `blocked`, or `failed`, reducing noise from intermediate steps.
-- Automated follow-up: only the current job's latest terminal task can open this unresolved follow-up window. If no new task appears after that terminal notice, Bridge can proactively remind the leader to decide the next step, preventing the pipeline from idling. The default delay is 5 minutes and can be changed with `task-bridge daemon --leader-followup`.
+- Automated follow-up: only the current job's terminal tasks grouped under the latest terminal notice window can open this unresolved follow-up window. If no new task appears after that latest terminal notice, Bridge merges the related terminal tasks into one reminder and nudges the leader to decide the next step, preventing the pipeline from idling. The default delay is 5 minutes and can be changed with `task-bridge daemon --leader-followup`.
 - Auditable and override-friendly: task facts, scheduler state, and execution traces can all be inspected and adjusted through the CLI.
 
 ---
@@ -115,7 +115,7 @@ Parameter notes:
 - `--poll-seconds 10`: how often the daemon polls the task queue. Default: 10 seconds.
 - `--worker-reminder-seconds 900`: anti-stall reminder interval for workers running tasks. Default: 15 minutes.
 - `--leader-reminder-seconds 3600`: reminder interval for the leader when long-running tasks are still in progress. Default: 60 minutes.
-- `--leader-followup 300`: applies only to the current job's latest terminal task. It controls how long Bridge waits after that terminal-state notification before nudging the leader again when no new task appears in that window. Default: 5 minutes. Use `0` to disable unresolved follow-up.
+- `--leader-followup 300`: applies only to the current job's terminal tasks as a job-level grouped window. Bridge uses the latest terminal notification as the anchor; if no new task appears in that window, it merges the related terminal tasks into one follow-up reminder for the leader. Default: 5 minutes. Use `0` to disable unresolved follow-up.
 
 ### 2.5 Optional: Dashboard (Read-only)
 

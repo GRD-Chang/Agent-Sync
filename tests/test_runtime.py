@@ -222,7 +222,7 @@ def test_notify_updates_keeps_pending_followups_for_multiple_terminal_tasks(home
 
     assert outcome.notified == [older["id"], newer["id"]]
     assert older_persisted["_scheduler"]["final_notified_at"] is not None
-    assert older_persisted["_scheduler"]["leader_followup_due_at"] is not None
+    assert older_persisted["_scheduler"]["leader_followup_due_at"] is None
     assert older_persisted["_scheduler"]["leader_followup_sent_at"] is None
     assert newer_persisted["_scheduler"]["leader_followup_due_at"] is not None
     assert newer_persisted["_scheduler"]["leader_followup_sent_at"] is None

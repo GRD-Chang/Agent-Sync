@@ -160,8 +160,8 @@ def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_cont
     ]
     assert detail.timeline[0].title == "Task 已创建"
     assert "结果：result line 1\nresult line 2" in detail.timeline[1].note
-    assert "current job 的最新 terminal task" in detail.timeline[4].note
-    assert "active follow-up 窗口会转移到最新那条" in detail.timeline[5].note
+    assert "按最新 terminal 通知窗口聚合出来的那组 task" in detail.timeline[4].note
+    assert "后续又出现新的 task" in detail.timeline[5].note
     assert detail.back_links[0].href == "/tasks#tasks-registry"
     assert detail.assigned_agent_raw == "quality-agent"
     assert detail.assigned_agent_fallback_kind == "explicit-theme"

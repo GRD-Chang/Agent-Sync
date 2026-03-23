@@ -142,7 +142,7 @@ def test_create_job_cli_smoke_uses_isolated_task_bridge_home(tmp_path: Path) -> 
         (["daemon", "-h"], "--worker-reminder-seconds"),
         (["daemon", "-h"], "--leader-reminder-seconds"),
         (["daemon", "-h"], "--leader-followup"),
-        (["daemon", "-h"], "仅对 current job 的最新 terminal task 生效"),
+        (["daemon", "-h"], "仅对 current job 的 terminal tasks 按 job 聚合生效"),
     ],
 )
 def test_subcommand_help_describes_usage_and_arguments(
