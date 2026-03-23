@@ -12,6 +12,7 @@ from task_bridge.config import resolve_user_chat_id
 from task_bridge.prompts import PROMPT_TEMPLATE_FILES, load_prompts, prompt_template_path
 from task_bridge.runtime import (
     BridgeRuntime,
+    LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
     default_openclaw_reset_sender,
     default_openclaw_sender,
 )
@@ -122,6 +123,44 @@ def test_notify_updates_only_for_terminal_tasks_and_only_once(
     assert persisted["_scheduler"]["final_notified_at"] is not None
     assert persisted["_scheduler"]["leader_followup_due_at"] is not None
     assert persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
+def test_notify_updates_schedules_default_leader_followup_delay(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="default-followup-delay")
+    task = store.create_task(job_id=job["id"], requirement="req", assigned_agent="code-agent")
+    store.update_task(task["id"], job_id=job["id"], state="done", result="done")
+
+    runtime = BridgeRuntime(home=home, sender=lambda *_: None)
+
+    outcome = runtime.notify_updates()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+    notified_at = datetime.fromisoformat(str(persisted["_scheduler"]["final_notified_at"]).replace("Z", "+00:00"))
+    due_at = datetime.fromisoformat(str(persisted["_scheduler"]["leader_followup_due_at"]).replace("Z", "+00:00"))
+
+    assert outcome.notified == [task["id"]]
+    assert (due_at - notified_at).total_seconds() == LEADER_UNRESOLVED_FOLLOWUP_SECONDS
+
+
+def test_notify_updates_uses_custom_leader_followup_delay(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="custom-followup-delay")
+    task = store.create_task(job_id=job["id"], requirement="req", assigned_agent="code-agent")
+    store.update_task(task["id"], job_id=job["id"], state="done", result="done")
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda *_: None,
+        leader_unresolved_followup_seconds=45.0,
+    )
+
+    outcome = runtime.notify_updates()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+    notified_at = datetime.fromisoformat(str(persisted["_scheduler"]["final_notified_at"]).replace("Z", "+00:00"))
+    due_at = datetime.fromisoformat(str(persisted["_scheduler"]["leader_followup_due_at"]).replace("Z", "+00:00"))
+
+    assert outcome.notified == [task["id"]]
+    assert (due_at - notified_at).total_seconds() == 45.0
 
 
 def test_default_openclaw_sender_spawns_openclaw_detached_with_no_timeout(

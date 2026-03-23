@@ -57,7 +57,7 @@ While integrating OpenClaw with engines such as Codex, two common approaches loo
 - Serial execution and controlled async behavior: the same worker handles only one task at a time. Workers are required to keep writing back execution records so a long asynchronous action becomes a stable, trackable task flow.
 - Periodic forward progress: to keep engines such as Codex moving on long tasks, the daemon periodically reminds the worker to continue, preventing stalls or silent hangs.
 - Precise terminal-state notifications: Bridge only notifies the leader when the task truly reaches `done`, `blocked`, or `failed`, reducing noise from intermediate steps.
-- Automated follow-up: if the leader does not dispatch new work after a task is completed, Bridge can proactively remind the leader to decide the next step, preventing the pipeline from idling.
+- Automated follow-up: if the leader does not dispatch new work after a task is completed, Bridge can proactively remind the leader to decide the next step, preventing the pipeline from idling. The default delay is 5 minutes and can be changed with `task-bridge daemon --leader-followup-seconds`.
 - Auditable and override-friendly: task facts, scheduler state, and execution traces can all be inspected and adjusted through the CLI.
 
 ---
@@ -115,6 +115,7 @@ Parameter notes:
 - `--poll-seconds 10`: how often the daemon polls the task queue. Default: 10 seconds.
 - `--worker-reminder-seconds 900`: anti-stall reminder interval for workers running tasks. Default: 15 minutes.
 - `--leader-reminder-seconds 3600`: reminder interval for the leader when long-running tasks are still in progress. Default: 60 minutes.
+- `--leader-followup-seconds 300`: how long Bridge waits after a terminal-state notification before nudging the leader again when the same job still has no newer task. Default: 5 minutes. Use `0` to make follow-up eligible on the next daemon cycle.
 
 ### 2.5 Optional: Dashboard (Read-only)
 

@@ -9,7 +9,7 @@ import sys
 import time
 from typing import Any
 
-from .runtime import BridgeRuntime
+from .runtime import BridgeRuntime, LEADER_UNRESOLVED_FOLLOWUP_SECONDS
 from .store import TaskStore, infer_worker_status
 
 
@@ -224,6 +224,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=3600.0,
         help="存在 running task 时向 team-leader 发送汇总提醒的间隔秒数；0 表示每轮都发",
     )
+    daemon.add_argument(
+        "--leader-followup-seconds",
+        type=float,
+        default=LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
+        help="终态通知后若同一 job 仍无新 task，向 team-leader 发送 unresolved follow-up 的延迟秒数；0 表示下一轮即可发送",
+    )
 
     dashboard = subparsers.add_parser(
         "dashboard",
@@ -350,7 +356,10 @@ def main(argv: list[str] | None = None) -> int:
                 notified = runtime.notify_task(args.task_id, job_id=args.job, force=args.force)
                 return _print_payload({"task_id": args.task_id, "notified": notified}, as_json=True)
             case "daemon":
-                runtime = BridgeRuntime(home=store.home)
+                runtime = BridgeRuntime(
+                    home=store.home,
+                    leader_unresolved_followup_seconds=args.leader_followup_seconds,
+                )
                 return _run_daemon(
                     runtime,
                     poll_seconds=args.poll_seconds,

@@ -47,10 +47,14 @@ class BridgeRuntime:
         home: Path | None = None,
         sender: Sender | None = None,
         reset_sender: ResetSender | None = None,
+        leader_unresolved_followup_seconds: float = LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
     ) -> None:
+        if leader_unresolved_followup_seconds < 0:
+            raise ValueError("leader_unresolved_followup_seconds must be >= 0")
         self.store = TaskStore(home)
         self.sender = sender or default_openclaw_sender
         self.reset_sender = reset_sender or default_openclaw_reset_sender
+        self.leader_unresolved_followup_seconds = leader_unresolved_followup_seconds
         self.user_chat_id = resolve_user_chat_id()
         self.prompts = load_prompts()
 
@@ -387,7 +391,7 @@ class BridgeRuntime:
             scheduler["leader_followup_sent_at"] = None
             return
 
-        due_at = _parse_iso(notified_at) + timedelta(seconds=LEADER_UNRESOLVED_FOLLOWUP_SECONDS)
+        due_at = _parse_iso(notified_at) + timedelta(seconds=self.leader_unresolved_followup_seconds)
         scheduler["leader_followup_due_at"] = _format_iso(due_at)
         scheduler["leader_followup_sent_at"] = None
 

@@ -140,6 +140,7 @@ def test_create_job_cli_smoke_uses_isolated_task_bridge_home(tmp_path: Path) -> 
         (["daemon", "-h"], "--poll-seconds"),
         (["daemon", "-h"], "--worker-reminder-seconds"),
         (["daemon", "-h"], "--leader-reminder-seconds"),
+        (["daemon", "-h"], "--leader-followup-seconds"),
     ],
 )
 def test_subcommand_help_describes_usage_and_arguments(
@@ -678,6 +679,49 @@ def test_daemon_sends_due_worker_and_team_leader_reminders_with_custom_intervals
     assert daemon_payload["leader_followed_up"] == []
     assert any(msg["agent"] == "code-agent" and msg["message"].startswith("/coding-agent [TASK_REMINDER]\n") for msg in messages)
     assert any(msg["agent"] == "team-leader" and "通过上面的飞书 chat_id 给我发送总结" in msg["message"] for msg in messages)
+
+
+def test_daemon_can_send_immediate_leader_followup_with_custom_delay(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_file = home / "messages.jsonl"
+    monkeypatch.setenv("TASK_BRIDGE_CAPTURE_FILE", str(capture_file))
+
+    main(["create-job", "--title", "daemon followup delay"])
+    job = parse_last_json(capsys)
+    main(["create-task", "--requirement", "需要 leader 收口", "--assign", "code-agent"])
+    task = parse_last_json(capsys)
+    main(["complete", task["id"], "--job", job["id"], "--result", "已完成"])
+    capsys.readouterr()
+    capture_file.write_text("", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "daemon",
+                "--poll-seconds",
+                "0",
+                "--iterations",
+                "1",
+                "--leader-followup-seconds",
+                "0",
+            ]
+        )
+        == 0
+    )
+    daemon_payload = parse_last_json(capsys)
+    messages = [json.loads(line) for line in capture_file.read_text().splitlines() if line.strip()]
+
+    assert daemon_payload["dispatched"] == []
+    assert daemon_payload["worker_reminded"] == []
+    assert daemon_payload["leader_pinged"] is False
+    assert daemon_payload["notified"] == [task["id"]]
+    assert daemon_payload["leader_followed_up"] == [task["id"]]
+    assert sum(msg["agent"] == "team-leader" for msg in messages) == 2
+    assert any(msg["message"].startswith("[TASK_UPDATE]\n") for msg in messages)
+    assert any(msg["message"].startswith("[TASK_FOLLOWUP_REQUIRED]\n") for msg in messages)
 
 
 def test_cli_returns_expected_error_codes_for_missing_and_ambiguous_targets(
