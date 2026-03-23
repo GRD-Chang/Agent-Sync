@@ -273,10 +273,20 @@ def test_worker_status_and_queue_are_derived_across_all_jobs(
     status_payload = parse_last_json(capsys)
     by_agent = {item["agent"]: item for item in status_payload["workers"]}
 
+    assert [item["agent"] for item in status_payload["workers"]] == [
+        "planning-agent",
+        "code-agent",
+        "quality-agent",
+        "release-agent",
+    ]
+    assert by_agent["planning-agent"]["status"] == "idle"
+    assert by_agent["planning-agent"]["queued"] == 0
     assert by_agent["code-agent"]["status"] == "idle"
     assert by_agent["code-agent"]["queued"] == 2
     assert by_agent["quality-agent"]["status"] == "busy"
     assert by_agent["quality-agent"]["running_task_id"] == task_b1["id"]
+    assert by_agent["release-agent"]["status"] == "idle"
+    assert by_agent["release-agent"]["queued"] == 0
 
     assert main(["queue", "code-agent", "--json"]) == 0
     queue_payload = parse_last_json(capsys)

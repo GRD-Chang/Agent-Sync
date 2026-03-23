@@ -393,9 +393,9 @@ def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) 
     assert overview.tasks_count == 4
     assert overview.terminal_count == 2
     assert overview.queued_tasks == 1
-    assert overview.worker_count == 3
+    assert overview.worker_count == 5
     assert overview.busy_workers == 1
-    assert overview.idle_workers == 2
+    assert overview.idle_workers == 4
 
     metrics = {metric.state: metric.count for metric in overview.task_status_metrics}
     assert metrics == {
@@ -411,7 +411,9 @@ def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) 
     assert by_agent["quality-agent"].running_task_id == running["id"]
     assert by_agent["code-agent"].queued == 1
     assert by_agent["code-agent"].next_queued_task_id == queued["id"]
+    assert by_agent["planning-agent"].queued == 0
     assert by_agent["review-agent"].next_queued_task_id is None
+    assert by_agent["release-agent"].queued == 0
 
     assert overview.recent_updates[0].task_id == blocked["id"]
     assert overview.recent_updates[0].summary_label == "Result"
@@ -838,16 +840,18 @@ def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> N
 
     worker_queue = DashboardQueryService(home).worker_queue()
 
-    assert worker_queue.worker_count == 4
+    assert worker_queue.worker_count == 6
     assert worker_queue.busy_workers == 1
-    assert worker_queue.idle_workers == 3
+    assert worker_queue.idle_workers == 5
     assert worker_queue.running_tasks == 1
     assert worker_queue.assigned_queue_depth == 1
     assert worker_queue.unassigned_queue_depth == 1
     assert worker_queue.has_activity is True
     lanes = {lane.agent: lane for lane in worker_queue.lanes}
+    assert lanes["planning-agent"].queued_tasks == []
     assert lanes["quality-agent"].running_task_id == seeded["task_a2"]["id"]
     assert [task.task_id for task in lanes["code-agent"].queued_tasks] == [seeded["task_a1"]["id"]]
+    assert lanes["release-agent"].queued_tasks == []
     assert [task.task_id for task in worker_queue.unassigned_queued_tasks] == [seeded["task_a3"]["id"]]
 
 
@@ -947,9 +951,17 @@ def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
     assert overview.jobs_count == 0
     assert overview.tasks_count == 0
     assert overview.terminal_count == 0
+    assert overview.worker_count == 4
     assert overview.busy_workers == 0
+    assert overview.idle_workers == 4
     assert overview.queued_tasks == 0
     assert overview.recent_updates == []
+    assert [worker.agent for worker in overview.workers] == [
+        "planning-agent",
+        "code-agent",
+        "quality-agent",
+        "release-agent",
+    ]
     assert [metric.count for metric in overview.task_status_metrics] == [0, 0, 0, 0, 0]
 
 

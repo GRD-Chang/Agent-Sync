@@ -9,7 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DEFAULT_WORKERS = ("code-agent", "quality-agent")
+DEFAULT_WORKERS = (
+    "planning-agent",
+    "code-agent",
+    "quality-agent",
+    "release-agent",
+)
 
 
 def now_iso() -> str:

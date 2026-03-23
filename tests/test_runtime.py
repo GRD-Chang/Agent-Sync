@@ -83,6 +83,30 @@ def test_bridge_runtime_home_and_queue_helpers(home: Path) -> None:
     assert review_agent["status"] == "idle"
 
 
+def test_infer_worker_status_keeps_builtin_roster_and_appends_unknown_agents() -> None:
+    workers = infer_worker_status(
+        [
+            {"id": "task-1", "job_id": "job-1", "assigned_agent": "custom-agent", "state": "queued"},
+            {"id": "task-2", "job_id": "job-1", "assigned_agent": "", "state": "queued"},
+        ]
+    )
+
+    assert [item["agent"] for item in workers] == [
+        "planning-agent",
+        "code-agent",
+        "quality-agent",
+        "release-agent",
+        "custom-agent",
+    ]
+    by_agent = {item["agent"]: item for item in workers}
+    assert by_agent["planning-agent"]["status"] == "idle"
+    assert by_agent["planning-agent"]["queued"] == 0
+    assert by_agent["release-agent"]["status"] == "idle"
+    assert by_agent["release-agent"]["queued"] == 0
+    assert by_agent["custom-agent"]["status"] == "idle"
+    assert by_agent["custom-agent"]["queued"] == 1
+
+
 def test_notify_updates_only_for_terminal_tasks_and_only_once(
     home: Path,
     monkeypatch: pytest.MonkeyPatch,
