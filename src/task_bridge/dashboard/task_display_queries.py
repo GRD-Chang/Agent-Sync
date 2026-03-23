@@ -25,10 +25,16 @@ class TaskDisplayQueryAssembler:
 
     def build_recent_update(self, task: dict[str, object]) -> RecentUpdate:
         summary_label, summary_text = self.task_summary(task)
+        agent = self._service._agent_presentation(
+            task.get("assigned_agent"),
+            empty_label=self._messages["recent_update"]["unassigned"],
+        )
         return RecentUpdate(
             task_id=str(task["id"]),
             job_id=str(task["job_id"]),
-            assigned_agent=_optional_text(task.get("assigned_agent")) or self._messages["recent_update"]["unassigned"],
+            assigned_agent=agent.display_label,
+            assigned_agent_raw=agent.raw_key,
+            assigned_agent_fallback_kind=agent.fallback_kind,
             state=str(task.get("state") or "queued"),
             updated_at=_format_timestamp(
                 str(task.get("updatedAt") or task.get("createdAt") or ""),
@@ -71,13 +77,18 @@ class TaskDisplayQueryAssembler:
                 selected_page=selected_page,
             )
         )
+        agent = self._service._agent_presentation(
+            task.get("assigned_agent"),
+            empty_label=self._messages["tasks"]["assigned_agent_empty"],
+        )
         return TaskDetailSnapshot(
             task_id=str(task["id"]),
             job_id=job_id,
             job_href=job_href or self._service._jobs_path(job_id=job_id, task_id=str(task["id"])) + "#job-task-detail",
             state=str(task.get("state") or "queued"),
-            assigned_agent=_optional_text(task.get("assigned_agent"))
-            or self._messages["tasks"]["assigned_agent_empty"],
+            assigned_agent=agent.display_label,
+            assigned_agent_raw=agent.raw_key,
+            assigned_agent_fallback_kind=agent.fallback_kind,
             notify_target=_optional_text(task.get("notify_target")) or self._messages["common"]["unknown"],
             created_at=_format_timestamp(
                 str(task.get("createdAt") or ""),
@@ -102,7 +113,10 @@ class TaskDisplayQueryAssembler:
         recent_label, recent_summary = self.task_summary(task)
         state = str(task.get("state") or "queued")
         state_label = status_messages.get(state, status_messages["queued"])["label"]
-        agent = _optional_text(task.get("assigned_agent")) or tasks_messages["assigned_agent_empty"]
+        agent = self._service._agent_presentation(
+            task.get("assigned_agent"),
+            empty_label=tasks_messages["assigned_agent_empty"],
+        )
         target = _optional_text(task.get("notify_target")) or self._messages["common"]["unknown"]
 
         events: list[tuple[str, int, TaskTimelineEvent]] = []
@@ -165,7 +179,7 @@ class TaskDisplayQueryAssembler:
                             dispatch_at,
                             fallback=self._messages["common"]["unknown"],
                         ),
-                        note=tasks_messages["timeline_dispatch_note"].format(agent=agent),
+                        note=tasks_messages["timeline_dispatch_note"].format(agent=agent.display_label),
                     ),
                 )
             )

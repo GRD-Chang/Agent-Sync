@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from task_bridge.dashboard import DashboardQueryService
+from task_bridge.dashboard.agent_presentation import resolve_agent_presentation
 from task_bridge.dashboard.detail_preview import load_detail_preview
 from task_bridge.dashboard.formatting import (
     format_timestamp,
@@ -68,6 +69,26 @@ def test_dashboard_formatting_helpers_preserve_dashboard_copy_contract() -> None
     assert is_overdue("2026-03-21T10:00:00Z", now_value) is False
 
 
+def test_dashboard_agent_presentation_helper_preserves_raw_identity_and_fallbacks() -> None:
+    known = resolve_agent_presentation("planning-agent", empty_label="Unassigned")
+    extension = resolve_agent_presentation("extension-agent", empty_label="Unassigned")
+    unknown = resolve_agent_presentation("unknown-agent", empty_label="Unassigned")
+    unassigned = resolve_agent_presentation("", empty_label="Unassigned")
+
+    assert known.raw_key == "planning-agent"
+    assert known.display_label == "planning-agent"
+    assert known.fallback_kind == "explicit-theme"
+    assert extension.raw_key == "extension-agent"
+    assert extension.display_label == "extension-agent"
+    assert extension.fallback_kind == "default-theme"
+    assert unknown.raw_key == "unknown-agent"
+    assert unknown.display_label == "unknown-agent"
+    assert unknown.fallback_kind == "default-theme"
+    assert unassigned.raw_key is None
+    assert unassigned.display_label == "Unassigned"
+    assert unassigned.fallback_kind == "unassigned"
+
+
 def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_contract(
     tmp_path: Path,
 ) -> None:
@@ -128,6 +149,8 @@ def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_cont
     assert detail.timeline[0].title == "Task 已创建"
     assert "结果：result line 1\nresult line 2" in detail.timeline[1].note
     assert detail.back_links[0].href == "/tasks#tasks-registry"
+    assert detail.assigned_agent_raw == "quality-agent"
+    assert detail.assigned_agent_fallback_kind == "explicit-theme"
 
 
 def test_dashboard_jobs_query_builds_horizontal_dispatch_timeline_nodes_from_scheduler_dispatches(
@@ -169,6 +192,8 @@ def test_dashboard_jobs_query_builds_horizontal_dispatch_timeline_nodes_from_sch
     assert [node.task_id for node in timeline] == [older["id"], newer["id"]]
     assert timeline[0].task_short_id.startswith("#")
     assert timeline[0].assigned_agent == "quality-agent"
+    assert timeline[0].assigned_agent_raw == "quality-agent"
+    assert timeline[0].assigned_agent_fallback_kind == "explicit-theme"
     assert timeline[0].state == "blocked"
     assert timeline[0].state_label == "Blocked"
     assert timeline[0].dispatch_at_iso == "2026-03-20T12:20:00Z"
@@ -179,6 +204,8 @@ def test_dashboard_jobs_query_builds_horizontal_dispatch_timeline_nodes_from_sch
     )
     assert timeline[0].is_newest is False
     assert timeline[1].assigned_agent == "code-agent"
+    assert timeline[1].assigned_agent_raw == "code-agent"
+    assert timeline[1].assigned_agent_fallback_kind == "explicit-theme"
     assert timeline[1].state_label == "Running"
     assert timeline[1].dispatch_at_iso == "2026-03-20T13:10:00Z"
     assert timeline[1].is_newest is True

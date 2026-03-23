@@ -643,6 +643,14 @@ def test_dashboard_jobs_query_builds_agent_mapped_dispatch_timeline(home: Path) 
         "planning-agent",
         "release-agent",
     ]
+    assert [node.assigned_agent_raw for node in jobs.selected_job.timeline] == [
+        "planning-agent",
+        "release-agent",
+    ]
+    assert [node.assigned_agent_fallback_kind for node in jobs.selected_job.timeline] == [
+        "explicit-theme",
+        "explicit-theme",
+    ]
     assert jobs.selected_job.timeline[-1].is_newest is True
 
 
@@ -1170,6 +1178,8 @@ def test_dashboard_tasks_query_agent_filters_keep_unassigned_and_extension_agent
     assert extension_options["unknown-agent"].is_active is True
     assert extension_options["unknown-agent"].count == 1
     assert extension_snapshot.filtered_empty is False
+    assert extension_snapshot.tasks[0].assigned_agent_raw == "unknown-agent"
+    assert extension_snapshot.tasks[0].assigned_agent_fallback_kind == "default-theme"
     assert {item.label: item.value for item in extension_snapshot.applied_filters} == {
         "Job": "agent-filter-semantics",
         "Assigned agent": "unknown-agent",
@@ -1196,6 +1206,8 @@ def test_dashboard_jobs_query_timeline_visual_metadata_falls_back_for_unassigned
     assert node.task_id == task["id"]
     assert node.task_short_id.startswith("#")
     assert node.assigned_agent == "Unassigned"
+    assert node.assigned_agent_raw is None
+    assert node.assigned_agent_fallback_kind == "unassigned"
     assert node.state == "queued"
     assert node.state_label == "Queued"
     assert node.dispatch_at_iso == "dispatch-pending"
@@ -1318,6 +1330,7 @@ def test_dashboard_jobs_route_renders_planning_and_release_dispatch_nodes(home: 
     assert f'data-testid="dashboard-jobs-timeline-node-{seeded["planning_task"]["id"]}"' in body
     assert f'data-testid="dashboard-jobs-timeline-node-{seeded["release_task"]["id"]}"' in body
     assert 'data-agent="planning-agent"' in body
+    assert 'data-agent-fallback="explicit-theme"' in body
     assert 'data-agent="release-agent"' in body
     assert body.index('data-agent="planning-agent"') < body.index('data-agent="release-agent"')
 
@@ -1345,6 +1358,7 @@ def test_dashboard_jobs_route_unknown_agent_nodes_keep_default_theme_fallback(ho
     assert "--agent-unknown-agent:" not in body
     assert f'data-testid="dashboard-jobs-timeline-node-{task["id"]}"' in body
     assert 'data-agent="unknown-agent"' in body
+    assert 'data-agent-fallback="default-theme"' in body
 
 
 def test_dashboard_jobs_route_swaps_to_focused_task_detail_in_job_context(home: Path) -> None:

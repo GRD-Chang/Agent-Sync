@@ -73,6 +73,10 @@ def dashboard_agent_theme_css() -> str:
     return _DASHBOARD_AGENT_THEME_CSS
 
 
+def dashboard_agent_theme_names() -> frozenset[str]:
+    return _DASHBOARD_AGENT_THEME_NAMES
+
+
 def _rgb_css_value(value: tuple[int, int, int]) -> str:
     return ", ".join(str(channel) for channel in value)
 
@@ -118,3 +122,6 @@ def _build_dashboard_agent_theme_css() -> str:
 
 
 _DASHBOARD_AGENT_THEME_CSS = _build_dashboard_agent_theme_css()
+_DASHBOARD_AGENT_THEME_NAMES = frozenset(
+    definition.name for definition in _dashboard_agent_theme_definitions()
+)

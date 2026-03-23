@@ -81,10 +81,16 @@ class WorkerQueuePageQueryAssembler:
 
     def _build_queue_task(self, task: dict[str, object]) -> QueueTaskSnapshot:
         summary_label, summary_text = self._service._task_summary(task)
+        agent = self._service._agent_presentation(
+            task.get("assigned_agent"),
+            empty_label=self._messages["common"]["none"],
+        )
         return QueueTaskSnapshot(
             task_id=str(task["id"]),
             job_id=str(task["job_id"]),
-            assigned_agent=_optional_text(task.get("assigned_agent")) or self._messages["common"]["none"],
+            assigned_agent=agent.display_label,
+            assigned_agent_raw=agent.raw_key,
+            assigned_agent_fallback_kind=agent.fallback_kind,
             state=str(task.get("state") or "queued"),
             updated_at=_format_timestamp(
                 str(task.get("updatedAt") or task.get("createdAt") or ""),

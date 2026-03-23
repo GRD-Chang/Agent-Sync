@@ -219,8 +219,9 @@ class JobsPageQueryAssembler:
             JobTaskPreview(
                 task_id=str(task["id"]),
                 state=str(task.get("state") or "queued"),
-                assigned_agent=_optional_text(task.get("assigned_agent"))
-                or self._messages["tasks"]["assigned_agent_empty"],
+                assigned_agent=agent.display_label,
+                assigned_agent_raw=agent.raw_key,
+                assigned_agent_fallback_kind=agent.fallback_kind,
                 updated_at=_format_timestamp(
                     str(task.get("updatedAt") or task.get("createdAt") or ""),
                     fallback=self._messages["common"]["unknown"],
@@ -235,8 +236,15 @@ class JobsPageQueryAssembler:
                 + "#job-task-detail",
                 is_selected=str(task["id"]) == selected_task_id,
             )
-            for task, (summary_label, summary_text) in [
-                (task, self._service._task_summary(task))
+            for task, agent, (summary_label, summary_text) in [
+                (
+                    task,
+                    self._service._agent_presentation(
+                        task.get("assigned_agent"),
+                        empty_label=self._messages["tasks"]["assigned_agent_empty"],
+                    ),
+                    self._service._task_summary(task),
+                )
                 for task in self._service._sort_tasks_for_cards(job_tasks)
             ]
         ]
@@ -311,12 +319,17 @@ class JobsPageQueryAssembler:
             state = str(task.get("state") or "queued")
             dispatch_date_display, dispatch_time_display = self._format_dispatch_parts(dispatch_at)
             task_id = str(task["id"])
+            agent = self._service._agent_presentation(
+                task.get("assigned_agent"),
+                empty_label=task_messages["assigned_agent_empty"],
+            )
             nodes.append(
                 JobDispatchTimelineNode(
                     task_id=task_id,
                     task_short_id=self._short_task_id(task_id),
-                    assigned_agent=_optional_text(task.get("assigned_agent"))
-                    or task_messages["assigned_agent_empty"],
+                    assigned_agent=agent.display_label,
+                    assigned_agent_raw=agent.raw_key,
+                    assigned_agent_fallback_kind=agent.fallback_kind,
                     state=state,
                     state_label=status_messages.get(state, status_messages["queued"])["label"],
                     dispatch_at_iso=dispatch_at,

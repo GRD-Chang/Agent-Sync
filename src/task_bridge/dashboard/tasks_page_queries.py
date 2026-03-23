@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from .detail_preview import detail_preview_status as _detail_preview_status
 from .formatting import format_timestamp as _format_timestamp
-from .formatting import optional_text as _optional_text
 from .pagination import page_for_task as _page_for_task
 from .pagination import paginate_items
 from .pagination import parse_page_number as _parse_page_number
@@ -150,12 +149,17 @@ class TasksPageQueryAssembler:
         task_id = str(task["id"])
         job_id = str(task["job_id"])
         detail_status = _detail_preview_status(str(task.get("detail_path") or ""))
+        agent = self._service._agent_presentation(
+            task.get("assigned_agent"),
+            empty_label=self._messages["tasks"]["assigned_agent_empty"],
+        )
         return TaskListItem(
             task_id=task_id,
             job_id=job_id,
             state=str(task.get("state") or "queued"),
-            assigned_agent=_optional_text(task.get("assigned_agent"))
-            or self._messages["tasks"]["assigned_agent_empty"],
+            assigned_agent=agent.display_label,
+            assigned_agent_raw=agent.raw_key,
+            assigned_agent_fallback_kind=agent.fallback_kind,
             created_at=_format_timestamp(
                 str(task.get("createdAt") or ""),
                 fallback=self._messages["common"]["unknown"],
@@ -189,13 +193,17 @@ class TasksPageQueryAssembler:
     ) -> bool:
         from .queries import UNASSIGNED_AGENT_FILTER
 
+        presentation = self._service._agent_presentation(
+            task.get("assigned_agent"),
+            empty_label=self._messages["tasks"]["assigned_agent_empty"],
+        )
         if job_id and str(task["job_id"]) != job_id:
             return False
         if state and str(task.get("state") or "queued") != state:
             return False
         if agent == UNASSIGNED_AGENT_FILTER:
-            return _optional_text(task.get("assigned_agent")) is None
-        if agent and _optional_text(task.get("assigned_agent")) != agent:
+            return presentation.raw_key is None
+        if agent and presentation.raw_key != agent:
             return False
         return True
 
@@ -320,14 +328,25 @@ class TasksPageQueryAssembler:
                 )
             )
         known_agents = self._service._worker_roster(
-            (_optional_text(task.get("assigned_agent")) or "" for task in tasks),
+            (
+                self._service._agent_presentation(
+                    task.get("assigned_agent"),
+                    empty_label=task_messages["assigned_agent_empty"],
+                ).raw_key
+                or ""
+                for task in tasks
+            ),
             include_agents=(selected_agent,) if selected_agent and selected_agent != UNASSIGNED_AGENT_FILTER else (),
         )
         for agent_name in known_agents:
+            agent = self._service._agent_presentation(
+                agent_name,
+                empty_label=task_messages["assigned_agent_empty"],
+            )
             agent_options.append(
                 LinkOption(
                     key=agent_name,
-                    label=agent_name,
+                    label=agent.display_label,
                     href=self._service._tasks_path(
                         job_id=selected_job_id,
                         state=selected_state,
@@ -411,11 +430,10 @@ class TasksPageQueryAssembler:
                 )
             )
         if selected_agent:
-            agent_label = (
-                self._messages["tasks"]["assigned_agent_empty"]
-                if selected_agent == UNASSIGNED_AGENT_FILTER
-                else selected_agent
-            )
+            agent_label = self._service._agent_presentation(
+                None if selected_agent == UNASSIGNED_AGENT_FILTER else selected_agent,
+                empty_label=self._messages["tasks"]["assigned_agent_empty"],
+            ).display_label
             applied.append(
                 AppliedFilter(
                     label=self._messages["tasks"]["assigned_agent"],

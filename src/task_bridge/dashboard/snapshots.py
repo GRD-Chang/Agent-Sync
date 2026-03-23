@@ -29,6 +29,8 @@ class RecentUpdate:
     task_id: str
     job_id: str
     assigned_agent: str
+    assigned_agent_raw: str | None
+    assigned_agent_fallback_kind: str
     state: str
     updated_at: str
     summary_label: str
@@ -103,6 +105,8 @@ class JobTaskPreview:
     task_id: str
     state: str
     assigned_agent: str
+    assigned_agent_raw: str | None
+    assigned_agent_fallback_kind: str
     updated_at: str
     summary_label: str
     summary_text: str
@@ -151,6 +155,8 @@ class JobDispatchTimelineNode:
     task_id: str
     task_short_id: str
     assigned_agent: str
+    assigned_agent_raw: str | None
+    assigned_agent_fallback_kind: str
     state: str
     state_label: str
     dispatch_at_iso: str
@@ -198,6 +204,8 @@ class TaskDetailSnapshot:
     job_href: str
     state: str
     assigned_agent: str
+    assigned_agent_raw: str | None
+    assigned_agent_fallback_kind: str
     notify_target: str
     created_at: str
     updated_at: str
@@ -235,6 +243,8 @@ class TaskListItem:
     job_id: str
     state: str
     assigned_agent: str
+    assigned_agent_raw: str | None
+    assigned_agent_fallback_kind: str
     created_at: str
     updated_at: str
     summary_label: str
@@ -303,6 +313,8 @@ class QueueTaskSnapshot:
     task_id: str
     job_id: str
     assigned_agent: str
+    assigned_agent_raw: str | None
+    assigned_agent_fallback_kind: str
     state: str
     updated_at: str
     summary_label: str
@@ -340,6 +352,8 @@ class AlertTaskSnapshot:
     task_id: str
     job_id: str
     assigned_agent: str
+    assigned_agent_raw: str | None
+    assigned_agent_fallback_kind: str
     state: str
     updated_at: str
     summary_label: str

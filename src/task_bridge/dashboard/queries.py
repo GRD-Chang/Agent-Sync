@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
 from task_bridge.worker_registry import roster_with_assigned_agents
 
+from .agent_presentation import AgentPresentation, resolve_agent_presentation
 from .formatting import (
     format_timestamp as _format_timestamp,
     optional_text as _optional_text,
@@ -267,6 +268,9 @@ class DashboardQueryService:
 
     def _sort_tasks_for_cards(self, tasks: list[dict[str, object]]) -> list[dict[str, object]]:
         return self._task_display.sort_tasks_for_cards(tasks)
+
+    def _agent_presentation(self, value: object, *, empty_label: str) -> AgentPresentation:
+        return resolve_agent_presentation(value, empty_label=empty_label)
 
     def _worker_roster(
         self,

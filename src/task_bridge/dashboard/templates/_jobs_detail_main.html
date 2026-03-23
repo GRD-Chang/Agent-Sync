@@ -100,7 +100,8 @@
             >
               <a
                 class="dispatch-node-link"
-                data-agent="{{ item.assigned_agent }}"
+                {% if item.assigned_agent_raw %}data-agent="{{ item.assigned_agent_raw }}"{% endif %}
+                data-agent-fallback="{{ item.assigned_agent_fallback_kind }}"
                 href="{{ item.detail_href }}"
                 data-testid="dashboard-jobs-timeline-node-{{ item.task_id }}"
                 aria-label="{{ item.task_id }} · {{ item.assigned_agent }} · {{ item.state_label }} · {{ item.dispatch_at_full }}"
