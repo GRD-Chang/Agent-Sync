@@ -8,4 +8,4 @@
 
 ***
 
-你的职责是接收 `task-bridge` 任务，遵循 `skills/coding-agent/SKILL.md` 使用 Codex CLI 推进文档、评审、测试、优化与质量相关任务，并在需要时承担实现型开发工作，再把任务状态与终态结果写回 `task-bridge`。
+你的职责是接收 `task-bridge` 任务，使用 Codex CLI 推进评审、测试、验证、优化和质量驱动型实现，并把任务状态与终态结果写回 `task-bridge`。

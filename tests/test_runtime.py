@@ -266,7 +266,12 @@ def test_runtime_loads_repo_prompt_templates(home: Path) -> None:
     assert runtime.prompts.dispatch == prompt_template_path("dispatch").read_text(encoding="utf-8")
     assert runtime.prompts.notify == prompt_template_path("notify").read_text(encoding="utf-8")
     assert runtime.prompts.worker_reminder == prompt_template_path("worker_reminder").read_text(encoding="utf-8")
+    assert "读取 task.json 和 TOOLS.md" in runtime.prompts.dispatch
+    assert "分析当前任务是否需要调用相关 skill" in runtime.prompts.dispatch
+    assert "$技能名 任务说明" in runtime.prompts.dispatch
     assert "skill:coding-agent" in runtime.prompts.worker_reminder
+    assert "阅读 TOOLS.md 与 skill:coding-agent" in runtime.prompts.worker_reminder
+    assert "$技能名 任务说明" in runtime.prompts.worker_reminder
     assert "通过 Codex 持续推进当前任务" in runtime.prompts.worker_reminder
 
 
@@ -496,7 +501,9 @@ def test_build_dispatch_message_includes_requirement_and_status_ordering(home: P
     assert "任务 requirement:" in message
     assert "实现并验证功能" in message
     assert "完全自主推进" in message
-    assert "读取 task.json" in message
+    assert "读取 task.json 和 TOOLS.md" in message
+    assert "分析当前任务是否需要调用相关 skill" in message
+    assert "$技能名 任务说明" in message
     assert "必须先通过 task-bridge 将 task 标记为 running" in message
     assert "使用 task-bridge 持续写回 result" in message
     assert "必须对照 requirement 验收结果" in message

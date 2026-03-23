@@ -5,7 +5,8 @@ assigned_agent={assigned_agent}
 state={state}
 task_path={task_path}
 
-请立即阅读 skill:coding-agent，确认当前任务应继续通过 Codex 推进。
+请立即阅读 TOOLS.md 与 skill:coding-agent，确认当前任务应继续通过 Codex 推进，并重新判断当前阶段是否需要调用相关 skill。
+如果需要调用 skill，直接把 skill 写进给 Codex 的 prompt，示例格式：`$技能名 任务说明`，再继续执行。
 请检查 Codex 当前运行状态，并通过 Codex 持续推进当前任务直到完成。
 不要等待新的指令，不要暂停，不要只汇报状态；遇到阻塞时主动排查、修复并继续推进。
 如果尚未开始，请先将 task 标记为 running；如果仍在执行，请继续通过 task-bridge 写回 result；如果已经满足 requirement，请完成验证、使用codex提交相关 commit，并将任务标记为 complete。
