@@ -225,10 +225,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="存在 running task 时向 team-leader 发送汇总提醒的间隔秒数；0 表示每轮都发",
     )
     daemon.add_argument(
-        "--leader-followup-seconds",
+        "--leader-followup",
         type=float,
+        dest="leader_followup",
         default=LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
-        help="终态通知后若同一 job 仍无新 task，向 team-leader 发送 unresolved follow-up 的延迟秒数；0 表示下一轮即可发送",
+        help="终态通知后若同一 job 仍无新 task，向 team-leader 发送 unresolved follow-up 的延迟秒数；0 表示禁用",
     )
 
     dashboard = subparsers.add_parser(
@@ -358,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
             case "daemon":
                 runtime = BridgeRuntime(
                     home=store.home,
-                    leader_unresolved_followup_seconds=args.leader_followup_seconds,
+                    leader_unresolved_followup_seconds=args.leader_followup,
                 )
                 return _run_daemon(
                     runtime,

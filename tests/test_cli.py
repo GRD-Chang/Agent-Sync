@@ -140,7 +140,7 @@ def test_create_job_cli_smoke_uses_isolated_task_bridge_home(tmp_path: Path) -> 
         (["daemon", "-h"], "--poll-seconds"),
         (["daemon", "-h"], "--worker-reminder-seconds"),
         (["daemon", "-h"], "--leader-reminder-seconds"),
-        (["daemon", "-h"], "--leader-followup-seconds"),
+        (["daemon", "-h"], "--leader-followup"),
     ],
 )
 def test_subcommand_help_describes_usage_and_arguments(
@@ -681,7 +681,7 @@ def test_daemon_sends_due_worker_and_team_leader_reminders_with_custom_intervals
     assert any(msg["agent"] == "team-leader" and "通过上面的飞书 chat_id 给我发送总结" in msg["message"] for msg in messages)
 
 
-def test_daemon_can_send_immediate_leader_followup_with_custom_delay(
+def test_daemon_disables_leader_followup_when_flag_is_zero(
     home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -705,7 +705,7 @@ def test_daemon_can_send_immediate_leader_followup_with_custom_delay(
                 "0",
                 "--iterations",
                 "1",
-                "--leader-followup-seconds",
+                "--leader-followup",
                 "0",
             ]
         )
@@ -713,15 +713,26 @@ def test_daemon_can_send_immediate_leader_followup_with_custom_delay(
     )
     daemon_payload = parse_last_json(capsys)
     messages = [json.loads(line) for line in capture_file.read_text().splitlines() if line.strip()]
+    persisted = read_task(home, job["id"], task["id"])
 
     assert daemon_payload["dispatched"] == []
     assert daemon_payload["worker_reminded"] == []
     assert daemon_payload["leader_pinged"] is False
     assert daemon_payload["notified"] == [task["id"]]
-    assert daemon_payload["leader_followed_up"] == [task["id"]]
-    assert sum(msg["agent"] == "team-leader" for msg in messages) == 2
+    assert daemon_payload["leader_followed_up"] == []
+    assert sum(msg["agent"] == "team-leader" for msg in messages) == 1
     assert any(msg["message"].startswith("[TASK_UPDATE]\n") for msg in messages)
-    assert any(msg["message"].startswith("[TASK_FOLLOWUP_REQUIRED]\n") for msg in messages)
+    assert not any(msg["message"].startswith("[TASK_FOLLOWUP_REQUIRED]\n") for msg in messages)
+    assert persisted["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
+def test_daemon_rejects_negative_leader_followup_value(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["daemon", "--poll-seconds", "0", "--iterations", "1", "--leader-followup", "-1"]) == 2
+    assert "leader-followup must be >= 0" in capsys.readouterr().err
 
 
 def test_cli_returns_expected_error_codes_for_missing_and_ambiguous_targets(

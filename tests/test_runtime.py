@@ -163,6 +163,36 @@ def test_notify_updates_uses_custom_leader_followup_delay(home: Path) -> None:
     assert (due_at - notified_at).total_seconds() == 45.0
 
 
+def test_notify_updates_disables_leader_followup_when_delay_is_zero(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="disabled-followup-delay")
+    task = store.create_task(job_id=job["id"], requirement="req", assigned_agent="code-agent")
+    store.update_task(task["id"], job_id=job["id"], state="done", result="done")
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda *_: None,
+        leader_unresolved_followup_seconds=0,
+    )
+
+    outcome = runtime.notify_updates()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+
+    assert outcome.notified == [task["id"]]
+    assert persisted["_scheduler"]["final_notified_at"] is not None
+    assert persisted["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
+def test_bridge_runtime_rejects_negative_leader_followup_delay(home: Path) -> None:
+    with pytest.raises(ValueError, match="leader-followup must be >= 0"):
+        BridgeRuntime(
+            home=home,
+            sender=lambda *_: None,
+            leader_unresolved_followup_seconds=-1,
+        )
+
+
 def test_default_openclaw_sender_spawns_openclaw_detached_with_no_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -382,6 +412,35 @@ def test_send_due_leader_unresolved_followups_clears_when_new_task_exists(home: 
     assert outcome.followed_up == []
     assert calls == []
     persisted = store.load_task(source["id"], job_id=job["id"])
+    assert persisted["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
+def test_send_due_leader_unresolved_followups_stays_disabled_when_delay_is_zero(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="leader-followup-disabled")
+    task = store.create_task(job_id=job["id"], requirement="source", assigned_agent="code-agent")
+    payload = store.load_task(task["id"], job_id=job["id"])
+    payload["state"] = "done"
+    payload["_scheduler"]["final_notified_at"] = "2026-03-11T00:01:00Z"
+    payload["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:06:00Z"
+    payload["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(payload)
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda agent, message: calls.append((agent, message)),
+        leader_unresolved_followup_seconds=0,
+    )
+
+    outcome = runtime.send_due_leader_unresolved_followups(
+        current_time=datetime(2026, 3, 11, 0, 6, 1, tzinfo=timezone.utc),
+    )
+
+    assert outcome.followed_up == []
+    assert calls == []
+    persisted = store.load_task(task["id"], job_id=job["id"])
     assert persisted["_scheduler"]["leader_followup_due_at"] is None
     assert persisted["_scheduler"]["leader_followup_sent_at"] is None
 

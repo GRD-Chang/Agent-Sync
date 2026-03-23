@@ -50,7 +50,7 @@ class BridgeRuntime:
         leader_unresolved_followup_seconds: float = LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
     ) -> None:
         if leader_unresolved_followup_seconds < 0:
-            raise ValueError("leader_unresolved_followup_seconds must be >= 0")
+            raise ValueError("leader-followup must be >= 0")
         self.store = TaskStore(home)
         self.sender = sender or default_openclaw_sender
         self.reset_sender = reset_sender or default_openclaw_reset_sender
@@ -234,11 +234,19 @@ class BridgeRuntime:
         *,
         current_time: datetime | None = None,
     ) -> LeaderFollowupOutcome:
-        now_at = _coerce_utc(current_time)
-        now_value = _format_iso(now_at)
         tasks = self.store.list_tasks(all_jobs=True)
         due_by_job: dict[str, list[dict[str, object]]] = {}
         outcome = LeaderFollowupOutcome()
+        if self.leader_unresolved_followup_seconds <= 0:
+            for task in tasks:
+                if not self._is_pending_leader_followup(task):
+                    continue
+                self._clear_leader_followup(task)
+                self.store.save_task(task)
+            return outcome
+
+        now_at = _coerce_utc(current_time)
+        now_value = _format_iso(now_at)
 
         for task in tasks:
             if not self._is_pending_leader_followup(task):
@@ -386,7 +394,11 @@ class BridgeRuntime:
 
     def _schedule_leader_followup(self, task: dict[str, object], *, target: str, notified_at: str) -> None:
         scheduler = task.setdefault("_scheduler", {})
-        if target != "team-leader" or str(task.get("state") or "") not in TERMINAL_TASK_STATES:
+        if (
+            target != "team-leader"
+            or str(task.get("state") or "") not in TERMINAL_TASK_STATES
+            or self.leader_unresolved_followup_seconds <= 0
+        ):
             scheduler["leader_followup_due_at"] = None
             scheduler["leader_followup_sent_at"] = None
             return
