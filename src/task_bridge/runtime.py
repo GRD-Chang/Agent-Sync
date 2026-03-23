@@ -265,21 +265,17 @@ class BridgeRuntime:
             current_time=now_at,
         )
         for group in groups:
-            stale_tasks = [task for task in group.tasks if task is not group.latest_task]
-            if stale_tasks:
-                self._clear_leader_followup_tasks(stale_tasks)
-
             if not group.is_current_job or group.has_newer_task:
-                self._clear_leader_followup_tasks([group.latest_task])
+                self._clear_leader_followup_tasks(group.tasks)
                 continue
             if not group.is_due:
                 continue
 
             self.sender(
                 "team-leader",
-                self._build_leader_unresolved_followup_message(group.job_id, [group.latest_task]),
+                self._build_leader_unresolved_followup_message(group.job_id, list(group.tasks)),
             )
-            self._mark_leader_followup_sent([group.latest_task], sent_at=now_value)
+            self._mark_leader_followup_sent(group.tasks, sent_at=now_value)
             outcome.followed_up.append(str(group.latest_task["id"]))
 
         return outcome
@@ -380,7 +376,7 @@ class BridgeRuntime:
         prompts = self._reload_prompts()
         summaries = "\n".join(
             self._format_followup_task_summary(task)
-            for task in sorted(tasks, key=lambda item: (item.get("createdAt", ""), item["id"]))
+            for task in sorted(tasks, key=_leader_followup_group_task_sort_key)
         )
         return self._render_prompt(
             "leader_unresolved_followup",
@@ -402,32 +398,12 @@ class BridgeRuntime:
     def _schedule_leader_followup(self, task: dict[str, object], *, target: str, notified_at: str) -> None:
         scheduler = task.setdefault("_scheduler", {})
         job_id = str(task["job_id"])
-        current_task_id = str(task["id"])
         current_job_id = self.store.get_current_job_id()
-        job_tasks = self.store.list_tasks(job_id=job_id)
-        for index, sibling in enumerate(job_tasks):
-            if str(sibling["id"]) == current_task_id:
-                job_tasks[index] = task
-                break
-        else:
-            job_tasks.append(task)
-
-        latest_terminal_task = _latest_terminal_task(job_tasks)
-        for sibling in job_tasks:
-            if str(sibling["id"]) == current_task_id:
-                continue
-            if not _is_pending_leader_followup_task(sibling):
-                continue
-            self._clear_leader_followup(sibling)
-            self.store.save_task(sibling)
-
         if (
             target != "team-leader"
             or str(task.get("state") or "") not in TERMINAL_TASK_STATES
             or self.leader_unresolved_followup_seconds <= 0
             or current_job_id != job_id
-            or latest_terminal_task is None
-            or str(latest_terminal_task["id"]) != current_task_id
         ):
             scheduler["leader_followup_due_at"] = None
             scheduler["leader_followup_sent_at"] = None
@@ -616,21 +592,11 @@ def collect_pending_leader_followup_jobs(
 
 def _leader_followup_group_task_sort_key(task: dict[str, object]) -> tuple[str, str, str, str]:
     return (
-        str(task.get("createdAt") or ""),
-        str(task["id"]),
         _leader_followup_anchor_timestamp(task),
         _leader_followup_due_at(task),
+        str(task.get("createdAt") or ""),
+        str(task["id"]),
     )
-
-
-def _latest_terminal_task(tasks: list[dict[str, object]]) -> dict[str, object] | None:
-    latest: dict[str, object] | None = None
-    for task in tasks:
-        if str(task.get("state") or "") not in TERMINAL_TASK_STATES:
-            continue
-        if latest is None or _leader_followup_group_task_sort_key(task) > _leader_followup_group_task_sort_key(latest):
-            latest = task
-    return latest
 
 
 def _leader_followup_anchor_timestamp(task: dict[str, object]) -> str:

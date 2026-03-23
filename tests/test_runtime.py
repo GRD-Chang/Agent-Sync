@@ -13,6 +13,7 @@ from task_bridge.prompts import PROMPT_TEMPLATE_FILES, load_prompts, prompt_temp
 from task_bridge.runtime import (
     BridgeRuntime,
     LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
+    collect_pending_leader_followup_jobs,
     default_openclaw_reset_sender,
     default_openclaw_sender,
 )
@@ -222,7 +223,7 @@ def test_notify_updates_keeps_pending_followups_for_multiple_terminal_tasks(home
 
     assert outcome.notified == [older["id"], newer["id"]]
     assert older_persisted["_scheduler"]["final_notified_at"] is not None
-    assert older_persisted["_scheduler"]["leader_followup_due_at"] is None
+    assert older_persisted["_scheduler"]["leader_followup_due_at"] is not None
     assert older_persisted["_scheduler"]["leader_followup_sent_at"] is None
     assert newer_persisted["_scheduler"]["leader_followup_due_at"] is not None
     assert newer_persisted["_scheduler"]["leader_followup_sent_at"] is None
@@ -442,7 +443,7 @@ def test_send_due_leader_unresolved_followups_uses_latest_terminal_window_per_jo
     assert calls == []
     early_a = store.load_task(task_a["id"], job_id=job["id"])
     early_b = store.load_task(task_b["id"], job_id=job["id"])
-    assert early_a["_scheduler"]["leader_followup_due_at"] is None
+    assert early_a["_scheduler"]["leader_followup_due_at"] == "2026-03-11T00:05:00Z"
     assert early_a["_scheduler"]["leader_followup_sent_at"] is None
     assert early_b["_scheduler"]["leader_followup_due_at"] == "2026-03-11T00:08:00Z"
 
@@ -457,8 +458,8 @@ def test_send_due_leader_unresolved_followups_uses_latest_terminal_window_per_jo
     assert message.startswith("[TASK_FOLLOWUP_REQUIRED]\n")
     assert f"job_id={job['id']}" in message
     assert "user_chat_id=" in message
+    assert f"- task_id={task_a['id']} worker_agent=code-agent state=done detail_path={task_a['detail_path']}" in message
     assert f"- task_id={task_b['id']} worker_agent=quality-agent state=done" in message
-    assert f"- task_id={task_a['id']} worker_agent=code-agent state=done detail_path={task_a['detail_path']}" not in message
     assert "以下终态结果在 5 分钟前已通知给你" in message
     assert "当前 task-bridge 中仍没有观察到该 job 下的新 task" in message
     assert "请立即执行以下之一：" in message
@@ -470,8 +471,52 @@ def test_send_due_leader_unresolved_followups_uses_latest_terminal_window_per_jo
     persisted_b = store.load_task(task_b["id"], job_id=job["id"])
     assert persisted_a["_scheduler"]["leader_followup_due_at"] is None
     assert persisted_b["_scheduler"]["leader_followup_due_at"] is None
-    assert persisted_a["_scheduler"]["leader_followup_sent_at"] is None
+    assert persisted_a["_scheduler"]["leader_followup_sent_at"] == "2026-03-11T00:08:01Z"
     assert persisted_b["_scheduler"]["leader_followup_sent_at"] == "2026-03-11T00:08:01Z"
+
+
+def test_collect_pending_leader_followup_jobs_prefers_latest_terminal_notice_over_latest_created_task() -> None:
+    tasks = [
+        {
+            "id": "task-created-later",
+            "job_id": "job-1",
+            "state": "blocked",
+            "notify_target": "team-leader",
+            "createdAt": "2026-03-11T00:10:00Z",
+            "updatedAt": "2026-03-11T00:10:00Z",
+            "_scheduler": {
+                "final_notified_at": "2026-03-11T00:11:00Z",
+                "leader_followup_due_at": "2026-03-11T00:16:00Z",
+                "leader_followup_sent_at": None,
+            },
+        },
+        {
+            "id": "task-terminal-later",
+            "job_id": "job-1",
+            "state": "done",
+            "notify_target": "team-leader",
+            "createdAt": "2026-03-11T00:05:00Z",
+            "updatedAt": "2026-03-11T00:05:00Z",
+            "_scheduler": {
+                "final_notified_at": "2026-03-11T00:12:00Z",
+                "leader_followup_due_at": "2026-03-11T00:17:00Z",
+                "leader_followup_sent_at": None,
+            },
+        },
+    ]
+
+    groups = collect_pending_leader_followup_jobs(
+        tasks,
+        current_job_id="job-1",
+        current_time=datetime(2026, 3, 11, 0, 16, 30, tzinfo=timezone.utc),
+    )
+
+    assert len(groups) == 1
+    assert groups[0].job_id == "job-1"
+    assert groups[0].latest_task["id"] == "task-terminal-later"
+    assert groups[0].latest_final_notified_at == "2026-03-11T00:12:00Z"
+    assert groups[0].latest_due_at == "2026-03-11T00:17:00Z"
+    assert groups[0].is_due is False
 
 
 def test_send_due_leader_unresolved_followups_clears_non_current_job_candidates(home: Path) -> None:

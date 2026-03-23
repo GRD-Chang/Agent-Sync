@@ -817,11 +817,11 @@ def test_daemon_sends_single_leader_followup_for_multiple_terminal_tasks_in_curr
     followup_messages = [msg for msg in messages if msg["message"].startswith("[TASK_FOLLOWUP_REQUIRED]\n")]
     assert len(followup_messages) == 1
     assert f"job_id={job['id']}" in followup_messages[0]["message"]
+    assert f"task_id={task_a['id']}" in followup_messages[0]["message"]
     assert f"task_id={task_b['id']}" in followup_messages[0]["message"]
-    assert f"task_id={task_a['id']}" not in followup_messages[0]["message"]
     assert persisted_a["_scheduler"]["leader_followup_due_at"] is None
     assert persisted_b["_scheduler"]["leader_followup_due_at"] is None
-    assert persisted_a["_scheduler"]["leader_followup_sent_at"] is None
+    assert persisted_a["_scheduler"]["leader_followup_sent_at"] is not None
     assert persisted_b["_scheduler"]["leader_followup_sent_at"] is not None
 
 
