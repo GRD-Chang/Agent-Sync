@@ -298,25 +298,6 @@
   border-color: rgba(122, 56, 56, 0.28);
 }
 
-:root {
-  --agent-team-leader: #f5c451;
-  --agent-team-leader-rgb: 245, 196, 81;
-  --agent-planning-agent: #8fcf78;
-  --agent-planning-agent-rgb: 143, 207, 120;
-  --agent-quality-agent: #5ed6b0;
-  --agent-quality-agent-rgb: 94, 214, 176;
-  --agent-code-agent: #7aa7ff;
-  --agent-code-agent-rgb: 122, 167, 255;
-  --agent-review-agent: #ff8aa7;
-  --agent-review-agent-rgb: 255, 138, 167;
-  --agent-release-agent: #f27a63;
-  --agent-release-agent-rgb: 242, 122, 99;
-  --agent-ops-agent: #ffb86b;
-  --agent-ops-agent-rgb: 255, 184, 107;
-  --agent-default: #d6c9bc;
-  --agent-default-rgb: 214, 201, 188;
-}
-
 .dispatch-timeline {
   display: grid;
   gap: 0.95rem;
@@ -528,14 +509,6 @@
 .dispatch-node-link[data-agent] {
   border-left-color: rgba(var(--agent-color-rgb), 0.7);
 }
-
-.dispatch-node-link[data-agent="team-leader"] { --agent-color: var(--agent-team-leader); --agent-color-rgb: var(--agent-team-leader-rgb); }
-.dispatch-node-link[data-agent="planning-agent"] { --agent-color: var(--agent-planning-agent); --agent-color-rgb: var(--agent-planning-agent-rgb); }
-.dispatch-node-link[data-agent="quality-agent"] { --agent-color: var(--agent-quality-agent); --agent-color-rgb: var(--agent-quality-agent-rgb); }
-.dispatch-node-link[data-agent="code-agent"] { --agent-color: var(--agent-code-agent); --agent-color-rgb: var(--agent-code-agent-rgb); }
-.dispatch-node-link[data-agent="review-agent"] { --agent-color: var(--agent-review-agent); --agent-color-rgb: var(--agent-review-agent-rgb); }
-.dispatch-node-link[data-agent="release-agent"] { --agent-color: var(--agent-release-agent); --agent-color-rgb: var(--agent-release-agent-rgb); }
-.dispatch-node-link[data-agent="ops-agent"] { --agent-color: var(--agent-ops-agent); --agent-color-rgb: var(--agent-ops-agent-rgb); }
 
 .dispatch-node-time {
   display: flex;

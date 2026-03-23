@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from task_bridge.store import infer_worker_status, queue_for_agent
+from task_bridge.store import queue_for_agent
 
 from .formatting import format_timestamp as _format_timestamp
 from .formatting import optional_text as _optional_text
@@ -19,7 +19,7 @@ class WorkerQueuePageQueryAssembler:
 
     def build(self) -> WorkerQueueSnapshot:
         tasks = self._service.store.list_tasks(all_jobs=True)
-        worker_rows = infer_worker_status(tasks)
+        worker_rows = self._service._worker_status_rows(tasks)
         lanes: list[WorkerLaneSnapshot] = []
         assigned_queue_depth = 0
         for row in worker_rows:

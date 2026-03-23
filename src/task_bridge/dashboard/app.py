@@ -16,6 +16,7 @@ from starlette.templating import Jinja2Templates
 
 from .i18n import DEFAULT_LOCALE, LOCALE_SWITCH_ITEMS, get_messages, resolve_locale
 from .queries import DashboardQueryService
+from task_bridge.worker_registry import dashboard_agent_theme_css
 
 
 @dataclass(frozen=True)
@@ -291,6 +292,7 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
             for item in FONT_PRESET_ITEMS
         ],
         "default_font_preset": DEFAULT_FONT_PRESET,
+        "dashboard_agent_theme_css": dashboard_agent_theme_css(),
         "page_chrome": _page_chrome_context(
             {
                 "active_page": active_page,

@@ -612,23 +612,21 @@ def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
     assert tasks.selected_task.result == "actively working"
 
 
-def test_dashboard_detail_css_defines_explicit_planning_and_release_agent_mappings() -> None:
-    css = (
-        Path(__file__).resolve().parents[1]
-        / "src"
-        / "task_bridge"
-        / "dashboard"
-        / "static"
-        / "dashboard_css"
-        / "40-detail.css"
-    ).read_text(encoding="utf-8")
+def test_dashboard_injects_registry_backed_agent_theme_css(home: Path) -> None:
+    seeded = seed_dashboard_store_with_agent_timeline(home)
 
-    assert "--agent-planning-agent:" in css
-    assert "--agent-planning-agent-rgb:" in css
-    assert '.dispatch-node-link[data-agent="planning-agent"]' in css
-    assert "--agent-release-agent:" in css
-    assert "--agent-release-agent-rgb:" in css
-    assert '.dispatch-node-link[data-agent="release-agent"]' in css
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/jobs?job={seeded['timeline_job']['id']}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-agent-theme"' in body
+    assert "--agent-planning-agent:" in body
+    assert "--agent-planning-agent-rgb:" in body
+    assert '.dispatch-node-link[data-agent="planning-agent"]' in body
+    assert "--agent-release-agent:" in body
+    assert "--agent-release-agent-rgb:" in body
+    assert '.dispatch-node-link[data-agent="release-agent"]' in body
 
 
 def test_dashboard_jobs_query_builds_agent_mapped_dispatch_timeline(home: Path) -> None:
@@ -731,6 +729,30 @@ def test_dashboard_tasks_query_filters_by_job_state_and_agent(home: Path) -> Non
         "Job": "job-a",
         "State": "Running",
         "Assigned agent": "quality-agent",
+    }
+
+
+def test_dashboard_tasks_query_keeps_canonical_agent_filters_and_selected_unknown(home: Path) -> None:
+    seeded = seed_dashboard_store(home)
+
+    tasks = DashboardQueryService(home).tasks(
+        selected_job_id=seeded["job_a"]["id"],
+        selected_agent="custom-agent",
+    )
+
+    agent_group = next(group for group in tasks.filter_groups if group.key == "agent")
+    option_map = {option.key: option for option in agent_group.options}
+
+    assert agent_group.options[0].key == "all"
+    assert [option.key for option in agent_group.options[1 : 1 + len(canonical_worker_names())]] == list(
+        canonical_worker_names()
+    )
+    assert option_map["custom-agent"].is_active is True
+    assert option_map["custom-agent"].count == 0
+    assert tasks.filtered_empty is True
+    assert {item.label: item.value for item in tasks.applied_filters} == {
+        "Job": "job-a",
+        "Assigned agent": "custom-agent",
     }
 
 

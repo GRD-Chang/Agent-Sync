@@ -17,6 +17,7 @@
       })();
     </script>
     <link rel="stylesheet" href="{{ request.url_for('static', path='/dashboard.css') }}">
+    <style data-testid="dashboard-agent-theme">{{ dashboard_agent_theme_css | safe }}</style>
     <script defer src="{{ request.url_for('static', path='/dashboard.js') }}"></script>
   </head>
   <body

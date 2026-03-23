@@ -1,22 +1,12 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from urllib.parse import urlencode
 
-from task_bridge.runtime import now_iso
-
-
-def _dashboard_now_iso() -> str:
-    """Stable 'now' for dashboard rendering.
-
-    The dashboard is a read-only UI that renders snapshots for humans and tests.
-    Using a fixed timestamp keeps follow-up grouping deterministic across time.
-    """
-
-    return "2026-03-20T12:00:00Z"
 from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent
+from task_bridge.worker_registry import roster_with_assigned_agents
 
 from .formatting import (
     format_timestamp as _format_timestamp,
@@ -43,6 +33,16 @@ from .task_display_queries import (
     resolve_selected_task as _resolve_selected_task_helper,
     task_scheduler as _task_scheduler,
 )
+
+
+def _dashboard_now_iso() -> str:
+    """Stable 'now' for dashboard rendering.
+
+    The dashboard is a read-only UI that renders snapshots for humans and tests.
+    Using a fixed timestamp keeps follow-up grouping deterministic across time.
+    """
+
+    return "2026-03-20T12:00:00Z"
 
 CORE_TASK_STATES = ["queued", "running", "done", "blocked", "failed"]
 ACTIVE_TASK_STATES = {"queued", "running"}
@@ -86,7 +86,7 @@ class DashboardQueryService:
             )
             for state in CORE_TASK_STATES
         ]
-        worker_rows = infer_worker_status(tasks)
+        worker_rows = self._worker_status_rows(tasks)
         workers: list[WorkerSnapshot] = []
         for row in worker_rows:
             queue = queue_for_agent(tasks, str(row["agent"]))
@@ -267,3 +267,38 @@ class DashboardQueryService:
 
     def _sort_tasks_for_cards(self, tasks: list[dict[str, object]]) -> list[dict[str, object]]:
         return self._task_display.sort_tasks_for_cards(tasks)
+
+    def _worker_roster(
+        self,
+        assigned_agents: Iterable[str],
+        *,
+        include_agents: Iterable[str] = (),
+    ) -> tuple[str, ...]:
+        candidates = [str(agent).strip() for agent in assigned_agents]
+        candidates.extend(str(agent).strip() for agent in include_agents)
+        return roster_with_assigned_agents(candidates)
+
+    def _worker_status_rows(
+        self,
+        tasks: list[dict[str, object]],
+        *,
+        include_agents: Iterable[str] = (),
+    ) -> list[dict[str, object]]:
+        rows_by_agent = {str(row["agent"]): row for row in infer_worker_status(tasks)}
+        rows: list[dict[str, object]] = []
+        for agent in self._worker_roster(
+            (str(task.get("assigned_agent") or "") for task in tasks),
+            include_agents=include_agents,
+        ):
+            rows.append(
+                rows_by_agent.get(
+                    agent,
+                    {
+                        "agent": agent,
+                        "status": "idle",
+                        "running_task_id": None,
+                        "queued": 0,
+                    },
+                )
+            )
+        return rows

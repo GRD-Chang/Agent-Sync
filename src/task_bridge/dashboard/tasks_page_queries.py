@@ -319,12 +319,9 @@ class TasksPageQueryAssembler:
                     count=unassigned_count,
                 )
             )
-        known_agents = sorted(
-            {
-                agent_name
-                for agent_name in (_optional_text(task.get("assigned_agent")) for task in tasks)
-                if agent_name
-            }
+        known_agents = self._service._worker_roster(
+            (_optional_text(task.get("assigned_agent")) or "" for task in tasks),
+            include_agents=(selected_agent,) if selected_agent and selected_agent != UNASSIGNED_AGENT_FILTER else (),
         )
         for agent_name in known_agents:
             agent_options.append(
