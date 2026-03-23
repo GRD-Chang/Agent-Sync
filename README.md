@@ -55,7 +55,7 @@ task-bridge dashboard
 - 串行执行与异步转可控：同一 Worker 同时只执行一个任务。要求 Worker 必须持续回写执行记录，把异步的长时间动作转化为可追踪的稳定任务流。
 - 周期性推进：为了让 Codex 等底层引擎稳定执行超长任务，Daemon 会在执行期间定期通知 Worker 推进任务，防止执行挂起或假死。
 - 精准的终态通知：只有任务真正进入 done / blocked / failed 终态时，Bridge 才会通知 Leader 推进下一步，减少中间过程的噪音打扰。
-- 自动化 Follow-up：任务完结后如果 Leader 迟迟不布置新任务（默认 5 分钟内，可通过 `task-bridge daemon --leader-followup` 调整），Bridge 会主动提醒 Leader 确认下一步，防止自动化流水线停转。
+- 自动化 Follow-up：只针对 current job 的最新 terminal task 生效。若该终态通知发出后，Leader 在窗口内仍未创建新 task（默认 5 分钟，可通过 `task-bridge daemon --leader-followup` 调整），Bridge 会主动提醒 Leader 确认下一步，防止自动化流水线停转。
 - 可审计与干预：任务事实、调度状态、执行痕迹，皆可通过命令行直接查看和手动修改。
 
 ---
@@ -110,7 +110,7 @@ task-bridge daemon --poll-seconds 10 --worker-reminder-seconds 900 --leader-remi
 - `--poll-seconds 10`: Daemon 轮询任务队列的间隔时间（默认 10 秒）。
 - `--worker-reminder-seconds 900`: Worker 执行任务的防挂起提醒间隔（默认 15 分钟）。若超时未更新进度，Daemon 会提醒 Worker 推进。
 - `--leader-reminder-seconds 3600`: Leader 关注运行中任务的提醒间隔（默认 60 分钟）。如果有正在执行的长程任务，Daemon 会按此间隔定期提醒 Leader 获取最新进度，防止 Leader 长时间失去对任务执行状态的感知。
-- `--leader-followup 300`: 终态通知发出后，如果同一 job 仍然没有新 task，Bridge 在多久后催 Leader 决定下一步（默认 5 分钟；`0` 表示禁用 unresolved follow-up）。
+- `--leader-followup 300`: 只对 current job 的最新 terminal task 生效。终态通知发出后，如果该窗口内仍没有新 task，Bridge 在多久后催 Leader 决定下一步（默认 5 分钟；`0` 表示禁用 unresolved follow-up）。
 
 如果你希望关闭终端后仍然持续运行，可以使用 `nohup`：
 
@@ -120,6 +120,7 @@ nohup task-bridge daemon \
   --poll-seconds 60 \
   --worker-reminder-seconds 900 \
   --leader-reminder-seconds 7200 \
+  --leader-followup 1800 \
   > .task-bridge/daemon.log 2>&1 &
 echo $! > .task-bridge/daemon.pid
 ```

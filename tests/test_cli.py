@@ -142,6 +142,7 @@ def test_create_job_cli_smoke_uses_isolated_task_bridge_home(tmp_path: Path) -> 
         (["daemon", "-h"], "--worker-reminder-seconds"),
         (["daemon", "-h"], "--leader-reminder-seconds"),
         (["daemon", "-h"], "--leader-followup"),
+        (["daemon", "-h"], "仅对 current job 的最新 terminal task 生效"),
     ],
 )
 def test_subcommand_help_describes_usage_and_arguments(
@@ -731,6 +732,97 @@ def test_daemon_disables_leader_followup_when_flag_is_zero(
     assert not any(msg["message"].startswith("[TASK_FOLLOWUP_REQUIRED]\n") for msg in messages)
     assert persisted["_scheduler"]["leader_followup_due_at"] is None
     assert persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
+def test_daemon_does_not_send_leader_followup_for_non_current_job(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_file = home / "messages.jsonl"
+    monkeypatch.setenv("TASK_BRIDGE_CAPTURE_FILE", str(capture_file))
+
+    main(["create-job", "--title", "old job"])
+    old_job = parse_last_json(capsys)
+    main(["create-task", "--requirement", "old follow-up", "--assign", "code-agent"])
+    old_task = parse_last_json(capsys)
+
+    store = TaskStore(home)
+    old_payload = store.load_task(old_task["id"], job_id=old_job["id"])
+    old_payload["state"] = "done"
+    old_payload["_scheduler"]["final_notified_at"] = "2026-03-11T00:00:00Z"
+    old_payload["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:05:00Z"
+    old_payload["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(old_payload)
+
+    main(["create-job", "--title", "current job"])
+    current_job = parse_last_json(capsys)
+    assert current_job["id"] != old_job["id"]
+    capsys.readouterr()
+    capture_file.write_text("", encoding="utf-8")
+
+    assert main(["daemon", "--poll-seconds", "0", "--iterations", "1"]) == 0
+    daemon_payload = parse_last_json(capsys)
+    messages = [json.loads(line) for line in capture_file.read_text().splitlines() if line.strip()]
+    persisted = read_task(home, old_job["id"], old_task["id"])
+
+    assert daemon_payload["leader_followed_up"] == []
+    assert not any(msg["message"].startswith("[TASK_FOLLOWUP_REQUIRED]\n") for msg in messages)
+    assert persisted["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
+def test_daemon_sends_single_leader_followup_for_multiple_terminal_tasks_in_current_job(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_file = home / "messages.jsonl"
+    monkeypatch.setenv("TASK_BRIDGE_CAPTURE_FILE", str(capture_file))
+
+    main(["create-job", "--title", "grouped followup"])
+    job = parse_last_json(capsys)
+    main(["create-task", "--requirement", "source a", "--assign", "code-agent"])
+    task_a = parse_last_json(capsys)
+    main(["create-task", "--requirement", "source b", "--assign", "quality-agent"])
+    task_b = parse_last_json(capsys)
+
+    store = TaskStore(home)
+    payload_a = store.load_task(task_a["id"], job_id=job["id"])
+    payload_a["state"] = "done"
+    payload_a["createdAt"] = "2026-03-10T23:50:00Z"
+    payload_a["_scheduler"]["final_notified_at"] = "2026-03-11T00:00:00Z"
+    payload_a["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:05:00Z"
+    payload_a["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(payload_a)
+
+    payload_b = store.load_task(task_b["id"], job_id=job["id"])
+    payload_b["state"] = "blocked"
+    payload_b["createdAt"] = "2026-03-10T23:55:00Z"
+    payload_b["_scheduler"]["final_notified_at"] = "2026-03-11T00:03:00Z"
+    payload_b["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:08:00Z"
+    payload_b["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(payload_b)
+
+    capsys.readouterr()
+    capture_file.write_text("", encoding="utf-8")
+
+    assert main(["daemon", "--poll-seconds", "0", "--iterations", "1"]) == 0
+    daemon_payload = parse_last_json(capsys)
+    messages = [json.loads(line) for line in capture_file.read_text().splitlines() if line.strip()]
+    persisted_a = read_task(home, job["id"], task_a["id"])
+    persisted_b = read_task(home, job["id"], task_b["id"])
+
+    assert daemon_payload["leader_followed_up"] == [task_b["id"]]
+    followup_messages = [msg for msg in messages if msg["message"].startswith("[TASK_FOLLOWUP_REQUIRED]\n")]
+    assert len(followup_messages) == 1
+    assert f"job_id={job['id']}" in followup_messages[0]["message"]
+    assert f"task_id={task_b['id']}" in followup_messages[0]["message"]
+    assert f"task_id={task_a['id']}" not in followup_messages[0]["message"]
+    assert persisted_a["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted_b["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted_a["_scheduler"]["leader_followup_sent_at"] is None
+    assert persisted_b["_scheduler"]["leader_followup_sent_at"] is not None
 
 
 def test_daemon_rejects_negative_leader_followup_value(

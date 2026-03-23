@@ -192,6 +192,42 @@ def test_notify_updates_uses_custom_leader_followup_delay(home: Path) -> None:
     assert (due_at - notified_at).total_seconds() == 45.0
 
 
+def test_notify_updates_keeps_pending_followups_for_multiple_terminal_tasks(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="latest-terminal-followup")
+    older = store.create_task(job_id=job["id"], requirement="older", assigned_agent="code-agent")
+    newer = store.create_task(job_id=job["id"], requirement="newer", assigned_agent="quality-agent")
+
+    older_record = store.load_task(older["id"], job_id=job["id"])
+    older_record["createdAt"] = "2026-03-10T23:50:00Z"
+    older_record["state"] = "done"
+    older_record["result"] = "older done"
+    store.save_task(older_record)
+
+    newer_record = store.load_task(newer["id"], job_id=job["id"])
+    newer_record["createdAt"] = "2026-03-10T23:55:00Z"
+    newer_record["state"] = "done"
+    newer_record["result"] = "newer done"
+    store.save_task(newer_record)
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda *_: None,
+        leader_unresolved_followup_seconds=45.0,
+    )
+
+    outcome = runtime.notify_updates()
+    older_persisted = store.load_task(older["id"], job_id=job["id"])
+    newer_persisted = store.load_task(newer["id"], job_id=job["id"])
+
+    assert outcome.notified == [older["id"], newer["id"]]
+    assert older_persisted["_scheduler"]["final_notified_at"] is not None
+    assert older_persisted["_scheduler"]["leader_followup_due_at"] is not None
+    assert older_persisted["_scheduler"]["leader_followup_sent_at"] is None
+    assert newer_persisted["_scheduler"]["leader_followup_due_at"] is not None
+    assert newer_persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
 def test_notify_updates_disables_leader_followup_when_delay_is_zero(home: Path) -> None:
     store = TaskStore(home)
     job = store.create_job(title="disabled-followup-delay")
@@ -372,38 +408,57 @@ def test_notify_message_includes_detail_path_only_when_detail_file_exists(home: 
     assert f"detail_path={detail_path}" in with_detail
 
 
-def test_send_due_leader_unresolved_followups_groups_by_job(home: Path) -> None:
+def test_send_due_leader_unresolved_followups_uses_latest_terminal_window_per_job(home: Path) -> None:
     store = TaskStore(home)
     job = store.create_job(title="leader-followup")
     task_a = store.create_task(job_id=job["id"], requirement="A", assigned_agent="code-agent")
     task_b = store.create_task(job_id=job["id"], requirement="B", assigned_agent="quality-agent")
 
-    for task in (task_a, task_b):
-        payload = store.load_task(task["id"], job_id=job["id"])
-        payload["state"] = "done"
-        payload["createdAt"] = "2026-03-10T23:50:00Z"
-        payload["_scheduler"]["final_notified_at"] = "2026-03-11T00:00:00Z"
-        payload["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:05:00Z"
-        payload["_scheduler"]["leader_followup_sent_at"] = None
-        store.save_task(payload)
+    payload_a = store.load_task(task_a["id"], job_id=job["id"])
+    payload_a["state"] = "done"
+    payload_a["createdAt"] = "2026-03-10T23:50:00Z"
+    payload_a["_scheduler"]["final_notified_at"] = "2026-03-11T00:00:00Z"
+    payload_a["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:05:00Z"
+    payload_a["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(payload_a)
+
+    payload_b = store.load_task(task_b["id"], job_id=job["id"])
+    payload_b["state"] = "done"
+    payload_b["createdAt"] = "2026-03-10T23:55:00Z"
+    payload_b["_scheduler"]["final_notified_at"] = "2026-03-11T00:03:00Z"
+    payload_b["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:08:00Z"
+    payload_b["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(payload_b)
     Path(task_a["detail_path"]).write_text("detail", encoding="utf-8")
 
     calls: list[tuple[str, str]] = []
     runtime = BridgeRuntime(home=home, sender=lambda agent, message: calls.append((agent, message)))
 
-    outcome = runtime.send_due_leader_unresolved_followups(
+    early_outcome = runtime.send_due_leader_unresolved_followups(
         current_time=datetime(2026, 3, 11, 0, 5, 1, tzinfo=timezone.utc),
     )
 
-    assert sorted(outcome.followed_up) == sorted([task_a["id"], task_b["id"]])
+    assert early_outcome.followed_up == []
+    assert calls == []
+    early_a = store.load_task(task_a["id"], job_id=job["id"])
+    early_b = store.load_task(task_b["id"], job_id=job["id"])
+    assert early_a["_scheduler"]["leader_followup_due_at"] is None
+    assert early_a["_scheduler"]["leader_followup_sent_at"] is None
+    assert early_b["_scheduler"]["leader_followup_due_at"] == "2026-03-11T00:08:00Z"
+
+    outcome = runtime.send_due_leader_unresolved_followups(
+        current_time=datetime(2026, 3, 11, 0, 8, 1, tzinfo=timezone.utc),
+    )
+
+    assert outcome.followed_up == [task_b["id"]]
     assert len(calls) == 1
     assert calls[0][0] == "team-leader"
     message = calls[0][1]
     assert message.startswith("[TASK_FOLLOWUP_REQUIRED]\n")
     assert f"job_id={job['id']}" in message
     assert "user_chat_id=" in message
-    assert f"- task_id={task_a['id']} worker_agent=code-agent state=done detail_path={task_a['detail_path']}" in message
     assert f"- task_id={task_b['id']} worker_agent=quality-agent state=done" in message
+    assert f"- task_id={task_a['id']} worker_agent=code-agent state=done detail_path={task_a['detail_path']}" not in message
     assert "以下终态结果在 5 分钟前已通知给你" in message
     assert "当前 task-bridge 中仍没有观察到该 job 下的新 task" in message
     assert "请立即执行以下之一：" in message
@@ -415,15 +470,15 @@ def test_send_due_leader_unresolved_followups_groups_by_job(home: Path) -> None:
     persisted_b = store.load_task(task_b["id"], job_id=job["id"])
     assert persisted_a["_scheduler"]["leader_followup_due_at"] is None
     assert persisted_b["_scheduler"]["leader_followup_due_at"] is None
-    assert persisted_a["_scheduler"]["leader_followup_sent_at"] == "2026-03-11T00:05:01Z"
-    assert persisted_b["_scheduler"]["leader_followup_sent_at"] == "2026-03-11T00:05:01Z"
+    assert persisted_a["_scheduler"]["leader_followup_sent_at"] is None
+    assert persisted_b["_scheduler"]["leader_followup_sent_at"] == "2026-03-11T00:08:01Z"
 
 
-def test_send_due_leader_unresolved_followups_clears_when_new_task_exists(home: Path) -> None:
+def test_send_due_leader_unresolved_followups_clears_non_current_job_candidates(home: Path) -> None:
     store = TaskStore(home)
-    job = store.create_job(title="leader-followup-resolved")
-    source = store.create_task(job_id=job["id"], requirement="source", assigned_agent="code-agent")
-    payload = store.load_task(source["id"], job_id=job["id"])
+    old_job = store.create_job(title="old-job")
+    source = store.create_task(job_id=old_job["id"], requirement="source", assigned_agent="code-agent")
+    payload = store.load_task(source["id"], job_id=old_job["id"])
     payload["state"] = "blocked"
     payload["createdAt"] = "2026-03-11T00:00:00Z"
     payload["_scheduler"]["final_notified_at"] = "2026-03-11T00:01:00Z"
@@ -431,10 +486,8 @@ def test_send_due_leader_unresolved_followups_clears_when_new_task_exists(home: 
     payload["_scheduler"]["leader_followup_sent_at"] = None
     store.save_task(payload)
 
-    followup = store.create_task(job_id=job["id"], requirement="repair", assigned_agent="code-agent")
-    followup_payload = store.load_task(followup["id"], job_id=job["id"])
-    followup_payload["createdAt"] = "2026-03-11T00:02:00Z"
-    store.save_task(followup_payload)
+    current_job = store.create_job(title="current-job")
+    assert store.get_current_job_id() == current_job["id"]
 
     calls: list[tuple[str, str]] = []
     runtime = BridgeRuntime(home=home, sender=lambda agent, message: calls.append((agent, message)))
@@ -445,9 +498,53 @@ def test_send_due_leader_unresolved_followups_clears_when_new_task_exists(home: 
 
     assert outcome.followed_up == []
     assert calls == []
-    persisted = store.load_task(source["id"], job_id=job["id"])
+    persisted = store.load_task(source["id"], job_id=old_job["id"])
     assert persisted["_scheduler"]["leader_followup_due_at"] is None
     assert persisted["_scheduler"]["leader_followup_sent_at"] is None
+
+
+def test_send_due_leader_unresolved_followups_clears_entire_job_group_when_new_task_exists(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="leader-followup-resolved")
+    source_a = store.create_task(job_id=job["id"], requirement="source-a", assigned_agent="code-agent")
+    source_b = store.create_task(job_id=job["id"], requirement="source-b", assigned_agent="quality-agent")
+
+    payload_a = store.load_task(source_a["id"], job_id=job["id"])
+    payload_a["state"] = "blocked"
+    payload_a["createdAt"] = "2026-03-11T00:00:00Z"
+    payload_a["_scheduler"]["final_notified_at"] = "2026-03-11T00:01:00Z"
+    payload_a["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:06:00Z"
+    payload_a["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(payload_a)
+
+    payload_b = store.load_task(source_b["id"], job_id=job["id"])
+    payload_b["state"] = "done"
+    payload_b["createdAt"] = "2026-03-11T00:01:30Z"
+    payload_b["_scheduler"]["final_notified_at"] = "2026-03-11T00:02:00Z"
+    payload_b["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:07:00Z"
+    payload_b["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(payload_b)
+
+    followup = store.create_task(job_id=job["id"], requirement="repair", assigned_agent="code-agent")
+    followup_payload = store.load_task(followup["id"], job_id=job["id"])
+    followup_payload["createdAt"] = "2026-03-11T00:03:00Z"
+    store.save_task(followup_payload)
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(home=home, sender=lambda agent, message: calls.append((agent, message)))
+
+    outcome = runtime.send_due_leader_unresolved_followups(
+        current_time=datetime(2026, 3, 11, 0, 7, 1, tzinfo=timezone.utc),
+    )
+
+    assert outcome.followed_up == []
+    assert calls == []
+    persisted_a = store.load_task(source_a["id"], job_id=job["id"])
+    persisted_b = store.load_task(source_b["id"], job_id=job["id"])
+    assert persisted_a["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted_b["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted_a["_scheduler"]["leader_followup_sent_at"] is None
+    assert persisted_b["_scheduler"]["leader_followup_sent_at"] is None
 
 
 def test_send_due_leader_unresolved_followups_stays_disabled_when_delay_is_zero(home: Path) -> None:

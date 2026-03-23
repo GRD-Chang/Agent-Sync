@@ -41,6 +41,18 @@ class LeaderFollowupOutcome:
     followed_up: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class PendingLeaderFollowupJob:
+    job_id: str
+    tasks: tuple[dict[str, object], ...]
+    latest_task: dict[str, object]
+    latest_due_at: str
+    latest_final_notified_at: str
+    is_due: bool
+    is_current_job: bool
+    has_newer_task: bool
+
+
 class BridgeRuntime:
     def __init__(
         self,
@@ -235,7 +247,6 @@ class BridgeRuntime:
         current_time: datetime | None = None,
     ) -> LeaderFollowupOutcome:
         tasks = self.store.list_tasks(all_jobs=True)
-        due_by_job: dict[str, list[dict[str, object]]] = {}
         outcome = LeaderFollowupOutcome()
         if self.leader_unresolved_followup_seconds <= 0:
             for task in tasks:
@@ -247,33 +258,32 @@ class BridgeRuntime:
 
         now_at = _coerce_utc(current_time)
         now_value = _format_iso(now_at)
+        current_job_id = self.store.get_current_job_id()
+        if current_job_id is None:
+            return outcome
 
-        for task in tasks:
-            if not self._is_pending_leader_followup(task):
+        groups = collect_pending_leader_followup_jobs(
+            tasks,
+            current_job_id=current_job_id,
+            current_time=now_at,
+        )
+        for group in groups:
+            stale_tasks = [task for task in group.tasks if task is not group.latest_task]
+            if stale_tasks:
+                self._clear_leader_followup_tasks(stale_tasks)
+
+            if not group.is_current_job or group.has_newer_task:
+                self._clear_leader_followup_tasks([group.latest_task])
+                continue
+            if not group.is_due:
                 continue
 
-            scheduler = task.setdefault("_scheduler", {})
-            due_at = str(scheduler["leader_followup_due_at"])
-            notified_at = str(scheduler.get("final_notified_at") or "")
-            if notified_at and self._job_has_newer_task(tasks, source_task=task, after_timestamp=notified_at):
-                self._clear_leader_followup(task)
-                self.store.save_task(task)
-                continue
-
-            if not self._is_due(due_at, 0, now_at):
-                continue
-
-            due_by_job.setdefault(str(task["job_id"]), []).append(task)
-
-        for job_id, due_tasks in due_by_job.items():
-            self.sender("team-leader", self._build_leader_unresolved_followup_message(job_id, due_tasks))
-            for task in due_tasks:
-                scheduler = task.setdefault("_scheduler", {})
-                scheduler["leader_followup_due_at"] = None
-                scheduler["leader_followup_sent_at"] = now_value
-                task["updatedAt"] = now_value
-                self.store.save_task(task)
-                outcome.followed_up.append(str(task["id"]))
+            self.sender(
+                "team-leader",
+                self._build_leader_unresolved_followup_message(group.job_id, [group.latest_task]),
+            )
+            self._mark_leader_followup_sent([group.latest_task], sent_at=now_value)
+            outcome.followed_up.append(str(group.latest_task["id"]))
 
         return outcome
 
@@ -398,6 +408,7 @@ class BridgeRuntime:
             target != "team-leader"
             or str(task.get("state") or "") not in TERMINAL_TASK_STATES
             or self.leader_unresolved_followup_seconds <= 0
+            or self.store.get_current_job_id() != str(task["job_id"])
         ):
             scheduler["leader_followup_due_at"] = None
             scheduler["leader_followup_sent_at"] = None
@@ -413,14 +424,30 @@ class BridgeRuntime:
         scheduler["leader_followup_due_at"] = None
         scheduler["leader_followup_sent_at"] = None
 
+    def _clear_leader_followup_tasks(
+        self,
+        tasks: list[dict[str, object]] | tuple[dict[str, object], ...],
+    ) -> None:
+        for task in tasks:
+            self._clear_leader_followup(task)
+            self.store.save_task(task)
+
+    def _mark_leader_followup_sent(
+        self,
+        tasks: list[dict[str, object]] | tuple[dict[str, object], ...],
+        *,
+        sent_at: str,
+    ) -> None:
+        for task in tasks:
+            scheduler = task.setdefault("_scheduler", {})
+            scheduler["leader_followup_due_at"] = None
+            scheduler["leader_followup_sent_at"] = sent_at
+            task["updatedAt"] = sent_at
+            self.store.save_task(task)
+
     @staticmethod
     def _is_pending_leader_followup(task: dict[str, object]) -> bool:
-        if str(task.get("notify_target") or "team-leader") != "team-leader":
-            return False
-        if str(task.get("state") or "") not in TERMINAL_TASK_STATES:
-            return False
-        scheduler = task.setdefault("_scheduler", {})
-        return scheduler.get("leader_followup_due_at") is not None and scheduler.get("leader_followup_sent_at") is None
+        return _is_pending_leader_followup_task(task)
 
     @staticmethod
     def _job_has_newer_task(
@@ -429,13 +456,11 @@ class BridgeRuntime:
         source_task: dict[str, object],
         after_timestamp: str,
     ) -> bool:
-        source_job_id = str(source_task["job_id"])
-        source_task_id = str(source_task["id"])
-        return any(
-            str(task.get("job_id") or "") == source_job_id
-            and str(task.get("id") or "") != source_task_id
-            and str(task.get("createdAt") or "") > after_timestamp
-            for task in tasks
+        return _job_has_newer_task(
+            tasks,
+            job_id=str(source_task["job_id"]),
+            after_timestamp=after_timestamp,
+            exclude_task_ids={str(source_task["id"])},
         )
 
     def _rollback_dispatch_claim(self, *, job_id: str, task_id: str, dispatch_at: str | None) -> None:
@@ -517,6 +542,106 @@ class BridgeRuntime:
         except ValueError:
             return True
         return (current_time - previous).total_seconds() >= interval_seconds
+
+
+def collect_pending_leader_followup_jobs(
+    tasks: list[dict[str, object]],
+    *,
+    current_job_id: str | None,
+    current_time: datetime | None = None,
+) -> list[PendingLeaderFollowupJob]:
+    now_at = _coerce_utc(current_time)
+    pending_by_job: dict[str, list[dict[str, object]]] = {}
+    for task in tasks:
+        if not _is_pending_leader_followup_task(task):
+            continue
+        pending_by_job.setdefault(str(task["job_id"]), []).append(task)
+
+    groups: list[PendingLeaderFollowupJob] = []
+    for job_id, job_tasks in pending_by_job.items():
+        ordered_tasks = tuple(sorted(job_tasks, key=_leader_followup_group_task_sort_key))
+        latest_task = ordered_tasks[-1]
+        latest_due_at = _leader_followup_due_at(latest_task)
+        latest_final_notified_at = _leader_followup_anchor_timestamp(latest_task)
+        groups.append(
+            PendingLeaderFollowupJob(
+                job_id=job_id,
+                tasks=ordered_tasks,
+                latest_task=latest_task,
+                latest_due_at=latest_due_at,
+                latest_final_notified_at=latest_final_notified_at,
+                is_due=BridgeRuntime._is_due(latest_due_at or None, 0, now_at),
+                is_current_job=current_job_id is not None and job_id == current_job_id,
+                has_newer_task=(
+                    bool(latest_final_notified_at)
+                    and _job_has_newer_task(
+                        tasks,
+                        job_id=job_id,
+                        after_timestamp=latest_final_notified_at,
+                        exclude_task_ids={str(latest_task["id"])},
+                    )
+                ),
+            )
+        )
+
+    groups.sort(
+        key=lambda group: (
+            0 if group.is_due else 1,
+            group.latest_due_at,
+            group.job_id,
+            str(group.latest_task["id"]),
+        )
+    )
+    return groups
+
+
+def _leader_followup_group_task_sort_key(task: dict[str, object]) -> tuple[str, str, str, str]:
+    return (
+        _leader_followup_anchor_timestamp(task),
+        _leader_followup_due_at(task),
+        str(task.get("createdAt") or ""),
+        str(task["id"]),
+    )
+
+
+def _leader_followup_anchor_timestamp(task: dict[str, object]) -> str:
+    scheduler = task.setdefault("_scheduler", {})
+    return str(
+        scheduler.get("final_notified_at")
+        or task.get("updatedAt")
+        or task.get("createdAt")
+        or ""
+    )
+
+
+def _leader_followup_due_at(task: dict[str, object]) -> str:
+    scheduler = task.setdefault("_scheduler", {})
+    return str(scheduler.get("leader_followup_due_at") or "")
+
+
+def _is_pending_leader_followup_task(task: dict[str, object]) -> bool:
+    if str(task.get("notify_target") or "team-leader") != "team-leader":
+        return False
+    if str(task.get("state") or "") not in TERMINAL_TASK_STATES:
+        return False
+    scheduler = task.setdefault("_scheduler", {})
+    return scheduler.get("leader_followup_due_at") is not None and scheduler.get("leader_followup_sent_at") is None
+
+
+def _job_has_newer_task(
+    tasks: list[dict[str, object]],
+    *,
+    job_id: str,
+    after_timestamp: str,
+    exclude_task_ids: set[str] | None = None,
+) -> bool:
+    excluded = exclude_task_ids or set()
+    return any(
+        str(task.get("job_id") or "") == job_id
+        and str(task.get("id") or "") not in excluded
+        and str(task.get("createdAt") or "") > after_timestamp
+        for task in tasks
+    )
 
 
 def _coerce_utc(current_time: datetime | None) -> datetime:

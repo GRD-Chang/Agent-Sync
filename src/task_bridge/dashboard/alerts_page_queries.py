@@ -4,6 +4,8 @@ from collections import Counter
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from task_bridge.runtime import PendingLeaderFollowupJob, collect_pending_leader_followup_jobs
+
 from .formatting import (
     format_timestamp as _format_timestamp,
     is_overdue as _is_overdue,
@@ -41,6 +43,7 @@ class AlertsPageQueryAssembler:
     ) -> AlertsSnapshot:
         self._service.store.list_jobs()
         tasks = self._service.store.list_tasks(all_jobs=True)
+        current_job_id = self._service.store.get_current_job_id()
         status_counts = Counter(str(task.get("state") or "queued") for task in tasks)
         now_value = _parse_timestamp(self._service._now_provider())
         risk_tasks_all = [
@@ -49,8 +52,8 @@ class AlertsPageQueryAssembler:
                 [task for task in tasks if str(task.get("state") or "queued") in ALERT_TASK_STATES]
             )
         ]
-        followup_raw = self._followup_tasks(tasks, now_value=now_value)
-        followups_all = [self._build_followup_task(task, now_value=now_value) for task in followup_raw]
+        followup_raw = self._followup_jobs(tasks, current_job_id=current_job_id, now_value=now_value)
+        followups_all = [self._build_followup_task(group, now_value=now_value) for group in followup_raw]
 
         risk_page_number = _parse_page_number(risk_page)
         followup_page_number = _parse_page_number(followup_page)
@@ -76,7 +79,7 @@ class AlertsPageQueryAssembler:
         )
         return AlertsSnapshot(
             home_path=self._service.home_path,
-            current_job_id=self._service.store.get_current_job_id(),
+            current_job_id=current_job_id,
             generated_at=_format_timestamp(
                 self._service._now_provider(),
                 fallback=self._messages["common"]["unknown"],
@@ -106,40 +109,40 @@ class AlertsPageQueryAssembler:
             ("followup_page", str(followup_page) if followup_page and followup_page > 1 else ""),
         )
 
-    def _followup_tasks(
+    def _followup_jobs(
         self,
         tasks: list[dict[str, object]],
         *,
+        current_job_id: str | None,
         now_value: datetime | None,
-    ) -> list[dict[str, object]]:
-        from .queries import _task_scheduler
+    ) -> list[PendingLeaderFollowupJob]:
+        followup_jobs = [
+            group
+            for group in collect_pending_leader_followup_jobs(
+                tasks,
+                current_job_id=current_job_id,
+                current_time=now_value,
+            )
+            if group.is_current_job and not group.has_newer_task
+        ]
 
-        followup_tasks = []
-        for task in tasks:
-            scheduler = _task_scheduler(task)
-            if _optional_text(scheduler.get("leader_followup_due_at")) and scheduler.get("leader_followup_sent_at") is None:
-                followup_tasks.append(task)
-
-        followup_tasks.sort(
+        followup_jobs.sort(
             key=lambda item: self._followup_sort_key(item, now_value=now_value),
         )
-        return followup_tasks
+        return followup_jobs
 
     def _followup_sort_key(
         self,
-        task: dict[str, object],
+        group: PendingLeaderFollowupJob,
         *,
         now_value: datetime | None,
     ) -> tuple[int, str, str, str]:
-        from .queries import _task_scheduler
-
-        scheduler = _task_scheduler(task)
-        due_at = _optional_text(scheduler.get("leader_followup_due_at"))
+        due_at = group.latest_due_at
         return (
             0 if _is_overdue(due_at, now_value) else 1,
-            str(scheduler.get("leader_followup_due_at") or ""),
-            str(task["job_id"]),
-            str(task["id"]),
+            due_at,
+            group.job_id,
+            str(group.latest_task["id"]),
         )
 
     def _build_alert_task(self, task: dict[str, object]) -> AlertTaskSnapshot:
@@ -166,21 +169,24 @@ class AlertsPageQueryAssembler:
             detail_href=self._service._tasks_path(job_id=job_id, task_id=task_id) + "#tasks-detail",
         )
 
-    def _build_followup_task(self, task: dict[str, object], *, now_value: datetime | None) -> FollowupTaskSnapshot:
-        from .queries import _task_scheduler
-
+    def _build_followup_task(
+        self,
+        group: PendingLeaderFollowupJob,
+        *,
+        now_value: datetime | None,
+    ) -> FollowupTaskSnapshot:
+        task = group.latest_task
         summary_label, summary_text = self._service._task_summary(task)
-        scheduler = _task_scheduler(task)
-        due_at_raw = _optional_text(scheduler.get("leader_followup_due_at")) or ""
+        due_at_raw = group.latest_due_at
         task_id = str(task["id"])
-        job_id = str(task["job_id"])
+        job_id = group.job_id
         return FollowupTaskSnapshot(
             task_id=task_id,
             job_id=job_id,
             state=str(task.get("state") or "queued"),
             notify_target=_optional_text(task.get("notify_target")) or self._messages["common"]["unknown"],
             final_notified_at=_format_timestamp(
-                str(scheduler.get("final_notified_at") or ""),
+                group.latest_final_notified_at,
                 fallback=self._messages["common"]["unknown"],
             ),
             due_at=_format_timestamp(due_at_raw, fallback=self._messages["common"]["unknown"]),

@@ -829,12 +829,17 @@ def seed_operational_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
     store.update_task(task_b2["id"], job_id=seeded["job_b"]["id"], state="failed", result="worker crashed")
 
     task_b1_record = store.load_task(seeded["task_b1"]["id"], job_id=seeded["job_b"]["id"])
+    task_b1_record["createdAt"] = "2026-03-19T08:00:00Z"
+    task_b1_record["updatedAt"] = "2026-03-19T08:10:00Z"
     task_b1_record["_scheduler"]["final_notified_at"] = "2026-03-19T09:00:00Z"
     task_b1_record["_scheduler"]["leader_followup_due_at"] = "2026-03-19T10:00:00Z"
     store.save_task(task_b1_record)
 
     task_b2_record = store.load_task(task_b2["id"], job_id=seeded["job_b"]["id"])
+    task_b2_record["createdAt"] = "2026-03-20T07:00:00Z"
+    task_b2_record["updatedAt"] = "2026-03-20T07:10:00Z"
     task_b2_record["_scheduler"]["final_notified_at"] = "2026-03-20T08:00:00Z"
+    task_b2_record["_scheduler"]["leader_followup_due_at"] = "2026-03-20T09:00:00Z"
     store.save_task(task_b2_record)
 
     store.save_daemon_state(
@@ -892,10 +897,10 @@ def seed_dense_dashboard_store(home: Path) -> dict[str, object]:
     }
     state_counts = {
         "running": 6,
-        "blocked": 6,
-        "failed": 4,
         "queued": 6,
         "done": 4,
+        "blocked": 6,
+        "failed": 4,
     }
     overdue_due_at = [
         "2026-03-19T08:00:00Z",
@@ -913,6 +918,7 @@ def seed_dense_dashboard_store(home: Path) -> dict[str, object]:
     ]
     followup_due_at = overdue_due_at + scheduled_due_at
     followup_index = 0
+    timeline_index = 0
     for state, count in state_counts.items():
         for index in range(count):
             requirement = (
@@ -935,6 +941,9 @@ def seed_dense_dashboard_store(home: Path) -> dict[str, object]:
                     ),
                 )
             record = store.load_task(task["id"], job_id=job["id"])
+            record["createdAt"] = f"2026-03-18T00:{timeline_index:02d}:00Z"
+            record["updatedAt"] = f"2026-03-18T00:{timeline_index:02d}:30Z"
+            timeline_index += 1
             if state in {"blocked", "failed"}:
                 record["_scheduler"]["final_notified_at"] = f"2026-03-19T0{index % 9}:15:00Z"
                 record["_scheduler"]["leader_followup_due_at"] = followup_due_at[followup_index]
@@ -1037,40 +1046,111 @@ def test_dashboard_alerts_query_builds_live_base_snapshot(home: Path) -> None:
         f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b1']['id']}#tasks-detail",
         f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b2']['id']}#tasks-detail",
     }
-    assert alerts.followup_tasks[0].task_id == seeded["task_b1"]["id"]
+    assert alerts.followup_tasks[0].task_id == seeded["task_b2"]["id"]
     assert (
         alerts.followup_tasks[0].detail_href
-        == f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b1']['id']}#tasks-detail"
+        == f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b2']['id']}#tasks-detail"
     )
     assert alerts.followup_tasks[0].is_overdue is True
 
 
-def test_dashboard_alerts_query_groups_paginated_cards_by_priority(home: Path) -> None:
-    seeded = seed_dense_dashboard_store(home)
+def test_dashboard_alerts_query_uses_current_job_latest_followup_window(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="alerts-current-job-window")
+    task_a = store.create_task(job_id=job["id"], requirement="first terminal", assigned_agent="code-agent")
+    task_b = store.create_task(job_id=job["id"], requirement="latest terminal", assigned_agent="quality-agent")
+
+    record_a = store.load_task(task_a["id"], job_id=job["id"])
+    record_a["state"] = "blocked"
+    record_a["createdAt"] = "2026-03-20T11:00:00Z"
+    record_a["_scheduler"]["final_notified_at"] = "2026-03-20T11:10:00Z"
+    record_a["_scheduler"]["leader_followup_due_at"] = "2026-03-20T11:15:00Z"
+    record_a["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(record_a)
+
+    record_b = store.load_task(task_b["id"], job_id=job["id"])
+    record_b["state"] = "done"
+    record_b["createdAt"] = "2026-03-20T11:30:00Z"
+    record_b["_scheduler"]["final_notified_at"] = "2026-03-20T11:40:00Z"
+    record_b["_scheduler"]["leader_followup_due_at"] = "2026-03-20T12:30:00Z"
+    record_b["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(record_b)
 
     alerts = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts()
 
     assert alerts.risk_pagination.page == 1
-    assert alerts.risk_pagination.page_count == 2
-    assert [group.state for group in alerts.risk_groups] == ["blocked", "failed"]
-    assert [group.count for group in alerts.risk_groups] == [6, 2]
-    assert alerts.risk_groups[0].tasks[0].state == "blocked"
-    assert [group.state for group in alerts.followup_groups] == ["due", "scheduled"]
-    assert [group.count for group in alerts.followup_groups] == [5, 3]
-    assert alerts.followup_groups[0].tasks[0].is_overdue is True
-    assert alerts.followup_groups[1].tasks[0].is_overdue is False
+    assert alerts.risk_pagination.page_count == 1
+    assert [group.state for group in alerts.risk_groups] == ["blocked"]
+    assert [group.count for group in alerts.risk_groups] == [1]
+    assert alerts.risk_groups[0].tasks[0].task_id == task_a["id"]
+    assert alerts.pending_followups_count == 1
+    assert alerts.overdue_followups_count == 0
+    assert alerts.followup_pagination.page == 1
+    assert alerts.followup_pagination.page_count == 1
+    assert [group.state for group in alerts.followup_groups] == ["scheduled"]
+    assert [group.count for group in alerts.followup_groups] == [1]
+    assert alerts.followup_tasks[0].job_id == job["id"]
+    assert alerts.followup_tasks[0].task_id == task_b["id"]
+    assert alerts.followup_tasks[0].is_overdue is False
 
-    later_page = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts(
-        risk_page="2",
-        followup_page="2",
-    )
+    later_page = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts(risk_page="2")
 
-    assert later_page.risk_pagination.page == 2
-    assert later_page.followup_pagination.page == 2
-    assert [group.state for group in later_page.risk_groups] == ["failed"]
-    assert [group.count for group in later_page.risk_groups] == [2]
+    assert later_page.risk_pagination.page == 1
+    assert later_page.followup_pagination.page == 1
+    assert [group.state for group in later_page.risk_groups] == ["blocked"]
+    assert [group.count for group in later_page.risk_groups] == [1]
     assert [group.state for group in later_page.followup_groups] == ["scheduled"]
-    assert [group.count for group in later_page.followup_groups] == [2]
+    assert [group.count for group in later_page.followup_groups] == [1]
+
+
+def test_dashboard_alerts_query_hides_followup_when_newer_task_exists(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="followup-hidden-by-new-task")
+    source = store.create_task(job_id=job["id"], requirement="terminal source", assigned_agent="code-agent")
+    source_record = store.load_task(source["id"], job_id=job["id"])
+    source_record["state"] = "done"
+    source_record["createdAt"] = "2026-03-19T09:00:00Z"
+    source_record["_scheduler"]["final_notified_at"] = "2026-03-19T09:05:00Z"
+    source_record["_scheduler"]["leader_followup_due_at"] = "2026-03-19T09:10:00Z"
+    source_record["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(source_record)
+
+    new_task = store.create_task(job_id=job["id"], requirement="next step", assigned_agent="quality-agent")
+    new_task_record = store.load_task(new_task["id"], job_id=job["id"])
+    new_task_record["createdAt"] = "2026-03-19T09:06:00Z"
+    store.save_task(new_task_record)
+
+    alerts = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts()
+
+    assert alerts.pending_followups_count == 0
+    assert alerts.overdue_followups_count == 0
+    assert alerts.followup_tasks == []
+    assert alerts.followup_groups == []
+    assert alerts.has_alerts is False
+
+
+def test_dashboard_alerts_query_hides_non_current_job_followup(home: Path) -> None:
+    store = TaskStore(home)
+    old_job = store.create_job(title="old-job")
+    old_task = store.create_task(job_id=old_job["id"], requirement="terminal source", assigned_agent="code-agent")
+    old_record = store.load_task(old_task["id"], job_id=old_job["id"])
+    old_record["state"] = "done"
+    old_record["createdAt"] = "2026-03-19T09:00:00Z"
+    old_record["_scheduler"]["final_notified_at"] = "2026-03-19T09:05:00Z"
+    old_record["_scheduler"]["leader_followup_due_at"] = "2026-03-19T09:10:00Z"
+    old_record["_scheduler"]["leader_followup_sent_at"] = None
+    store.save_task(old_record)
+
+    current_job = store.create_job(title="current-job")
+
+    alerts = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts()
+
+    assert alerts.current_job_id == current_job["id"]
+    assert alerts.pending_followups_count == 0
+    assert alerts.overdue_followups_count == 0
+    assert alerts.followup_tasks == []
+    assert alerts.followup_groups == []
+    assert alerts.has_alerts is False
 
 
 def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
@@ -1712,7 +1792,7 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
         body,
     )
     assert re.search(
-        rf'data-testid="dashboard-alerts-followup-task-{seeded["task_b1"]["id"]}"[\s\S]*?href="/tasks\?job={seeded["job_b"]["id"]}&amp;task={seeded["task_b1"]["id"]}#tasks-detail"',
+        rf'data-testid="dashboard-alerts-followup-task-{seeded["task_b2"]["id"]}"[\s\S]*?href="/tasks\?job={seeded["job_b"]["id"]}&amp;task={seeded["task_b2"]["id"]}#tasks-detail"',
         body,
     )
     assert 'class="alerts-layout"' in body
@@ -1730,31 +1810,25 @@ def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
 
     with TestClient(create_dashboard_app(home)) as client:
         response = client.get("/alerts")
-        second_page = client.get("/alerts?risk_page=2&followup_page=2")
+        second_page = client.get("/alerts?risk_page=2")
 
     assert response.status_code == 200
     body = response.text
     assert 'data-testid="dashboard-alerts-risk-group-blocked"' in body
     assert 'data-testid="dashboard-alerts-risk-group-failed"' in body
-    assert 'data-testid="dashboard-alerts-followup-group-due"' in body
-    assert 'data-testid="dashboard-alerts-followup-group-scheduled"' in body
+    assert 'data-testid="dashboard-alerts-followup-group-scheduled"' not in body
     assert 'data-testid="dashboard-alerts-risk-pagination"' in body
-    assert 'data-testid="dashboard-alerts-followup-pagination"' in body
     assert 'data-testid="dashboard-alerts-risk-pagination-page-2"' in body
-    assert 'data-testid="dashboard-alerts-followup-pagination-page-2"' in body
     assert "#alerts-risk-list" in body
-    assert "#alerts-followups" in body
+    assert "No unresolved follow-ups" in body
 
     assert second_page.status_code == 200
     second_body = second_page.text
     assert 'data-testid="dashboard-alerts-risk-pagination"' in second_body
     assert re.search(r'data-testid="dashboard-alerts-risk-pagination-page-2"[^>]*aria-current="page"', second_body)
-    assert re.search(
-        r'data-testid="dashboard-alerts-followup-pagination-page-2"[^>]*aria-current="page"',
-        second_body,
-    )
     assert 'data-testid="dashboard-alerts-risk-group-failed"' in second_body
-    assert 'data-testid="dashboard-alerts-followup-group-scheduled"' in second_body
+    assert 'data-testid="dashboard-alerts-followup-group-scheduled"' not in second_body
+    assert 'data-testid="dashboard-alerts-followup-pagination"' not in second_body
 
 
 def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:
