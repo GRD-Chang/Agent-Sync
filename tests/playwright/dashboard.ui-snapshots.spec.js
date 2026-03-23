@@ -179,7 +179,7 @@ async function seedSnapshotHome(homeDir) {
     },
     {
       requirement: "running req 6",
-      assign: "code-agent",
+      assign: "planning-agent",
       state: "running",
       result: "collecting evidence",
       dispatchAt: "2026-03-19T09:16:00Z",
@@ -240,7 +240,7 @@ async function seedSnapshotHome(homeDir) {
     },
     {
       requirement: "done req 15 with long archive note for historical visibility coverage",
-      assign: "team-leader",
+      assign: "release-agent",
       state: "done",
       result: "archived historical timeline slice after confirming older cards remain readable",
       dispatchAt: "2026-03-19T20:58:00Z",
@@ -378,6 +378,8 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
         await timeline.waitFor({ state: "visible", timeout: 15000 });
         await timeline.scrollIntoViewIfNeeded();
         await page.waitForTimeout(150);
+        await expect(timeline.locator('.dispatch-node-link[data-agent="planning-agent"]')).toHaveCount(1);
+        await expect(timeline.locator('.dispatch-node-link[data-agent="release-agent"]')).toHaveCount(1);
 
         if (strict) {
           const timelineScrollport = page.getByTestId("dashboard-jobs-timeline-scrollport");

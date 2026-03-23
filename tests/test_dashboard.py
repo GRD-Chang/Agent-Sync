@@ -57,6 +57,44 @@ def seed_dashboard_store(home: Path) -> dict[str, dict[str, str]]:
     }
 
 
+def seed_dashboard_store_with_agent_timeline(home: Path) -> dict[str, dict[str, str]]:
+    seeded = seed_dashboard_store(home)
+    store = TaskStore(home)
+
+    timeline_job = store.create_job(title="agent-mapped-timeline")
+    planning_task = store.create_task(
+        job_id=timeline_job["id"],
+        requirement="draft dispatch plan",
+        assigned_agent="planning-agent",
+    )
+    release_task = store.create_task(
+        job_id=timeline_job["id"],
+        requirement="ship release checklist",
+        assigned_agent="release-agent",
+    )
+    store.update_task(
+        release_task["id"],
+        job_id=timeline_job["id"],
+        state="done",
+        result="release notes published",
+    )
+
+    planning_record = store.load_task(planning_task["id"], job_id=timeline_job["id"])
+    planning_record["_scheduler"]["last_dispatch_at"] = "2026-03-19T08:15:00Z"
+    store.save_task(planning_record)
+
+    release_record = store.load_task(release_task["id"], job_id=timeline_job["id"])
+    release_record["_scheduler"]["last_dispatch_at"] = "2026-03-19T09:45:00Z"
+    store.save_task(release_record)
+
+    return {
+        **seeded,
+        "timeline_job": timeline_job,
+        "planning_task": planning_task,
+        "release_task": release_task,
+    }
+
+
 def flatten_message_keys(value: object, prefix: str = "") -> set[str]:
     if isinstance(value, dict):
         keys: set[str] = set()
@@ -567,6 +605,42 @@ def test_dashboard_tasks_query_builds_preview_and_timeline(home: Path) -> None:
     assert tasks.selected_task.result == "actively working"
 
 
+def test_dashboard_detail_css_defines_explicit_planning_and_release_agent_mappings() -> None:
+    css = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "task_bridge"
+        / "dashboard"
+        / "static"
+        / "dashboard_css"
+        / "40-detail.css"
+    ).read_text(encoding="utf-8")
+
+    assert "--agent-planning-agent:" in css
+    assert "--agent-planning-agent-rgb:" in css
+    assert '.dispatch-node-link[data-agent="planning-agent"]' in css
+    assert "--agent-release-agent:" in css
+    assert "--agent-release-agent-rgb:" in css
+    assert '.dispatch-node-link[data-agent="release-agent"]' in css
+
+
+def test_dashboard_jobs_query_builds_agent_mapped_dispatch_timeline(home: Path) -> None:
+    seeded = seed_dashboard_store_with_agent_timeline(home)
+
+    jobs = DashboardQueryService(home).jobs(selected_job_id=seeded["timeline_job"]["id"])
+
+    assert jobs.selected_job is not None
+    assert [node.task_id for node in jobs.selected_job.timeline] == [
+        seeded["planning_task"]["id"],
+        seeded["release_task"]["id"],
+    ]
+    assert [node.assigned_agent for node in jobs.selected_job.timeline] == [
+        "planning-agent",
+        "release-agent",
+    ]
+    assert jobs.selected_job.timeline[-1].is_newest is True
+
+
 def test_dashboard_jobs_page_chrome_exposes_breadcrumbs_and_back_link(home: Path) -> None:
     seeded = seed_dashboard_store(home)
 
@@ -1064,6 +1138,21 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert "Open latest task here" not in body
     assert f"/tasks?job={seeded['job_a']['id']}#tasks-registry" not in body
     assert 'data-testid="dashboard-jobs-empty-state"' not in body
+
+
+def test_dashboard_jobs_route_renders_planning_and_release_dispatch_nodes(home: Path) -> None:
+    seeded = seed_dashboard_store_with_agent_timeline(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/jobs?job={seeded['timeline_job']['id']}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert f'data-testid="dashboard-jobs-timeline-node-{seeded["planning_task"]["id"]}"' in body
+    assert f'data-testid="dashboard-jobs-timeline-node-{seeded["release_task"]["id"]}"' in body
+    assert 'data-agent="planning-agent"' in body
+    assert 'data-agent="release-agent"' in body
+    assert body.index('data-agent="planning-agent"') < body.index('data-agent="release-agent"')
 
 
 def test_dashboard_jobs_route_swaps_to_focused_task_detail_in_job_context(home: Path) -> None:
