@@ -158,6 +158,14 @@ function runBridgeJson(homeDir, args) {
   return JSON.parse(completed.stdout);
 }
 
+async function patchLastDispatchAt(homeDir, jobId, taskId, value) {
+  const taskPath = path.join(homeDir, "jobs", jobId, "tasks", `${taskId}.json`);
+  const payload = JSON.parse(await fs.readFile(taskPath, "utf-8"));
+  payload._scheduler = payload._scheduler || {};
+  payload._scheduler.last_dispatch_at = value;
+  await fs.writeFile(taskPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+}
+
 async function seedLiveDashboard(homeDir) {
   const jobA = runBridgeJson(homeDir, ["create-job", "--title", "job-a"]);
   const taskA1 = runBridgeJson(homeDir, [
@@ -372,6 +380,42 @@ async function seedOverflowDashboard(homeDir) {
   await fs.writeFile(taskJsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
 
   return { job, task, longAgent };
+}
+
+async function seedAgentSupportDashboard(homeDir) {
+  const job = runBridgeJson(homeDir, ["create-job", "--title", "agent support timeline regression"]);
+  const events = [
+    {
+      key: "planning",
+      requirement: "known worker timeline node",
+      assign: "planning-agent",
+      dispatchAt: "2026-03-19T08:15:00Z",
+    },
+    {
+      key: "extension",
+      requirement: "extension worker timeline node",
+      assign: "unknown-agent",
+      dispatchAt: "2026-03-19T09:15:00Z",
+    },
+    {
+      key: "unassigned",
+      requirement: "unassigned timeline node",
+      dispatchAt: "2026-03-19T10:15:00Z",
+    },
+  ];
+  const tasks = {};
+
+  for (const event of events) {
+    const args = ["create-task", "--job", job.id, "--requirement", event.requirement];
+    if (event.assign) {
+      args.push("--assign", event.assign);
+    }
+    const task = runBridgeJson(homeDir, args);
+    tasks[event.key] = task;
+    await patchLastDispatchAt(homeDir, job.id, task.id, event.dispatchAt);
+  }
+
+  return { job, tasks };
 }
 
 test("overview renders the live happy path shell", async ({ page }) => {
@@ -624,6 +668,42 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
     await expect(page.getByTestId("dashboard-page-title")).toHaveText(
       "Task register with detail preview",
     );
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("jobs timeline keeps raw agent hooks stable across locale-safe fallbacks", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-agent-hooks-"));
+  const seeded = await seedAgentSupportDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4187);
+
+  try {
+    await page.goto(`${server.baseUrl}/jobs?job=${seeded.job.id}&lang=zh-CN`);
+
+    const planningNode = page.getByTestId(`dashboard-jobs-timeline-node-${seeded.tasks.planning.id}`);
+    await expect(planningNode).toContainText("planning-agent");
+    expect(await planningNode.getAttribute("data-agent")).toBe("planning-agent");
+    expect(await planningNode.getAttribute("data-agent-fallback")).toBe("explicit-theme");
+
+    const extensionNode = page.getByTestId(`dashboard-jobs-timeline-node-${seeded.tasks.extension.id}`);
+    await expect(extensionNode).toContainText("unknown-agent");
+    expect(await extensionNode.getAttribute("data-agent")).toBe("unknown-agent");
+    expect(await extensionNode.getAttribute("data-agent-fallback")).toBe("default-theme");
+
+    const unassignedNode = page.getByTestId(`dashboard-jobs-timeline-node-${seeded.tasks.unassigned.id}`);
+    await expect(unassignedNode).toContainText("未分配");
+    expect(await unassignedNode.getAttribute("data-agent")).toBeNull();
+    expect(await unassignedNode.getAttribute("data-agent-fallback")).toBe("unassigned");
+
+    await page.getByTestId("dashboard-locale-en").click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(unassignedNode).toContainText("Unassigned");
+    expect(await unassignedNode.getAttribute("data-agent")).toBeNull();
+    expect(await unassignedNode.getAttribute("data-agent-fallback")).toBe("unassigned");
+    expect(await extensionNode.getAttribute("data-agent")).toBe("unknown-agent");
+    expect(await extensionNode.getAttribute("data-agent-fallback")).toBe("default-theme");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

@@ -386,8 +386,17 @@ test.describe("dashboard UI snapshots for task-bridge job/task", () => {
         await timeline.scrollIntoViewIfNeeded();
         await page.waitForTimeout(150);
         await expect(timeline.locator('.dispatch-node-link[data-agent="planning-agent"]')).toHaveCount(1);
+        await expect(
+          timeline.locator('.dispatch-node-link[data-agent="planning-agent"][data-agent-fallback="explicit-theme"]'),
+        ).toHaveCount(1);
         await expect(timeline.locator('.dispatch-node-link[data-agent="release-agent"]')).toHaveCount(1);
+        await expect(
+          timeline.locator('.dispatch-node-link[data-agent="release-agent"][data-agent-fallback="explicit-theme"]'),
+        ).toHaveCount(1);
         await expect(timeline.locator('.dispatch-node-link[data-agent="unknown-agent"]')).toHaveCount(1);
+        await expect(
+          timeline.locator('.dispatch-node-link[data-agent="unknown-agent"][data-agent-fallback="default-theme"]'),
+        ).toHaveCount(1);
         const themeCss = await page.getByTestId("dashboard-agent-theme").textContent();
         expect(themeCss).toContain("--agent-default:");
         expect(themeCss).not.toContain("--agent-unknown-agent:");

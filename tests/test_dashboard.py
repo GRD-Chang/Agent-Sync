@@ -1218,6 +1218,48 @@ def test_dashboard_jobs_query_timeline_visual_metadata_falls_back_for_unassigned
     assert node.is_newest is True
 
 
+def test_dashboard_jobs_query_keeps_raw_identity_separate_from_locale_specific_display_labels(
+    home: Path,
+) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="timeline-agent-presentation")
+    planning = store.create_task(
+        job_id=job["id"],
+        requirement="known worker",
+        assigned_agent="planning-agent",
+    )
+    extension = store.create_task(
+        job_id=job["id"],
+        requirement="extension worker",
+        assigned_agent="unknown-agent",
+    )
+    unassigned = store.create_task(job_id=job["id"], requirement="needs assignment")
+
+    for task, dispatch_at in (
+        (planning, "2026-03-19T08:15:00Z"),
+        (extension, "2026-03-19T09:15:00Z"),
+        (unassigned, "2026-03-19T10:15:00Z"),
+    ):
+        record = store.load_task(task["id"], job_id=job["id"])
+        record["_scheduler"]["last_dispatch_at"] = dispatch_at
+        store.save_task(record)
+
+    snapshot = DashboardQueryService(home, locale="zh-CN").jobs(selected_job_id=job["id"])
+
+    assert snapshot.selected_job is not None
+    timeline = {node.task_id: node for node in snapshot.selected_job.timeline}
+    assert timeline[planning["id"]].assigned_agent == "planning-agent"
+    assert timeline[planning["id"]].assigned_agent_raw == "planning-agent"
+    assert timeline[planning["id"]].assigned_agent_fallback_kind == "explicit-theme"
+    assert timeline[extension["id"]].assigned_agent == "unknown-agent"
+    assert timeline[extension["id"]].assigned_agent_raw == "unknown-agent"
+    assert timeline[extension["id"]].assigned_agent_fallback_kind == "default-theme"
+    assert timeline[unassigned["id"]].assigned_agent == "未分配"
+    assert timeline[unassigned["id"]].assigned_agent_raw is None
+    assert timeline[unassigned["id"]].assigned_agent_fallback_kind == "unassigned"
+
+
 def test_dashboard_root_redirects_to_overview(home: Path) -> None:
     with TestClient(create_dashboard_app(home)) as client:
         response = client.get("/", follow_redirects=False)
@@ -1359,6 +1401,61 @@ def test_dashboard_jobs_route_unknown_agent_nodes_keep_default_theme_fallback(ho
     assert f'data-testid="dashboard-jobs-timeline-node-{task["id"]}"' in body
     assert 'data-agent="unknown-agent"' in body
     assert 'data-agent-fallback="default-theme"' in body
+
+
+def test_dashboard_jobs_route_keeps_locale_safe_raw_agent_hooks_for_timeline_nodes(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="timeline-agent-hook-locale")
+    planning = store.create_task(
+        job_id=job["id"],
+        requirement="known worker",
+        assigned_agent="planning-agent",
+    )
+    extension = store.create_task(
+        job_id=job["id"],
+        requirement="extension worker",
+        assigned_agent="unknown-agent",
+    )
+    unassigned = store.create_task(job_id=job["id"], requirement="needs assignment")
+
+    for task, dispatch_at in (
+        (planning, "2026-03-19T08:15:00Z"),
+        (extension, "2026-03-19T09:15:00Z"),
+        (unassigned, "2026-03-19T10:15:00Z"),
+    ):
+        record = store.load_task(task["id"], job_id=job["id"])
+        record["_scheduler"]["last_dispatch_at"] = dispatch_at
+        store.save_task(record)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get(f"/jobs?job={job['id']}&lang=zh-CN")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "未分配" in body
+    planning_node = re.search(
+        rf'<a[^>]*data-testid="dashboard-jobs-timeline-node-{planning["id"]}"[^>]*>',
+        body,
+    )
+    extension_node = re.search(
+        rf'<a[^>]*data-testid="dashboard-jobs-timeline-node-{extension["id"]}"[^>]*>',
+        body,
+    )
+    unassigned_node = re.search(
+        rf'<a[^>]*data-testid="dashboard-jobs-timeline-node-{unassigned["id"]}"[^>]*>',
+        body,
+    )
+    assert planning_node is not None
+    assert extension_node is not None
+    assert unassigned_node is not None
+    assert 'data-agent="planning-agent"' in planning_node.group(0)
+    assert 'data-agent-fallback="explicit-theme"' in planning_node.group(0)
+    assert 'data-agent="unknown-agent"' in extension_node.group(0)
+    assert 'data-agent-fallback="default-theme"' in extension_node.group(0)
+    assert 'data-agent="' not in unassigned_node.group(0)
+    assert 'data-agent-fallback="unassigned"' in unassigned_node.group(0)
+    assert 'data-agent="未分配"' not in body
 
 
 def test_dashboard_jobs_route_swaps_to_focused_task_detail_in_job_context(home: Path) -> None:

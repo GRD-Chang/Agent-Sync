@@ -89,6 +89,18 @@ def test_dashboard_agent_presentation_helper_preserves_raw_identity_and_fallback
     assert unassigned.fallback_kind == "unassigned"
 
 
+def test_dashboard_agent_presentation_helper_keeps_locale_safe_empty_label_out_of_raw_identity() -> None:
+    localized_unassigned = resolve_agent_presentation(None, empty_label="未分配")
+    extension = resolve_agent_presentation("extension-agent", empty_label="未分配")
+
+    assert localized_unassigned.raw_key is None
+    assert localized_unassigned.display_label == "未分配"
+    assert localized_unassigned.fallback_kind == "unassigned"
+    assert extension.raw_key == "extension-agent"
+    assert extension.display_label == "extension-agent"
+    assert extension.fallback_kind == "default-theme"
+
+
 def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_contract(
     tmp_path: Path,
 ) -> None:
