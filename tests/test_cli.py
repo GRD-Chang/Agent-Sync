@@ -790,7 +790,7 @@ def test_daemon_sends_single_leader_followup_for_multiple_terminal_tasks_in_curr
     store = TaskStore(home)
     payload_a = store.load_task(task_a["id"], job_id=job["id"])
     payload_a["state"] = "done"
-    payload_a["createdAt"] = "2026-03-10T23:50:00Z"
+    payload_a["createdAt"] = "2026-03-10T23:55:00Z"
     payload_a["_scheduler"]["final_notified_at"] = "2026-03-11T00:00:00Z"
     payload_a["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:05:00Z"
     payload_a["_scheduler"]["leader_followup_sent_at"] = None
@@ -798,7 +798,7 @@ def test_daemon_sends_single_leader_followup_for_multiple_terminal_tasks_in_curr
 
     payload_b = store.load_task(task_b["id"], job_id=job["id"])
     payload_b["state"] = "blocked"
-    payload_b["createdAt"] = "2026-03-10T23:55:00Z"
+    payload_b["createdAt"] = "2026-03-10T23:50:00Z"
     payload_b["_scheduler"]["final_notified_at"] = "2026-03-11T00:03:00Z"
     payload_b["_scheduler"]["leader_followup_due_at"] = "2026-03-11T00:08:00Z"
     payload_b["_scheduler"]["leader_followup_sent_at"] = None

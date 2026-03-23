@@ -1062,7 +1062,7 @@ def test_dashboard_alerts_query_uses_current_job_latest_followup_window(home: Pa
 
     record_a = store.load_task(task_a["id"], job_id=job["id"])
     record_a["state"] = "blocked"
-    record_a["createdAt"] = "2026-03-20T11:00:00Z"
+    record_a["createdAt"] = "2026-03-20T11:30:00Z"
     record_a["_scheduler"]["final_notified_at"] = "2026-03-20T11:10:00Z"
     record_a["_scheduler"]["leader_followup_due_at"] = "2026-03-20T11:15:00Z"
     record_a["_scheduler"]["leader_followup_sent_at"] = None
@@ -1070,7 +1070,7 @@ def test_dashboard_alerts_query_uses_current_job_latest_followup_window(home: Pa
 
     record_b = store.load_task(task_b["id"], job_id=job["id"])
     record_b["state"] = "done"
-    record_b["createdAt"] = "2026-03-20T11:30:00Z"
+    record_b["createdAt"] = "2026-03-20T11:00:00Z"
     record_b["_scheduler"]["final_notified_at"] = "2026-03-20T11:40:00Z"
     record_b["_scheduler"]["leader_followup_due_at"] = "2026-03-20T12:30:00Z"
     record_b["_scheduler"]["leader_followup_sent_at"] = None

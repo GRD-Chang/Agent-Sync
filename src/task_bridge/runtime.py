@@ -398,6 +398,7 @@ class BridgeRuntime:
     def _schedule_leader_followup(self, task: dict[str, object], *, target: str, notified_at: str) -> None:
         scheduler = task.setdefault("_scheduler", {})
         job_id = str(task["job_id"])
+        current_task_id = str(task["id"])
         current_job_id = self.store.get_current_job_id()
         if (
             target != "team-leader"
@@ -408,6 +409,14 @@ class BridgeRuntime:
             scheduler["leader_followup_due_at"] = None
             scheduler["leader_followup_sent_at"] = None
             return
+
+        for sibling in self.store.list_tasks(job_id=job_id):
+            if str(sibling["id"]) == current_task_id:
+                continue
+            if not _is_pending_leader_followup_task(sibling):
+                continue
+            self._clear_leader_followup(sibling)
+            self.store.save_task(sibling)
 
         due_at = _parse_iso(notified_at) + timedelta(seconds=self.leader_unresolved_followup_seconds)
         scheduler["leader_followup_due_at"] = _format_iso(due_at)

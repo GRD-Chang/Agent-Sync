@@ -193,7 +193,7 @@ def test_notify_updates_uses_custom_leader_followup_delay(home: Path) -> None:
     assert (due_at - notified_at).total_seconds() == 45.0
 
 
-def test_notify_updates_keeps_pending_followups_for_multiple_terminal_tasks(home: Path) -> None:
+def test_notify_updates_keeps_only_latest_pending_followup_for_multiple_terminal_tasks(home: Path) -> None:
     store = TaskStore(home)
     job = store.create_job(title="latest-terminal-followup")
     older = store.create_task(job_id=job["id"], requirement="older", assigned_agent="code-agent")
@@ -223,7 +223,7 @@ def test_notify_updates_keeps_pending_followups_for_multiple_terminal_tasks(home
 
     assert outcome.notified == [older["id"], newer["id"]]
     assert older_persisted["_scheduler"]["final_notified_at"] is not None
-    assert older_persisted["_scheduler"]["leader_followup_due_at"] is not None
+    assert older_persisted["_scheduler"]["leader_followup_due_at"] is None
     assert older_persisted["_scheduler"]["leader_followup_sent_at"] is None
     assert newer_persisted["_scheduler"]["leader_followup_due_at"] is not None
     assert newer_persisted["_scheduler"]["leader_followup_sent_at"] is None
@@ -517,6 +517,46 @@ def test_collect_pending_leader_followup_jobs_prefers_latest_terminal_notice_ove
     assert groups[0].latest_final_notified_at == "2026-03-11T00:12:00Z"
     assert groups[0].latest_due_at == "2026-03-11T00:17:00Z"
     assert groups[0].is_due is False
+
+
+def test_notify_task_prefers_latest_terminal_notice_over_latest_created_task(
+    home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="latest-terminal-notice")
+    created_earlier = store.create_task(job_id=job["id"], requirement="earlier", assigned_agent="code-agent")
+    created_later = store.create_task(job_id=job["id"], requirement="later", assigned_agent="quality-agent")
+
+    earlier_payload = store.load_task(created_earlier["id"], job_id=job["id"])
+    earlier_payload["state"] = "done"
+    earlier_payload["createdAt"] = "2026-03-10T23:50:00Z"
+    store.save_task(earlier_payload)
+
+    later_payload = store.load_task(created_later["id"], job_id=job["id"])
+    later_payload["state"] = "blocked"
+    later_payload["createdAt"] = "2026-03-10T23:55:00Z"
+    store.save_task(later_payload)
+
+    runtime = BridgeRuntime(home=home, sender=lambda *_: None, reset_sender=lambda *_: None)
+
+    monkeypatch.setattr("task_bridge.runtime.now_iso", lambda: "2026-03-11T00:03:00Z")
+    assert runtime.notify_task(created_later["id"], job_id=job["id"]) is True
+    first_window = store.load_task(created_later["id"], job_id=job["id"])
+    assert first_window["_scheduler"]["final_notified_at"] == "2026-03-11T00:03:00Z"
+    assert first_window["_scheduler"]["leader_followup_due_at"] == "2026-03-11T00:08:00Z"
+
+    monkeypatch.setattr("task_bridge.runtime.now_iso", lambda: "2026-03-11T00:06:00Z")
+    assert runtime.notify_task(created_earlier["id"], job_id=job["id"]) is True
+
+    persisted_earlier = store.load_task(created_earlier["id"], job_id=job["id"])
+    persisted_later = store.load_task(created_later["id"], job_id=job["id"])
+    assert persisted_earlier["_scheduler"]["final_notified_at"] == "2026-03-11T00:06:00Z"
+    assert persisted_earlier["_scheduler"]["leader_followup_due_at"] == "2026-03-11T00:11:00Z"
+    assert persisted_earlier["_scheduler"]["leader_followup_sent_at"] is None
+    assert persisted_later["_scheduler"]["final_notified_at"] == "2026-03-11T00:03:00Z"
+    assert persisted_later["_scheduler"]["leader_followup_due_at"] is None
+    assert persisted_later["_scheduler"]["leader_followup_sent_at"] is None
 
 
 def test_send_due_leader_unresolved_followups_clears_non_current_job_candidates(home: Path) -> None:
