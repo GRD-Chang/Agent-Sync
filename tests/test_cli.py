@@ -11,6 +11,7 @@ import pytest
 from task_bridge.cli import main
 from task_bridge.runtime import BridgeRuntime
 from task_bridge.store import TaskStore
+from task_bridge.worker_registry import canonical_worker_names
 
 
 def read_json(path: Path) -> dict:
@@ -273,12 +274,7 @@ def test_worker_status_and_queue_are_derived_across_all_jobs(
     status_payload = parse_last_json(capsys)
     by_agent = {item["agent"]: item for item in status_payload["workers"]}
 
-    assert [item["agent"] for item in status_payload["workers"]] == [
-        "planning-agent",
-        "code-agent",
-        "quality-agent",
-        "release-agent",
-    ]
+    assert [item["agent"] for item in status_payload["workers"]] == list(canonical_worker_names())
     assert by_agent["planning-agent"]["status"] == "idle"
     assert by_agent["planning-agent"]["queued"] == 0
     assert by_agent["code-agent"]["status"] == "idle"

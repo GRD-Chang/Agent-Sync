@@ -11,6 +11,7 @@ from task_bridge.cli import main
 from task_bridge.dashboard import DashboardQueryService, create_dashboard_app
 from task_bridge.dashboard.i18n import get_messages
 from task_bridge.store import TaskStore
+from task_bridge.worker_registry import canonical_worker_names
 
 
 @pytest.fixture()
@@ -1030,12 +1031,7 @@ def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
     assert overview.idle_workers == 4
     assert overview.queued_tasks == 0
     assert overview.recent_updates == []
-    assert [worker.agent for worker in overview.workers] == [
-        "planning-agent",
-        "code-agent",
-        "quality-agent",
-        "release-agent",
-    ]
+    assert [worker.agent for worker in overview.workers] == list(canonical_worker_names())
     assert [metric.count for metric in overview.task_status_metrics] == [0, 0, 0, 0, 0]
 
 

@@ -9,12 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DEFAULT_WORKERS = (
-    "planning-agent",
-    "code-agent",
-    "quality-agent",
-    "release-agent",
-)
+from .worker_registry import canonical_worker_names, roster_with_assigned_agents
+
+# Backward-compatible alias for existing imports; new roster definitions live in worker_registry.py.
+DEFAULT_WORKERS = canonical_worker_names()
 
 
 def now_iso() -> str:
@@ -326,16 +324,9 @@ def _ensure_daemon_state(state: dict[str, Any]) -> dict[str, Any]:
 
 def infer_worker_status(tasks: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     tasks_list = [task for task in tasks if str(task.get("assigned_agent") or "").strip()]
-    agents = list(DEFAULT_WORKERS)
-    extra_agents = sorted(
-        {
-            str(task.get("assigned_agent", "")).strip()
-            for task in tasks_list
-            if str(task.get("assigned_agent", "")).strip()
-            and str(task.get("assigned_agent", "")).strip() not in DEFAULT_WORKERS
-        }
+    agents = list(
+        roster_with_assigned_agents(str(task.get("assigned_agent", "")) for task in tasks_list)
     )
-    agents.extend(extra_agents)
 
     rows: list[dict[str, Any]] = []
     for agent in agents:

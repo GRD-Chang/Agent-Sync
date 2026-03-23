@@ -16,7 +16,8 @@ from task_bridge.runtime import (
     default_openclaw_reset_sender,
     default_openclaw_sender,
 )
-from task_bridge.store import TaskStore, infer_worker_status, queue_for_agent, resolve_home
+from task_bridge.store import DEFAULT_WORKERS, TaskStore, infer_worker_status, queue_for_agent, resolve_home
+from task_bridge.worker_registry import canonical_worker_names, canonical_worker_registry
 
 
 @pytest.fixture()
@@ -83,7 +84,17 @@ def test_bridge_runtime_home_and_queue_helpers(home: Path) -> None:
     assert review_agent["status"] == "idle"
 
 
-def test_infer_worker_status_keeps_builtin_roster_and_appends_unknown_agents() -> None:
+def test_worker_registry_exposes_canonical_roster_and_store_alias() -> None:
+    assert [worker.name for worker in canonical_worker_registry()] == [
+        "planning-agent",
+        "code-agent",
+        "quality-agent",
+        "release-agent",
+    ]
+    assert DEFAULT_WORKERS == canonical_worker_names()
+
+
+def test_infer_worker_status_keeps_canonical_roster_and_appends_unknown_agents() -> None:
     workers = infer_worker_status(
         [
             {"id": "task-1", "job_id": "job-1", "assigned_agent": "custom-agent", "state": "queued"},
@@ -91,13 +102,7 @@ def test_infer_worker_status_keeps_builtin_roster_and_appends_unknown_agents() -
         ]
     )
 
-    assert [item["agent"] for item in workers] == [
-        "planning-agent",
-        "code-agent",
-        "quality-agent",
-        "release-agent",
-        "custom-agent",
-    ]
+    assert [item["agent"] for item in workers] == [*canonical_worker_names(), "custom-agent"]
     by_agent = {item["agent"]: item for item in workers}
     assert by_agent["planning-agent"]["status"] == "idle"
     assert by_agent["planning-agent"]["queued"] == 0
