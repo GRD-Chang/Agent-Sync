@@ -11,7 +11,7 @@ from task_bridge.cli import main
 from task_bridge.dashboard import DashboardQueryService, create_dashboard_app
 from task_bridge.dashboard.i18n import get_messages
 from task_bridge.store import TaskStore
-from task_bridge.worker_registry import canonical_worker_names
+from task_bridge.worker_registry import canonical_worker_names, roster_with_assigned_agents
 
 
 @pytest.fixture()
@@ -109,6 +109,10 @@ def flatten_message_keys(value: object, prefix: str = "") -> set[str]:
 
 def assert_html_lang(body: str, lang: str) -> None:
     assert re.search(rf'<html lang="{re.escape(lang)}"[^>]*>', body)
+
+
+def expected_dashboard_workers(*assigned_agents: str) -> tuple[str, ...]:
+    return roster_with_assigned_agents(assigned_agents)
 
 
 def test_dashboard_help_describes_access_and_launch_guidance(capsys: pytest.CaptureFixture[str]) -> None:
@@ -426,15 +430,16 @@ def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) 
     store.update_task(blocked["id"], job_id=job["id"], state="blocked", result="waiting on input")
 
     overview = DashboardQueryService(home).overview()
+    expected_workers = expected_dashboard_workers("code-agent", "quality-agent", "review-agent")
 
     assert overview.current_job_id == job["id"]
     assert overview.jobs_count == 1
     assert overview.tasks_count == 4
     assert overview.terminal_count == 2
     assert overview.queued_tasks == 1
-    assert overview.worker_count == 5
+    assert overview.worker_count == len(expected_workers)
     assert overview.busy_workers == 1
-    assert overview.idle_workers == 4
+    assert overview.idle_workers == len(expected_workers) - overview.busy_workers
 
     metrics = {metric.state: metric.count for metric in overview.task_status_metrics}
     assert metrics == {
@@ -446,6 +451,7 @@ def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) 
     }
 
     by_agent = {worker.agent: worker for worker in overview.workers}
+    assert tuple(by_agent) == expected_workers
     assert by_agent["quality-agent"].status == "busy"
     assert by_agent["quality-agent"].running_task_id == running["id"]
     assert by_agent["code-agent"].queued == 1
@@ -914,15 +920,17 @@ def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> N
     seeded = seed_operational_dashboard_store(home)
 
     worker_queue = DashboardQueryService(home).worker_queue()
+    expected_workers = expected_dashboard_workers("code-agent", "quality-agent", "review-agent", "ops-agent")
 
-    assert worker_queue.worker_count == 6
+    assert worker_queue.worker_count == len(expected_workers)
     assert worker_queue.busy_workers == 1
-    assert worker_queue.idle_workers == 5
+    assert worker_queue.idle_workers == len(expected_workers) - worker_queue.busy_workers
     assert worker_queue.running_tasks == 1
     assert worker_queue.assigned_queue_depth == 1
     assert worker_queue.unassigned_queue_depth == 1
     assert worker_queue.has_activity is True
     lanes = {lane.agent: lane for lane in worker_queue.lanes}
+    assert tuple(lanes) == expected_workers
     assert lanes["planning-agent"].queued_tasks == []
     assert lanes["quality-agent"].running_task_id == seeded["task_a2"]["id"]
     assert [task.task_id for task in lanes["code-agent"].queued_tasks] == [seeded["task_a1"]["id"]]
@@ -1021,17 +1029,18 @@ def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
     store.ensure_dirs()
 
     overview = DashboardQueryService(home).overview()
+    expected_workers = canonical_worker_names()
 
     assert overview.is_empty is True
     assert overview.jobs_count == 0
     assert overview.tasks_count == 0
     assert overview.terminal_count == 0
-    assert overview.worker_count == 4
+    assert overview.worker_count == len(expected_workers)
     assert overview.busy_workers == 0
-    assert overview.idle_workers == 4
+    assert overview.idle_workers == len(expected_workers)
     assert overview.queued_tasks == 0
     assert overview.recent_updates == []
-    assert [worker.agent for worker in overview.workers] == list(canonical_worker_names())
+    assert [worker.agent for worker in overview.workers] == list(expected_workers)
     assert [metric.count for metric in overview.task_status_metrics] == [0, 0, 0, 0, 0]
 
 
