@@ -1,4 +1,5 @@
 {% from "_pagination.html" import render_pagination %}
+{% from "_time.html" import render_local_time %}
 
 <section id="jobs-registry" class="browse-panel jobs-list-shell" aria-labelledby="jobs-list-title" data-testid="dashboard-jobs-list">
   <div class="section-heading">
@@ -46,7 +47,7 @@
           <dd>{{ item.terminal_task_count }}</dd>
         </div>
       </dl>
-      <p class="list-card-foot">{{ ui.jobs.updated_at }}: {{ item.updated_at }}</p>
+      <p class="list-card-foot">{{ ui.jobs.updated_at }}: {{ render_local_time(item.updated_at, item.updated_at_iso) }}</p>
     </a>
     {% endfor %}
   </div>

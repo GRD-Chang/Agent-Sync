@@ -462,6 +462,7 @@ def test_dashboard_overview_query_summarizes_existing_task_contract(home: Path) 
 
     assert overview.recent_updates[0].task_id == blocked["id"]
     assert overview.recent_updates[0].summary_label == "Result"
+    assert overview.recent_updates[0].updated_at_iso is not None
     assert overview.recent_updates[-1].task_id == queued["id"]
     assert overview.recent_updates[-1].summary_label == "Requirement"
 
@@ -1283,6 +1284,7 @@ def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
     seed_operational_dashboard_store(home)
 
     health = DashboardQueryService(home).health()
+    checks = {check.key: check for check in health.checks}
 
     assert health.jobs_count == 2
     assert health.tasks_count == 5
@@ -1296,6 +1298,10 @@ def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
         "daemon-state": "ok",
         "prompt-cache": "ok",
     }
+    assert checks["prompt-cache"].detail == "3 worker prompt cache entries."
+    assert checks["prompt-cache"].detail_time_label == "Leader running notice"
+    assert checks["prompt-cache"].detail_time_display == "2026-03-20 11:45"
+    assert checks["prompt-cache"].detail_time_iso == "2026-03-20T11:45:00Z"
 
 
 def test_dashboard_health_query_defaults_when_daemon_state_file_is_absent(home: Path) -> None:
@@ -1311,7 +1317,10 @@ def test_dashboard_health_query_defaults_when_daemon_state_file_is_absent(home: 
     assert checks["daemon-state"].status == "ok"
     assert checks["daemon-state"].detail == "`daemon_state.json` has not been written yet; default empty values are shown."
     assert checks["prompt-cache"].status == "ok"
-    assert checks["prompt-cache"].detail == "0 worker prompt cache entries. Last leader running notice: None recorded."
+    assert checks["prompt-cache"].detail == "0 worker prompt cache entries."
+    assert checks["prompt-cache"].detail_time_label == "Leader running notice"
+    assert checks["prompt-cache"].detail_time_display == "None recorded"
+    assert checks["prompt-cache"].detail_time_iso is None
 
 
 def test_dashboard_overview_query_empty_state_is_explicit(home: Path) -> None:
@@ -1987,6 +1996,39 @@ def test_dashboard_timezone_query_is_exposed_and_propagated_in_dashboard_links(h
         rf'href="/tasks\?job={seeded["job_b"]["id"]}&amp;task={seeded["task_b2"]["id"]}&amp;tz=Asia%2FShanghai#tasks-detail"',
         body,
     )
+
+
+def test_dashboard_time_surfaces_emit_local_time_contract_markup(home: Path) -> None:
+    seeded = seed_operational_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        overview_body = client.get("/overview?tz=Asia/Shanghai").text
+        alerts_body = client.get("/alerts?tz=Asia/Shanghai").text
+        jobs_body = client.get(f"/jobs?job={seeded['job_b']['id']}&tz=Asia/Shanghai").text
+        tasks_body = client.get(f"/tasks?job={seeded['job_b']['id']}&tz=Asia/Shanghai").text
+        health_body = client.get("/health?tz=Asia/Shanghai").text
+
+    assert re.search(
+        rf'data-testid="dashboard-overview-recent-task-{seeded["task_b2"]["id"]}"[\s\S]*?data-local-time',
+        overview_body,
+    )
+    assert re.search(
+        rf'data-testid="dashboard-alerts-risk-task-{seeded["task_b2"]["id"]}"[\s\S]*?data-local-time',
+        alerts_body,
+    )
+    assert re.search(
+        rf'data-testid="dashboard-alerts-risk-task-{seeded["task_b1"]["id"]}"[\s\S]*?data-local-time',
+        alerts_body,
+    )
+    assert re.search(
+        rf'data-testid="dashboard-jobs-list-card-{seeded["job_b"]["id"]}"[\s\S]*?data-local-time',
+        jobs_body,
+    )
+    assert re.search(
+        rf'data-testid="dashboard-tasks-list-card-{seeded["task_b2"]["id"]}"[\s\S]*?data-local-time[\s\S]*?data-local-time',
+        tasks_body,
+    )
+    assert re.search(r'Scheduler cache[\s\S]*?Leader running notice:[\s\S]*?data-local-time', health_body)
 
 
 def test_dashboard_worker_queue_route_limits_backlog_preview_to_keep_lane_cards_compact(home: Path) -> None:

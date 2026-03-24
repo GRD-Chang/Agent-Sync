@@ -33,6 +33,7 @@ class RecentUpdate:
     assigned_agent_fallback_kind: str
     state: str
     updated_at: str
+    updated_at_iso: str | None
     summary_label: str
     summary_text: str
     detail_href: str
@@ -86,7 +87,9 @@ class JobListItem:
     title: str
     notify_target: str
     created_at: str
+    created_at_iso: str | None
     updated_at: str
+    updated_at_iso: str | None
     is_current: bool
     is_selected: bool
     task_count: int
@@ -109,6 +112,7 @@ class JobTaskPreview:
     assigned_agent_raw: str | None
     assigned_agent_fallback_kind: str
     updated_at: str
+    updated_at_iso: str | None
     summary_label: str
     summary_text: str
     detail_href: str
@@ -147,6 +151,7 @@ class DetailPreview:
 class WorkPlanSnapshot:
     path: str
     updated_at: str
+    updated_at_iso: str | None
     status_label: str
     detail_preview: DetailPreview
 
@@ -172,7 +177,9 @@ class JobDetailSnapshot:
     title: str
     notify_target: str
     created_at: str
+    created_at_iso: str | None
     updated_at: str
+    updated_at_iso: str | None
     is_current: bool
     task_count: int
     active_task_count: int
@@ -208,7 +215,9 @@ class TaskDetailSnapshot:
     assigned_agent_fallback_kind: str
     notify_target: str
     created_at: str
+    created_at_iso: str | None
     updated_at: str
+    updated_at_iso: str | None
     requirement: str
     result: str | None
     detail_path: str
@@ -248,7 +257,9 @@ class TaskListItem:
     assigned_agent_raw: str | None
     assigned_agent_fallback_kind: str
     created_at: str
+    created_at_iso: str | None
     updated_at: str
+    updated_at_iso: str | None
     summary_label: str
     summary_text: str
     detail_status_label: str
@@ -363,6 +374,7 @@ class AlertTaskSnapshot:
     assigned_agent_fallback_kind: str
     state: str
     updated_at: str
+    updated_at_iso: str | None
     summary_label: str
     summary_text: str
     detail_href: str
@@ -429,6 +441,9 @@ class HealthCheck:
     label: str
     status: str
     detail: str
+    detail_time_label: str | None = None
+    detail_time_display: str | None = None
+    detail_time_iso: str | None = None
 
 
 @dataclass(frozen=True)

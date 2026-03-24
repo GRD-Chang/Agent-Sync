@@ -53,11 +53,11 @@
         </div>
         <div>
           <dt>{{ ui.tasks.created_at }}</dt>
-          <dd>{{ task.created_at }}</dd>
+          <dd>{{ render_local_time(task.created_at, task.created_at_iso) }}</dd>
         </div>
         <div>
           <dt>{{ ui.tasks.updated_at }}</dt>
-          <dd>{{ task.updated_at }}</dd>
+          <dd>{{ render_local_time(task.updated_at, task.updated_at_iso) }}</dd>
         </div>
         <div class="meta-span-2">
           <dt>{{ ui.tasks.detail_path }}</dt>

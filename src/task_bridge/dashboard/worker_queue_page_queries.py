@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 from task_bridge.store import queue_for_agent
 
-from .formatting import format_timestamp as _format_timestamp
 from .formatting import format_timestamp_for_client as _format_timestamp_for_client
 from .formatting import optional_text as _optional_text
 from .snapshots import QueueTaskSnapshot, WorkerLaneSnapshot, WorkerQueueSnapshot

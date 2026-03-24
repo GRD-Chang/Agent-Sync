@@ -186,7 +186,7 @@
               <dl class="meta-grid">
                 <div>
                   <dt>{{ ui.alerts.updated_at }}</dt>
-                  <dd>{{ task.updated_at }}</dd>
+                  <dd>{{ render_local_time(task.updated_at, task.updated_at_iso) }}</dd>
                 </div>
                 <div>
                   <dt>{{ ui.tasks.assigned_agent }}</dt>
@@ -247,7 +247,7 @@
               <dl class="meta-grid">
                 <div>
                   <dt>{{ ui.alerts.updated_at }}</dt>
-                  <dd>{{ task.updated_at }}</dd>
+                  <dd>{{ render_local_time(task.updated_at, task.updated_at_iso) }}</dd>
                 </div>
                 <div>
                   <dt>{{ ui.tasks.assigned_agent }}</dt>

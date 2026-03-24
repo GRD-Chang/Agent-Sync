@@ -134,6 +134,38 @@ async function getFontSnapshot(page) {
   }));
 }
 
+function formatDashboardTimestamp(rawIso, timeZone) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const values = {};
+  formatter.formatToParts(new Date(rawIso)).forEach((part) => {
+    if (part.type !== "literal") {
+      values[part.type] = part.value;
+    }
+  });
+  return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}`;
+}
+
+async function expectResolvedDashboardTime(locator, timeZone) {
+  const rawIso = await locator.getAttribute("datetime");
+  expect(rawIso).toBeTruthy();
+  const expected = formatDashboardTimestamp(rawIso, timeZone);
+  await expect(locator).toHaveText(expected);
+  await expect(locator).not.toContainText("UTC");
+  await expect(locator).not.toContainText("CST");
+  await expect(locator).toHaveAttribute("data-resolved-timezone", timeZone);
+  const title = await locator.getAttribute("title");
+  expect(title).toContain(timeZone);
+  expect(title).not.toContain("CST");
+}
+
 function bridgeEnv(homeDir) {
   return {
     ...process.env,
@@ -955,7 +987,7 @@ test("worker queue, alerts, and health render live read-only base pages", async 
 
 test("dashboard times honor explicit request timezone before browser timezone", async ({ browser }) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-timezone-"));
-  await seedLiveDashboard(homeDir);
+  const seeded = await seedLiveDashboard(homeDir);
   const server = await startDashboard(homeDir, 4191);
   const context = await browser.newContext({
     timezoneId: "America/Los_Angeles",
@@ -977,6 +1009,40 @@ test("dashboard times honor explicit request timezone before browser timezone", 
     await expect(followupDue).toHaveAttribute("data-resolved-timezone", "Asia/Shanghai");
     await expect(followupDue).toHaveAttribute("data-resolved-offset", "UTC+08:00");
     await expect(followupDue).toHaveAttribute("title", /Asia\/Shanghai/);
+
+    const shanghaiTimeZone = "Asia/Shanghai";
+    const overviewRecentUpdate = page
+      .getByTestId(`dashboard-overview-recent-task-${seeded.taskB2.id}`)
+      .locator("time[data-local-time]");
+    await page.goto(`${server.baseUrl}/overview?tz=${encodeURIComponent(shanghaiTimeZone)}`);
+    await expectResolvedDashboardTime(overviewRecentUpdate, shanghaiTimeZone);
+
+    await page.goto(`${server.baseUrl}/alerts?tz=${encodeURIComponent(shanghaiTimeZone)}`);
+    const failedRiskUpdated = page
+      .getByTestId(`dashboard-alerts-risk-task-${seeded.taskB2.id}`)
+      .locator("time[data-local-time]");
+    const blockedRiskUpdated = page
+      .getByTestId(`dashboard-alerts-risk-task-${seeded.taskB1.id}`)
+      .locator("time[data-local-time]");
+    await expectResolvedDashboardTime(failedRiskUpdated, shanghaiTimeZone);
+    await expectResolvedDashboardTime(blockedRiskUpdated, shanghaiTimeZone);
+
+    await page.goto(`${server.baseUrl}/jobs?job=${seeded.jobB.id}&tz=${encodeURIComponent(shanghaiTimeZone)}`);
+    const jobListUpdated = page
+      .getByTestId(`dashboard-jobs-list-card-${seeded.jobB.id}`)
+      .locator("time[data-local-time]");
+    await expectResolvedDashboardTime(jobListUpdated, shanghaiTimeZone);
+
+    await page.goto(`${server.baseUrl}/tasks?job=${seeded.jobB.id}&tz=${encodeURIComponent(shanghaiTimeZone)}`);
+    const taskListCard = page.getByTestId(`dashboard-tasks-list-card-${seeded.taskB2.id}`);
+    await expectResolvedDashboardTime(taskListCard.locator("time[data-local-time]").nth(0), shanghaiTimeZone);
+    await expectResolvedDashboardTime(taskListCard.locator("time[data-local-time]").nth(1), shanghaiTimeZone);
+
+    await page.goto(`${server.baseUrl}/health?tz=${encodeURIComponent(shanghaiTimeZone)}`);
+    const promptCacheCard = page
+      .locator("article.health-check-card")
+      .filter({ has: page.getByRole("heading", { name: "Scheduler cache" }) });
+    await expectResolvedDashboardTime(promptCacheCard.locator("time[data-local-time]"), shanghaiTimeZone);
   } finally {
     await context.close();
     await stopDashboard(server);

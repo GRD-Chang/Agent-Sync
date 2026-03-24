@@ -356,7 +356,7 @@ EN_MESSAGES: dict[str, Any] = {
         "daemon_ok_existing": "`daemon_state.json` is readable.",
         "daemon_ok_default": "`daemon_state.json` has not been written yet; default empty values are shown.",
         "daemon_warn": "The dashboard could not read `daemon_state.json`.",
-        "cache_ok": "{worker_prompt_entries} worker prompt cache entries. Last leader running notice: {leader_last_running_notice_at}.",
+        "cache_ok": "{worker_prompt_entries} worker prompt cache entries.",
         "cache_warn": "Scheduler cache details are unavailable because `daemon_state.json` could not be read.",
         "error_title": "Health unavailable",
         "error_body": "The navigation shell is still available, but the Health payload could not be built from readable daemon/store facts.",

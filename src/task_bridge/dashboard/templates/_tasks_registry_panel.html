@@ -1,4 +1,5 @@
 {% from "_pagination.html" import render_pagination %}
+{% from "_time.html" import render_local_time %}
 
 <section id="tasks-registry" class="browse-panel tasks-list-shell" aria-labelledby="tasks-list-title" data-testid="dashboard-tasks-list">
   <div class="section-heading">
@@ -55,11 +56,11 @@
           <dl class="list-card-stats">
             <div>
               <dt>{{ ui.tasks.created_at }}</dt>
-              <dd>{{ item.created_at }}</dd>
+              <dd>{{ render_local_time(item.created_at, item.created_at_iso) }}</dd>
             </div>
             <div>
               <dt>{{ ui.tasks.updated_at }}</dt>
-              <dd>{{ item.updated_at }}</dd>
+              <dd>{{ render_local_time(item.updated_at, item.updated_at_iso) }}</dd>
             </div>
             <div>
               <dt>{{ ui.tasks.detail_status }}</dt>

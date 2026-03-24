@@ -135,7 +135,7 @@
         </div>
         <div class="recent-meta">
           <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
-          <time datetime="{{ item.updated_at }}">{{ item.updated_at }}</time>
+          {{ render_local_time(item.updated_at, item.updated_at_iso) }}
         </div>
       </header>
       <p><strong>{{ item.summary_label }}:</strong> {{ item.summary_text }}</p>

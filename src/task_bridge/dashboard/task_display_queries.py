@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 from .detail_preview import load_detail_preview as _load_detail_preview
 from .formatting import (
-    format_timestamp as _format_timestamp,
     format_timestamp_for_client as _format_timestamp_for_client,
     optional_display_text as _optional_display_text,
     optional_text as _optional_text,
@@ -30,6 +29,10 @@ class TaskDisplayQueryAssembler:
             task.get("assigned_agent"),
             empty_label=self._messages["recent_update"]["unassigned"],
         )
+        updated_at = _format_timestamp_for_client(
+            str(task.get("updatedAt") or task.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
         return RecentUpdate(
             task_id=str(task["id"]),
             job_id=str(task["job_id"]),
@@ -37,10 +40,8 @@ class TaskDisplayQueryAssembler:
             assigned_agent_raw=agent.raw_key,
             assigned_agent_fallback_kind=agent.fallback_kind,
             state=str(task.get("state") or "queued"),
-            updated_at=_format_timestamp(
-                str(task.get("updatedAt") or task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             summary_label=summary_label,
             summary_text=summary_text,
             detail_href=self._service._jobs_path(
@@ -82,6 +83,14 @@ class TaskDisplayQueryAssembler:
             task.get("assigned_agent"),
             empty_label=self._messages["tasks"]["assigned_agent_empty"],
         )
+        created_at = _format_timestamp_for_client(
+            str(task.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
+        updated_at = _format_timestamp_for_client(
+            str(task.get("updatedAt") or task.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
         return TaskDetailSnapshot(
             task_id=str(task["id"]),
             job_id=job_id,
@@ -91,14 +100,10 @@ class TaskDisplayQueryAssembler:
             assigned_agent_raw=agent.raw_key,
             assigned_agent_fallback_kind=agent.fallback_kind,
             notify_target=_optional_text(task.get("notify_target")) or self._messages["common"]["unknown"],
-            created_at=_format_timestamp(
-                str(task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
-            updated_at=_format_timestamp(
-                str(task.get("updatedAt") or task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            created_at=created_at.display,
+            created_at_iso=created_at.raw_iso,
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             requirement=_optional_display_text(task.get("requirement")) or self._messages["common"]["unknown"],
             result=_optional_display_text(task.get("result")),
             detail_path=detail_path,

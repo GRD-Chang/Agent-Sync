@@ -1,3 +1,5 @@
+{% from "_time.html" import render_local_time %}
+
 <article id="job-task-groups" class="detail-card" data-testid="dashboard-jobs-task-groups">
   <div class="section-heading">
     <p class="eyebrow">{{ ui.jobs.task_preview }}</p>
@@ -30,7 +32,7 @@
             <div class="task-preview-meta">
               <span class="status-pill status-{{ item.state }}">{{ ui.status[item.state].label }}</span>
               <span class="task-preview-agent">{{ item.assigned_agent }}</span>
-              <span>{{ item.updated_at }}</span>
+              {{ render_local_time(item.updated_at, item.updated_at_iso) }}
             </div>
           </div>
         </a>

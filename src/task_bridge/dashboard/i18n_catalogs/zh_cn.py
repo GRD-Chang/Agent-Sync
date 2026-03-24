@@ -356,7 +356,7 @@ ZH_CN_MESSAGES: dict[str, Any] = {
         "daemon_ok_existing": "`daemon_state.json` 可读取。",
         "daemon_ok_default": "`daemon_state.json` 还没生成，当前显示默认空值。",
         "daemon_warn": "dashboard 无法读取 `daemon_state.json`。",
-        "cache_ok": "{worker_prompt_entries} 条 agent prompt 缓存；最近一次 leader 运行通知：{leader_last_running_notice_at}。",
+        "cache_ok": "{worker_prompt_entries} 条 agent prompt 缓存。",
         "cache_warn": "由于无法读取 `daemon_state.json`，scheduler 缓存详情不可用。",
         "error_title": "健康页暂不可用",
         "error_body": "导航外壳仍然可用，但无法从可读的 daemon/store 事实构建健康页数据。",

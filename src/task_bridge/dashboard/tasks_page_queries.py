@@ -4,7 +4,6 @@ from collections import Counter
 from typing import TYPE_CHECKING
 
 from .detail_preview import detail_preview_status as _detail_preview_status
-from .formatting import format_timestamp as _format_timestamp
 from .formatting import format_timestamp_for_client as _format_timestamp_for_client
 from .pagination import page_for_task as _page_for_task
 from .pagination import paginate_items
@@ -156,6 +155,14 @@ class TasksPageQueryAssembler:
             task.get("assigned_agent"),
             empty_label=self._messages["tasks"]["assigned_agent_empty"],
         )
+        created_at = _format_timestamp_for_client(
+            str(task.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
+        updated_at = _format_timestamp_for_client(
+            str(task.get("updatedAt") or task.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
         return TaskListItem(
             task_id=task_id,
             job_id=job_id,
@@ -163,14 +170,10 @@ class TasksPageQueryAssembler:
             assigned_agent=agent.display_label,
             assigned_agent_raw=agent.raw_key,
             assigned_agent_fallback_kind=agent.fallback_kind,
-            created_at=_format_timestamp(
-                str(task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
-            updated_at=_format_timestamp(
-                str(task.get("updatedAt") or task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            created_at=created_at.display,
+            created_at_iso=created_at.raw_iso,
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             summary_label=summary_label,
             summary_text=summary_text,
             detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_status],

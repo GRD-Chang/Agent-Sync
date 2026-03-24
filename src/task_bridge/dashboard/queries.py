@@ -10,7 +10,6 @@ from task_bridge.worker_registry import roster_with_assigned_agents
 
 from .agent_presentation import AgentPresentation, resolve_agent_presentation
 from .formatting import (
-    format_timestamp as _format_timestamp,
     format_timestamp_for_client as _format_timestamp_for_client,
     optional_text as _optional_text,
 )

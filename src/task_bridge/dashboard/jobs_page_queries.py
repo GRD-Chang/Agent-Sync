@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from .detail_preview import load_detail_preview as _load_detail_preview
 from .formatting import (
     file_timestamp_iso as _file_timestamp_iso,
-    format_timestamp as _format_timestamp,
     format_timestamp_for_client as _format_timestamp_for_client,
     optional_text as _optional_text,
 )
@@ -198,18 +197,22 @@ class JobsPageQueryAssembler:
 
         counts = Counter(str(task.get("state") or "queued") for task in job_tasks)
         job_id = str(job["id"])
+        created_at = _format_timestamp_for_client(
+            str(job.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
+        updated_at = _format_timestamp_for_client(
+            str(job.get("updatedAt") or job.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
         return JobListItem(
             job_id=job_id,
             title=str(job.get("title") or self._messages["common"]["unknown"]),
             notify_target=_optional_text(job.get("notify_target")) or self._messages["common"]["unknown"],
-            created_at=_format_timestamp(
-                str(job.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
-            updated_at=_format_timestamp(
-                str(job.get("updatedAt") or job.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            created_at=created_at.display,
+            created_at_iso=created_at.raw_iso,
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             is_current=bool(job.get("is_current")),
             is_selected=job_id == selected_job_id,
             task_count=len(job_tasks),
@@ -255,10 +258,8 @@ class JobsPageQueryAssembler:
                 assigned_agent=agent.display_label,
                 assigned_agent_raw=agent.raw_key,
                 assigned_agent_fallback_kind=agent.fallback_kind,
-                updated_at=_format_timestamp(
-                    str(task.get("updatedAt") or task.get("createdAt") or ""),
-                    fallback=self._messages["common"]["unknown"],
-                ),
+                updated_at=updated_at.display,
+                updated_at_iso=updated_at.raw_iso,
                 summary_label=summary_label,
                 summary_text=summary_text,
                 detail_href=self._service._jobs_path(
@@ -270,7 +271,7 @@ class JobsPageQueryAssembler:
                 + "#job-task-detail",
                 is_selected=str(task["id"]) == selected_task_id,
             )
-            for task, agent, (summary_label, summary_text) in [
+            for task, agent, (summary_label, summary_text), updated_at in [
                 (
                     task,
                     self._service._agent_presentation(
@@ -278,6 +279,10 @@ class JobsPageQueryAssembler:
                         empty_label=self._messages["tasks"]["assigned_agent_empty"],
                     ),
                     self._service._task_summary(task),
+                    _format_timestamp_for_client(
+                        str(task.get("updatedAt") or task.get("createdAt") or ""),
+                        fallback=self._messages["common"]["unknown"],
+                    ),
                 )
                 for task in self._service._sort_tasks_for_cards(job_tasks)
             ]
@@ -285,19 +290,23 @@ class JobsPageQueryAssembler:
         latest_task_href = task_previews[0].detail_href if task_previews else None
         is_current = bool(job.get("is_current"))
         work_plan = self._build_current_job_work_plan() if is_current else None
+        created_at = _format_timestamp_for_client(
+            str(job.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
+        updated_at = _format_timestamp_for_client(
+            str(job.get("updatedAt") or job.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
 
         return JobDetailSnapshot(
             job_id=str(job["id"]),
             title=str(job.get("title") or self._messages["common"]["unknown"]),
             notify_target=_optional_text(job.get("notify_target")) or self._messages["common"]["unknown"],
-            created_at=_format_timestamp(
-                str(job.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
-            updated_at=_format_timestamp(
-                str(job.get("updatedAt") or job.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            created_at=created_at.display,
+            created_at_iso=created_at.raw_iso,
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             is_current=is_current,
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
@@ -520,13 +529,14 @@ class JobsPageQueryAssembler:
         work_plan_path = Path.home() / ".openclaw" / "agents" / "team-leader" / "memory" / "work-plan.md"
         path_value = str(work_plan_path)
         preview = _load_detail_preview(path_value)
-        updated_at = _format_timestamp(
+        updated_at = _format_timestamp_for_client(
             _file_timestamp_iso(work_plan_path) or "",
             fallback=self._messages["common"]["unknown"],
         )
         return WorkPlanSnapshot(
             path=path_value,
-            updated_at=updated_at,
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             status_label=self._messages["tasks"]["detail_status_labels"][preview.status],
             detail_preview=preview,
         )

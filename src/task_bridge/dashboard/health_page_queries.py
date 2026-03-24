@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .formatting import format_timestamp as _format_timestamp
 from .formatting import format_timestamp_for_client as _format_timestamp_for_client
 from .snapshots import HealthCheck, HealthSnapshot
 
@@ -26,19 +25,27 @@ class HealthPageQueryAssembler:
             cache_status,
             cache_detail,
         ) = self._build_daemon_summary()
+        leader_notice = _format_timestamp_for_client(
+            leader_last_running_notice_at or "",
+            fallback=messages["leader_last_running_notice_empty"],
+        )
         checks = [
             HealthCheck("store-home", messages["store_home_check"], "ok", self._service.home_path),
             HealthCheck("records", messages["records_check"], records_status, records_detail),
             HealthCheck("daemon-state", messages["daemon_check"], daemon_status, daemon_detail),
-            HealthCheck("prompt-cache", messages["cache_check"], cache_status, cache_detail),
+            HealthCheck(
+                "prompt-cache",
+                messages["cache_check"],
+                cache_status,
+                cache_detail,
+                detail_time_label=messages["leader_running_notice"],
+                detail_time_display=leader_notice.display,
+                detail_time_iso=leader_notice.raw_iso,
+            ),
         ]
         generated_at = _format_timestamp_for_client(
             self._service._now_provider(),
             fallback=self._messages["common"]["unknown"],
-        )
-        leader_notice = _format_timestamp_for_client(
-            leader_last_running_notice_at or "",
-            fallback=messages["leader_last_running_notice_empty"],
         )
         return HealthSnapshot(
             home_path=self._service.home_path,
@@ -77,24 +84,14 @@ class HealthPageQueryAssembler:
         daemon_status = "ok"
         daemon_detail = messages["daemon_ok_existing"]
         cache_status = "ok"
-        cache_detail = messages["cache_ok"].format(
-            worker_prompt_entries=worker_prompt_entries,
-            leader_last_running_notice_at=messages["leader_last_running_notice_empty"],
-        )
+        cache_detail = messages["cache_ok"].format(worker_prompt_entries=worker_prompt_entries)
         try:
             daemon_exists = self._service.store.daemon_state_path().exists()
             daemon_state = self._service.store.load_daemon_state()
             worker_prompt_entries = len(daemon_state["worker_last_prompt_at"])
             leader_last_running_notice_at = str(daemon_state.get("leader_last_running_notice_at") or "") or None
-            leader_last_running_notice_display = _format_timestamp(
-                leader_last_running_notice_at or "",
-                fallback=messages["leader_last_running_notice_empty"],
-            )
             daemon_detail = messages["daemon_ok_existing"] if daemon_exists else messages["daemon_ok_default"]
-            cache_detail = messages["cache_ok"].format(
-                worker_prompt_entries=worker_prompt_entries,
-                leader_last_running_notice_at=leader_last_running_notice_display,
-            )
+            cache_detail = messages["cache_ok"].format(worker_prompt_entries=worker_prompt_entries)
         except Exception:
             daemon_status = "warn"
             cache_status = "warn"

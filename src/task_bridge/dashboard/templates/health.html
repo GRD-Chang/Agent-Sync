@@ -75,6 +75,12 @@
         <div class="detail-callout">
           <p class="eyebrow">{{ check.label }}</p>
           <p>{{ check.detail }}</p>
+          {% if check.detail_time_display %}
+          <p>
+            {{ check.detail_time_label }}:
+            {{ render_local_time(check.detail_time_display, check.detail_time_iso) }}
+          </p>
+          {% endif %}
         </div>
       </article>
       {% endfor %}

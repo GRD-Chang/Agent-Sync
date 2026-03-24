@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from task_bridge.runtime import PendingLeaderFollowupJob, collect_pending_leader_followup_jobs
 
 from .formatting import (
-    format_timestamp as _format_timestamp,
     format_timestamp_for_client as _format_timestamp_for_client,
     is_overdue as _is_overdue,
     optional_text as _optional_text,
@@ -181,6 +180,10 @@ class AlertsPageQueryAssembler:
             task.get("assigned_agent"),
             empty_label=self._messages["recent_update"]["unassigned"],
         )
+        updated_at = _format_timestamp_for_client(
+            str(task.get("updatedAt") or task.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
         return AlertTaskSnapshot(
             task_id=task_id,
             job_id=job_id,
@@ -188,10 +191,8 @@ class AlertsPageQueryAssembler:
             assigned_agent_raw=agent.raw_key,
             assigned_agent_fallback_kind=agent.fallback_kind,
             state=str(task.get("state") or "queued"),
-            updated_at=_format_timestamp(
-                str(task.get("updatedAt") or task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             summary_label=summary_label,
             summary_text=summary_text,
             detail_href=self._service._tasks_path(job_id=job_id, task_id=task_id) + "#tasks-detail",

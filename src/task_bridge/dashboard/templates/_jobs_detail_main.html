@@ -22,11 +22,11 @@
     </div>
     <div>
       <dt>{{ ui.jobs.created_at }}</dt>
-      <dd>{{ selected_job.created_at }}</dd>
+      <dd>{{ render_local_time(selected_job.created_at, selected_job.created_at_iso) }}</dd>
     </div>
     <div>
       <dt>{{ ui.jobs.updated_at }}</dt>
-      <dd>{{ selected_job.updated_at }}</dd>
+      <dd>{{ render_local_time(selected_job.updated_at, selected_job.updated_at_iso) }}</dd>
     </div>
     <div>
       <dt>{{ ui.jobs.tasks_total }}</dt>
