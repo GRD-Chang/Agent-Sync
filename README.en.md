@@ -1,285 +1,252 @@
-# OpenClaw multi-agent orchestration for Codex
+# OpenClaw Multi-Agent Orchestration for Codex
 
-> Build an OpenClaw multi-agent development team that can actually deliver, by fixing the state-loss problem that appears when agents orchestrate tools like Codex.
+> Build an OpenClaw multi-agent development team that can actually deliver, and fix both the state-loss problem and workflow breakage that appear when agents orchestrate tools like Codex.
 
 [English](README.en.md) | [中文](README.md)
 
-`task-bridge` is a local-first, lightweight task coordination system designed for OpenClaw multi-agent workflows. Its core mission is simple: **make an OpenClaw-built agent team reliably orchestrate lower-level coding engines such as Codex or Claude Code to complete real long-running development work.**
+`task-bridge` is a local-first, lightweight task coordination system built for OpenClaw multi-agent collaboration. Its core mission is straightforward: let an OpenClaw-built agent team reliably orchestrate lower-level execution engines such as Codex or Claude Code to complete real long-running development work.
 
-## Dashboard Preview
+---
 
-Turn local jobs, tasks, worker queues, alerts, and health into a visual read-only workspace with one command:
+## Dashboard Preview (Global Control)
+
+Turn local Jobs, Tasks, Worker Queue, Alerts, and Health into a visual dashboard with one command:
 
 ```bash
 task-bridge dashboard
 ```
 
-The examples below use the dashboard overview page and the `Job detail` page to show how the leader can inspect overall state, task distribution, dispatch timelines, and execution evidence.
+As a human operator or Team Leader, you can use the dashboard to monitor the whole team in real time. Below are examples of the overview page and the job detail page:
 
 | Dashboard overview | Dashboard job detail |
 |---|---|
 | ![Dashboard overview](docs/assets/dashboard/overview.png) | ![Dashboard job detail](docs/assets/dashboard/job_detail.png) |
-| Read task-state totals, worker utilization, and recent updates at a glance. | Drill into one job to review the dispatch timeline, task distribution, and surfaced blockers. |
+| **Bird's-eye view**: inspect task-state distribution, agent queue activity, and system health. | **Execution focus**: drill into one job to review the dispatch timeline, task breakdown, and current blockers. |
 
-
-If you are trying to build an agent team with OpenClaw, the main problem is usually not the lack of agents. The problem is that agents struggle to keep a long engineering workflow under control. State gets lost, asynchronous execution breaks the chain, and the workflow stops moving.
-
-`task-bridge` solves exactly that. **In the real collaboration loop, OpenClaw agents only need to create tasks or update state through `task-bridge`, while a long-running `task-bridge daemon` supervises the full lifecycle and serial dispatch in the background.** It adds a stable task state machine and local persistence layer to multi-agent collaboration, replacing fragile chat-history state with auditable local files so the whole dispatch-execute-recover-follow-up loop becomes reliable.
+| Task detail | Bilingual support |
+|---|---|
+| ![Dashboard task detail](docs/assets/dashboard/task_detail.png) | ![Dashboard job list](docs/assets/dashboard/job_list.png) |
+| **Execution evidence**: inspect the event timeline, latest result summary, and attached Markdown execution details in one place. | **Full visibility**: quickly tell which jobs are still moving and which ones have converged. Supports English/Chinese UI and local font switching. |
 
 ---
 
-## Roles and Responsibilities
-
-Under `task-bridge`, the team is split like this:
-
-- Team Leader: breaks down requirements and dispatches tasks in chat.
-- Code / Quality Agent: accepts tasks, reports state, and drives the lower-level coding engine.
-- Codex / Claude Code: focuses on high-quality code generation and modification.
-- Task Bridge: stores state, dispatches serially, and sends terminal-state notifications to connect orchestration and execution.
-
 ## Why Existing Approaches Break
 
-While integrating OpenClaw with engines such as Codex, two common approaches looked reasonable at first but failed in real engineering workflows.
+When you try to assemble an agent team with OpenClaw, the hardest problem is usually not the lack of agents. The real problem is that **agents struggle to keep long-running development work under control**.
+
+While integrating OpenClaw with lower-level engines such as Codex, people usually try one of two mainstream approaches. In real engineering workflows, both can cause catastrophic orchestration breakage:
 
 ### 1. Direct ACP Invocation
 
-- Approach: `team-leader` dispatches work to `code-agent`, which then launches Codex through `sessions_spawn(acp)`.
-- Problem: some IM platforms such as Feishu do not support streaming. In one-run mode, `sessions_spawn(acp)` becomes asynchronous. The `code-agent` wakes Codex up and immediately reports back to the leader before the code is actually done. That collapses the distinction between "task started" and "task finished," so the orchestration layer breaks.
+- **Approach**: the Team Leader breaks work down and sends it to a Code Agent, which directly wakes Codex through commands such as `sessions_spawn(acp)`.
+- **Why it breaks**: on IM platforms such as Feishu that do not support long-lived streaming, `sessions_spawn` typically becomes asynchronous. The Code Agent sends the wake-up command and immediately assumes its own work is finished, then reports back to the Leader with "task completed" before Codex has even finished reading the codebase. Once "task started" is treated as "task finished," the Leader can move into review or dispatch the next step far too early, and the multi-agent workflow collapses right at the start.
 
 ### 2. Relying on a Coding-Agent Skill
 
-- Approach: let the worker directly drive Codex with a coding-agent skill.
-- Problem: Codex often handles long-running work, and the `code-agent` cannot reliably detect the true completion point of that long execution. Heartbeats and cron-style polling are often not stable enough. The result is that Codex may quietly finish the work, but nobody verifies the result, writes back the terminal state, or informs the leader. The task is effectively done, but the workflow never advances.
+- **Approach**: attach a dedicated coding-agent skill to the Worker Agent and let it drive Codex directly through a long-running chat session.
+- **Why it breaks**: real engineering tasks often require tens of minutes of context retrieval, code generation, and iterative correction. A Code Agent built on top of an LLM chat loop can rarely track such a long lifecycle reliably within one session. If you depend on heartbeats or cron, the control loop is usually still too fragile. The worst-case outcome is brutal: Codex quietly finishes the work, but the Code Agent has already timed out or disappeared. No one verifies the result, no one writes back the terminal state, and no one notifies the Leader. The execution layer is done, while orchestration is permanently stalled.
 
 ---
 
 ## The Task Bridge Solution
 
-`task-bridge` abandons the idea that long-running work should be carried by transient chat state. Instead, it rebuilds the core flow as a minimal local task state machine:
+`task-bridge` abandons the idea that long-running work should be carried by transient chat state, and rebuilds the flow as a minimal local task state machine:
 
-- Local source of truth: all decomposition data such as `job`, `task`, `state`, and `result` is stored as local JSON files, so task state is always inspectable.
-- Serial execution and controlled async behavior: the same worker handles only one task at a time. Workers are required to keep writing back execution records so a long asynchronous action becomes a stable, trackable task flow.
-- Periodic forward progress: to keep engines such as Codex moving on long tasks, the daemon periodically reminds the worker to continue, preventing stalls or silent hangs.
-- Precise terminal-state notifications: Bridge only notifies the leader when the task truly reaches `done`, `blocked`, or `failed`, reducing noise from intermediate steps.
-- Automated follow-up: only the current job's terminal tasks grouped under the latest terminal notice window can open this unresolved follow-up window. If no new task appears after that latest terminal notice, Bridge merges the related terminal tasks into one reminder and nudges the leader to decide the next step, preventing the pipeline from idling. The default delay is 5 minutes and can be changed with `task-bridge daemon --leader-followup`.
-- Auditable and override-friendly: task facts, scheduler state, and execution traces can all be inspected and adjusted through the CLI.
+- **Local persisted source of truth**: instead of relying on fragile chat history, every Job, Task, and State is stored locally as JSON.
+- **Serial execution with controlled async behavior**: one Worker handles only one task at a time, and it must keep writing back execution records so asynchronous work becomes a stable, traceable task flow.
+- **Periodic anti-stall progress nudges**: the daemon periodically reminds Workers to keep moving, preventing silent hangs.
+- **Precise terminal notifications with automated follow-up**: the Leader is only woken when a task truly reaches `done`, `blocked`, or `failed`, and unattended terminal tasks can trigger an automatic follow-up reminder so the pipeline does not stall.
 
 ---
 
-## How It Works
+## A Complete Agent Team
 
-In practice, the full task flow depends on **agents managing tasks through the CLI** and a **daemon process supervising dispatch in the background**:
+The system introduces a specialized agent team that covers the full software-delivery lifecycle. Under `task-bridge`, responsibilities stay clear:
+
+- **Team Leader (Commander)**: focuses on requirement decomposition, overall coordination, and dispatching high-level Jobs in chat.
+- **Planning Agent (Architect)**: owns system design, technical choices, and detailed workflow/Task planning.
+- **Code Agent (Programmer)**: accepts work, reports status, and drives the lower-level engine (Codex / Claude Code) to make concrete code changes.
+- **Quality Agent (QA)**: handles code quality checks, test writing and execution, bug fixing, and regression validation.
+- **Release Agent (Release Manager)**: owns documentation, version control, packaging, and deployment orchestration.
+- **Task Bridge (Task Hub)**: the invisible backbone that persists state, dispatches serially, and sends terminal-state notifications.
+
+### Operating Model
 
 ```text
-User
- └─ team-leader (orchestrator: breaks down the goal and uses task-bridge to create tasks)
-     |
-     | (task is persisted and queued)
-     v
-[task-bridge daemon] (coordination hub: supervises the queue and dispatches work to an idle worker)
-     |
-     | (dispatch wake-up)
-     v
- code-agent / quality-agent (executor: accepts the task and drives Codex / Claude Code to do the work)
-     |
-     | (execution and completion)
-     v
-[task-bridge daemon] (coordination hub: supervises progress write-backs and wakes the leader when the task reaches a terminal state)
-     |
-     | (terminal-state notification)
-     v
- team-leader (receives the outcome, evaluates it, and either dispatches the next task or delivers to the user)
+User --> [Team Leader] --planning--> [Planning Agent]
+             |                           |
+      (create / break down Jobs & Tasks) |
+             |                           |
+             v                           v
+     ================ [Task Bridge Daemon] ================
+     | (core hub: monitors the queue in the background and |
+     |  dispatches work to idle Workers)                  |
+     ======================================================
+             |                           |
+        (dispatch wake-up)          (dispatch wake-up)
+             v                           v
+       [Code Agent] <---collab---> [Quality Agent] ---> [Release Agent]
+     (drive Codex coding)          (testing and review)   (docs and release)
+             |                           |
+             +------(write-backs and terminal notices)----+
 ```
 
-## Quick Start
+---
 
-From a human operator's perspective, you do **not** need to manage tasks manually with a long list of CLI commands. Configure the agent team, start the daemon, and let the Team Leader handle the rest.
+## Quick Start (Human View)
 
-### 1. Set Up the OpenClaw Team and Install `task-bridge`
+As a human user, you do not need to manage tasks manually through a long list of CLI commands. Configure the environment, start the daemon, and then just talk to the Team Leader.
 
-You need to import the agent prompts and skills from this repository into your OpenClaw environment, and install `task-bridge` in the environment that agents can execute.
+### 1. Configure and Install
 
-Minimum install step from the repository root:
+You need to load the Agent prompts and Skills from this repository into OpenClaw, and install `task-bridge` into the environment your agents can execute:
 
 ```bash
+# Run the minimum install from the repository root
 python -m pip install -e .
 ```
 
-Notes:
+*(Note: if you change `pyproject.toml` or the console entry point, run this command again.)*
 
-- `task-bridge` is a Python CLI entry point defined in `pyproject.toml`.
-- The repository `package.json` is only for Playwright browser tests of the dashboard. It is not required to run `task-bridge`, the daemon, or the dashboard itself.
-- If you change `pyproject.toml`, Python dependencies, or the console-script entry point, run `python -m pip install -e .` again.
+**Best practice: let AI configure it for you**
 
-Best practice: let an AI agent do the setup for you.
+Hand the setup documents to OpenClaw `default-agent` or Claude Code:
 
-- Chinese step-by-step setup guide: ask the agent to read and execute `docs/zh/openclaw-agent-setup.md`
-- English setup guide: ask the agent to read and execute `docs/en/openclaw-agent-setup.md`
-- Chinese workflow guide: `docs/zh/openclaw-agent-flow.md`
-- English workflow guide: `docs/en/openclaw-agent-flow.md`
+- Chinese setup guide: `docs/zh/openclaw-agent-setup.md`
+- English setup guide: `docs/en/openclaw-agent-setup.md`
 
-### 2. Start the Task Bridge Daemon
+### 2. Start the Task Bridge Daemon (Background Supervisor)
 
-Once setup is done, the main thing a human needs to do is keep the task hub running in the background:
+Once setup is done, keep the task hub running in the background:
 
 ```bash
 task-bridge daemon --poll-seconds 10 --worker-reminder-seconds 900 --leader-reminder-seconds 3600
 ```
 
-Parameter notes:
+**Parameter notes:**
 
-- `--poll-seconds 10`: how often the daemon polls the task queue. Default: 10 seconds.
-- `--worker-reminder-seconds 900`: anti-stall reminder interval for workers running tasks. Default: 15 minutes.
-- `--leader-reminder-seconds 3600`: reminder interval for the leader when long-running tasks are still in progress. Default: 60 minutes.
-- `--leader-followup 300`: applies only to the current job's terminal tasks as a job-level grouped window. Bridge uses the latest terminal notification as the anchor; if no new task appears in that window, it merges the related terminal tasks into one follow-up reminder for the leader. Default: 5 minutes. Use `0` to disable unresolved follow-up.
+- `--poll-seconds 10`: queue polling interval. Default: 10 seconds.
+- `--worker-reminder-seconds 900`: anti-stall reminder interval for Workers. Default: 15 minutes. If progress is not updated in time, the Worker is nudged to continue.
+- `--leader-reminder-seconds 3600`: reminder interval for the Leader on long-running work. Default: 60 minutes. This prevents the Leader from losing awareness of execution status.
+- `--leader-followup 300`: terminal-task follow-up window. Default: 5 minutes. Use `0` to disable it. If a terminal result arrives and no new task is created for too long, Bridge merges the situation into one reminder and nudges the Leader for a next-step decision.
 
-### 2.5 Optional: Dashboard (Read-only)
-
-If you want a web UI to inspect jobs, tasks, worker queues, alerts, and health, start the read-only dashboard:
+**Persistent run (`nohup`)**:
 
 ```bash
-task-bridge dashboard
-
-# override bind / port
-task-bridge dashboard --host 127.0.0.1 --port 8000
-
-# point to an isolated store
-TASK_BRIDGE_HOME=/tmp/task-bridge-demo task-bridge dashboard
+mkdir -p .task-bridge
+nohup task-bridge daemon \
+  --poll-seconds 60 \
+  --worker-reminder-seconds 900 \
+  --leader-reminder-seconds 7200 \
+  --leader-followup 1800 \
+  > .task-bridge/daemon.log 2>&1 &
+echo $! > .task-bridge/daemon.pid
 ```
 
-- Defaults to `127.0.0.1:8000` and prints the local URL on startup.
-- The dashboard is read-only over your local store and exposes no mutation endpoints.
-- In-page switcher for `en` / `zh-CN` and local font style.
+*(Stop it with `kill "$(cat .task-bridge/daemon.pid)"`)*
 
-Quick tour: start from the job register to see which workstreams are active, then open the job or task detail page when you need the timeline, result summary, and attached `detail.md` evidence.
+### 3. Launch the Dashboard (Read-only, Optional)
 
-| Job register | Job detail |
-|---|---|
-| ![Dashboard job list](docs/assets/dashboard/job_list.png) | ![Dashboard job detail](docs/assets/dashboard/job_detail.png) |
-| See active jobs, notification targets, and whether work has already converged. | Inspect dispatch rhythm, task distribution, and surfaced blockers without leaving the selected job. |
+```bash
+# Default bind: 127.0.0.1:8000
+task-bridge dashboard
 
-| Task detail | Dashboard overview |
-|---|---|
-| ![Dashboard task detail](docs/assets/dashboard/task_detail.png) | ![Dashboard overview](docs/assets/dashboard/overview.png) |
-| Review task timestamps, the latest worker write-back, and the supporting detail artifact in one place. | Return to the overview page to confirm system health and whether idle workers are available for the next dispatch. |
+# Or specify host and port
+task-bridge dashboard --host 127.0.0.1 --port 8000
+```
 
-### 3. Give the Team Leader a Requirement
+*Note: the dashboard only reads local data and exposes no write operations. It is suitable for auditing, blocker inspection, and daily checks.*
 
-In your IM tool such as Feishu, or in a terminal session, talk directly to the **Team Leader**:
+### 4. Give the Team Leader a Requirement
 
-> "We need a simple Python TODO CLI with SQLite storage and 80% test coverage. Start planning and execution."
+In your IM tool (such as Feishu) or in a terminal session, talk directly to the **Team Leader**:
 
-The Team Leader will call `task-bridge` to break down and create tasks, and the daemon will automatically dispatch them to `code-agent`, which then wakes up the lower-level coding engine. You only need to wait for the final delivery.
+> "We need to build a Python CLI tool with user authentication and 80% test coverage. Let the Planning Agent produce the plan first, then let the Code Agent start implementation."
+
+From there, the Team Leader will break the work down automatically, and the daemon will wake each agent in sequence until the work is delivered.
 
 ---
 
-## Extra: CLI Toolbox for Agents and Debugging
+## Extra Material: CLI Toolbox (For Agents / Debugging)
 
-> Note: the commands below are primarily meant for OpenClaw agents to call automatically in the background. Humans usually do not need them unless they are debugging, auditing, or forcing manual intervention.
+> **Note**: the commands below are primarily meant for agents to call in the background, such as when they write back progress. Human operators usually do not need them except for debugging or forced intervention.
 
-### Useful Debug Commands
-
-Inspect tasks and worker queues:
+### Common Debug Commands
 
 ```bash
+# Inspect queue and status
 task-bridge list-tasks --json
 task-bridge worker-status --json
 task-bridge queue code-agent --json
-```
 
-Run a single dispatch cycle without starting the daemon:
-
-```bash
+# Run one dispatch cycle without starting the daemon
 task-bridge dispatch-once --json
 ```
 
-If you are testing manually without the daemon running, a terminal state only updates local files. Send the final notification explicitly:
+### Local Data Model
 
-```bash
-task-bridge complete <task_id> --job <job_id> --result "final summary"
-task-bridge notify <task_id> --job <job_id>
-```
-
-### Data Model
-
-The directory layout stays simple so humans can inspect progress directly:
+The task structure is explicit and easy to inspect under `~/.openclaw/task-bridge/`:
 
 ```text
 jobs/<job_id>/
-  ├── job.json            # Full work topic
-  ├── tasks/
-  │   └── <task_id>.json  # Smallest executable unit
-  └── artifacts/
-      └── <task_id>/
-          └── detail.md   # Optional detailed execution log; included automatically in terminal notifications if present
+  |- job.json            # Full work topic
+  |- tasks/
+  |  \- <task_id>.json   # Smallest executable unit
+  \- artifacts/
+     \- <task_id>/
+        \- detail.md     # Optional full execution details; included automatically in terminal notifications
 ```
 
 ### Core Commands
 
 | Category | Commands | Description |
 |------|------|------|
-| Task orchestration | `create-job`, `list-jobs`, `show-job`, `use-job`, `current-job` | Manage top-level work topics |
-| Task management | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | Manage concrete execution steps |
-| Worker state | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Workers write back progress and terminal state |
-| Bridge scheduling | `worker-status`, `queue`, `dispatch-once`, `notify`, `daemon` | Dispatch and supervision |
-
-## Environment Variables
-
-The current code auto-loads only one variable from the current working directory `.env` or `~/.openclaw/.env` (see `.env.example`):
-
-- `TASK_BRIDGE_USER_CHAT_ID`: user `chat_id` injected into notification prompts. The notification flow expects this exact variable name; current code does not fall back to `TASK_BRIDGE_USER_FEISHU_ID`.
-
-The variables below must be exported by your shell, service manager, or command prefix. `task-bridge` does not auto-read them from `.env` files:
-
-- `TASK_BRIDGE_HOME`: custom data directory. Default: `~/.openclaw/task-bridge`.
-- `TASK_BRIDGE_CAPTURE_FILE`: intercept outbound sending actions and write them to a file. Useful for isolated end-to-end testing.
-- `TASK_BRIDGE_DASHBOARD_SSH_TARGET`: override the SSH target shown in dashboard launch guidance. This only changes the printed hint, not the bind address.
+| **Task orchestration** | `create-job`, `list-jobs`, `show-job`, `use-job`, `current-job` | Manage high-level work topics (used by the Leader) |
+| **Task management** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | Manage concrete execution steps |
+| **Worker state** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Workers write back progress and terminal states (used by multiple agents) |
+| **Bridge scheduling** | `worker-status`, `queue`, `dispatch-once`, `notify`, `daemon` | Dispatching and system supervision |
 
 ---
 
-## Guides
+## Environment Variables and Advanced Configuration
 
-Use these documents to run the workflow end to end:
+The system automatically reads variables from the current working directory `.env` or `~/.openclaw/.env`:
 
+- `TASK_BRIDGE_USER_CHAT_ID`: the user `chat_id` injected into notification prompts. The notification chain depends on it.
+
+The variables below must be injected explicitly through your shell or command prefix:
+
+- `TASK_BRIDGE_HOME`: custom data directory. Default: `~/.openclaw/task-bridge`.
+- `TASK_BRIDGE_CAPTURE_FILE`: intercept outbound sends and write them to a file. Useful for isolated end-to-end tests.
+- `TASK_BRIDGE_DASHBOARD_SSH_TARGET`: override the SSH target shown in dashboard launch guidance without changing the actual bind address.
+
+---
+
+## Reference Guides
+
+To fit this workflow cleanly into your environment, see:
+
+- [OpenClaw Agent Setup (Chinese)](docs/zh/openclaw-agent-setup.md)
+- [OpenClaw Agent Workflow Guide (Chinese)](docs/zh/openclaw-agent-flow.md)
 - [OpenClaw Agent Setup (English)](docs/en/openclaw-agent-setup.md)
 - [OpenClaw Agent Workflow Guide (English)](docs/en/openclaw-agent-flow.md)
-- [OpenClaw Agent Configuration Guide (Chinese)](docs/zh/openclaw-agent-setup.md)
-- [OpenClaw Agent Workflow Guide (Chinese)](docs/zh/openclaw-agent-flow.md)
 
-## Development and Testing
+---
 
-`<repo-root>` below means this repository root; the folder does not need to be named `task-bridge`.
-
-Install the local executable entry point:
-```bash
-cd /path/to/<repo-root>
-python -m pip install -e .
-```
-
-Run from source without relying on PATH:
+### Development and Testing Guide
 
 ```bash
-cd /path/to/<repo-root>
+# 1. Run from source without relying on PATH
 PYTHONPATH=src python -m task_bridge create-job --title "Dev task"
-```
 
-Run Python tests:
-
-```bash
-cd /path/to/<repo-root>
+# 2. Run Python tests
 python -m pip install -e .[test] pytest
 python -m pytest -q
-```
 
-Optional: run Playwright browser tests for the dashboard:
-
-```bash
-cd /path/to/<repo-root>
+# 3. Run Dashboard Playwright tests
 npm install
 npm run playwright:install
 npm run test:playwright
 ```
 
----
-
-`task-bridge` is not a large all-in-one platform. It is a minimal task bridge, and that is exactly the point. It gives your agent team a stable task-flow and state-management layer, while leaving the actual execution model open: you can decide how agents complete work, how prompts are designed, how tools are called, and even whether some workers are ordinary scripts rather than LLM-driven agents.
+> **Task Bridge philosophy**: this is not an all-in-one platform. It is a minimal task bridge. Its real value is that it keeps your agent team from going out of sync and makes AI collaboration actually run end to end. How you design prompts, and how you plug in traditional script workers, remains fully open to you.
