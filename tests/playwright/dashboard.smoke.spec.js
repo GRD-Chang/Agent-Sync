@@ -211,6 +211,8 @@ async function seedLiveDashboard(homeDir) {
   runBridgeJson(homeDir, ["block", taskB1.id, "--job", jobB.id, "--result", "waiting on input"]);
   const taskB1JsonPath = path.join(homeDir, "jobs", jobB.id, "tasks", `${taskB1.id}.json`);
   const taskB1Payload = JSON.parse(await fs.readFile(taskB1JsonPath, "utf-8"));
+  taskB1Payload.createdAt = "2026-03-19T08:00:00Z";
+  taskB1Payload.updatedAt = "2026-03-19T08:10:00Z";
   taskB1Payload._scheduler.final_notified_at = "2026-03-19T09:00:00Z";
   taskB1Payload._scheduler.leader_followup_due_at = "2026-03-19T10:00:00Z";
   await fs.writeFile(taskB1JsonPath, `${JSON.stringify(taskB1Payload, null, 2)}\n`, "utf-8");
@@ -227,7 +229,10 @@ async function seedLiveDashboard(homeDir) {
   runBridgeJson(homeDir, ["fail", taskB2.id, "--job", jobB.id, "--result", "worker crashed"]);
   const taskB2JsonPath = path.join(homeDir, "jobs", jobB.id, "tasks", `${taskB2.id}.json`);
   const taskB2Payload = JSON.parse(await fs.readFile(taskB2JsonPath, "utf-8"));
+  taskB2Payload.createdAt = "2026-03-20T07:00:00Z";
+  taskB2Payload.updatedAt = "2026-03-20T07:10:00Z";
   taskB2Payload._scheduler.final_notified_at = "2026-03-20T08:00:00Z";
+  taskB2Payload._scheduler.leader_followup_due_at = "2026-03-20T09:00:00Z";
   await fs.writeFile(taskB2JsonPath, `${JSON.stringify(taskB2Payload, null, 2)}\n`, "utf-8");
 
   const workPlanPath = path.join(
@@ -670,11 +675,11 @@ test("alerts cards navigate into canonical tasks detail routes", async ({ page }
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("worker crashed");
 
     await page.goto(`${server.baseUrl}/alerts`);
-    await page.getByTestId(`dashboard-alerts-followup-task-${seeded.taskB1.id}`).click();
+    await page.getByTestId(`dashboard-alerts-followup-task-${seeded.taskB2.id}`).click();
     await expect(page).toHaveURL(
-      `${server.baseUrl}/tasks?job=${seeded.jobB.id}&task=${seeded.taskB1.id}#tasks-detail`,
+      `${server.baseUrl}/tasks?job=${seeded.jobB.id}&task=${seeded.taskB2.id}#tasks-detail`,
     );
-    await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("waiting on input");
+    await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("worker crashed");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
@@ -877,7 +882,7 @@ test("worker queue, alerts, and health render live read-only base pages", async 
     await expect(page.getByTestId("dashboard-alerts-hero")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-summary")).toContainText("What needs attention now");
     await expect(page.getByTestId("dashboard-alerts-risk-list")).toContainText(seeded.taskB2.id);
-    await expect(page.getByTestId("dashboard-alerts-followups")).toContainText(seeded.taskB1.id);
+    await expect(page.getByTestId("dashboard-alerts-followups")).toContainText(seeded.taskB2.id);
 
     await page.goto(`${server.baseUrl}/health`);
     await expect(page.getByTestId("dashboard-health-hero")).toBeVisible();
@@ -978,10 +983,9 @@ test("dense tasks and alerts keep pagination, anchors, and priority visibility s
     await page.goto(`${server.baseUrl}/alerts`);
     await expect(page.getByTestId("dashboard-alerts-risk-group-blocked")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
-    await expect(page.getByTestId("dashboard-alerts-followup-group-due")).toBeVisible();
-    await expect(page.getByTestId("dashboard-alerts-followup-group-scheduled")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-risk-pagination-page-2")).toBeVisible();
-    await expect(page.getByTestId("dashboard-alerts-followup-pagination-page-2")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-followups")).toContainText("No unresolved follow-ups");
+    await expect(page.getByTestId("dashboard-alerts-followup-pagination")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
 
     await page.getByTestId("dashboard-alerts-risk-pagination-page-2").click();
@@ -992,13 +996,8 @@ test("dense tasks and alerts keep pagination, anchors, and priority visibility s
     expect(riskTop).toBeLessThan(180);
     await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
 
-    await page.getByTestId("dashboard-alerts-followup-pagination-page-2").click();
-    await expect(page).toHaveURL(new RegExp("/alerts\\?(?=.*risk_page=2)(?=.*followup_page=2).*#alerts-followups$"));
-    const followupsTop = await page.locator("#alerts-followups").evaluate((node) =>
-      Math.round(node.getBoundingClientRect().top),
-    );
-    expect(followupsTop).toBeLessThan(180);
-    await expect(page.getByTestId("dashboard-alerts-followup-group-scheduled")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-followups")).toContainText("No unresolved follow-ups");
+    await expect(page.getByTestId("dashboard-alerts-followup-pagination")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   } finally {
     await stopDashboard(server);
