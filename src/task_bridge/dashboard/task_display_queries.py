@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from .detail_preview import load_detail_preview as _load_detail_preview
 from .formatting import (
     format_timestamp as _format_timestamp,
+    format_timestamp_for_client as _format_timestamp_for_client,
     optional_display_text as _optional_display_text,
     optional_text as _optional_text,
     truncate as _truncate,
@@ -122,6 +123,10 @@ class TaskDisplayQueryAssembler:
         events: list[tuple[str, int, TaskTimelineEvent]] = []
         created_at = str(task.get("createdAt") or "")
         if created_at:
+            created_at_display = _format_timestamp_for_client(
+                created_at,
+                fallback=self._messages["common"]["unknown"],
+            )
             events.append(
                 (
                     created_at,
@@ -129,10 +134,8 @@ class TaskDisplayQueryAssembler:
                     TaskTimelineEvent(
                         key="created",
                         title=tasks_messages["timeline_created"],
-                        timestamp_display=_format_timestamp(
-                            created_at,
-                            fallback=self._messages["common"]["unknown"],
-                        ),
+                        timestamp_iso=created_at_display.raw_iso,
+                        timestamp_display=created_at_display.display,
                         note=tasks_messages["timeline_created_note"].format(
                             summary=_truncate(
                                 _optional_display_text(task.get("requirement")) or self._messages["common"]["unknown"],
@@ -145,6 +148,10 @@ class TaskDisplayQueryAssembler:
 
         updated_at = str(task.get("updatedAt") or "")
         if updated_at and updated_at != created_at:
+            updated_at_display = _format_timestamp_for_client(
+                updated_at,
+                fallback=self._messages["common"]["unknown"],
+            )
             events.append(
                 (
                     updated_at,
@@ -152,10 +159,8 @@ class TaskDisplayQueryAssembler:
                     TaskTimelineEvent(
                         key="updated",
                         title=tasks_messages["timeline_updated"],
-                        timestamp_display=_format_timestamp(
-                            updated_at,
-                            fallback=self._messages["common"]["unknown"],
-                        ),
+                        timestamp_iso=updated_at_display.raw_iso,
+                        timestamp_display=updated_at_display.display,
                         note=tasks_messages["timeline_updated_note"].format(
                             state_label=state_label,
                             summary_label=recent_label,
@@ -168,6 +173,10 @@ class TaskDisplayQueryAssembler:
         scheduler = task_scheduler(task)
         dispatch_at = _optional_text(scheduler.get("last_dispatch_at"))
         if dispatch_at:
+            dispatch_at_display = _format_timestamp_for_client(
+                dispatch_at,
+                fallback=self._messages["common"]["unknown"],
+            )
             events.append(
                 (
                     dispatch_at,
@@ -175,10 +184,8 @@ class TaskDisplayQueryAssembler:
                     TaskTimelineEvent(
                         key="dispatch",
                         title=tasks_messages["timeline_dispatch"],
-                        timestamp_display=_format_timestamp(
-                            dispatch_at,
-                            fallback=self._messages["common"]["unknown"],
-                        ),
+                        timestamp_iso=dispatch_at_display.raw_iso,
+                        timestamp_display=dispatch_at_display.display,
                         note=tasks_messages["timeline_dispatch_note"].format(agent=agent.display_label),
                     ),
                 )
@@ -186,6 +193,10 @@ class TaskDisplayQueryAssembler:
 
         final_notified_at = _optional_text(scheduler.get("final_notified_at"))
         if final_notified_at:
+            final_notified_display = _format_timestamp_for_client(
+                final_notified_at,
+                fallback=self._messages["common"]["unknown"],
+            )
             events.append(
                 (
                     final_notified_at,
@@ -193,10 +204,8 @@ class TaskDisplayQueryAssembler:
                     TaskTimelineEvent(
                         key="final-notified",
                         title=tasks_messages["timeline_final_notified"],
-                        timestamp_display=_format_timestamp(
-                            final_notified_at,
-                            fallback=self._messages["common"]["unknown"],
-                        ),
+                        timestamp_iso=final_notified_display.raw_iso,
+                        timestamp_display=final_notified_display.display,
                         note=tasks_messages["timeline_final_notified_note"].format(target=target),
                     ),
                 )
@@ -204,6 +213,10 @@ class TaskDisplayQueryAssembler:
 
         followup_due_at = _optional_text(scheduler.get("leader_followup_due_at"))
         if followup_due_at:
+            followup_due_display = _format_timestamp_for_client(
+                followup_due_at,
+                fallback=self._messages["common"]["unknown"],
+            )
             events.append(
                 (
                     followup_due_at,
@@ -211,10 +224,8 @@ class TaskDisplayQueryAssembler:
                     TaskTimelineEvent(
                         key="followup-due",
                         title=tasks_messages["timeline_followup_due"],
-                        timestamp_display=_format_timestamp(
-                            followup_due_at,
-                            fallback=self._messages["common"]["unknown"],
-                        ),
+                        timestamp_iso=followup_due_display.raw_iso,
+                        timestamp_display=followup_due_display.display,
                         note=tasks_messages["timeline_followup_due_note"],
                     ),
                 )
@@ -222,6 +233,10 @@ class TaskDisplayQueryAssembler:
 
         followup_sent_at = _optional_text(scheduler.get("leader_followup_sent_at"))
         if followup_sent_at:
+            followup_sent_display = _format_timestamp_for_client(
+                followup_sent_at,
+                fallback=self._messages["common"]["unknown"],
+            )
             events.append(
                 (
                     followup_sent_at,
@@ -229,10 +244,8 @@ class TaskDisplayQueryAssembler:
                     TaskTimelineEvent(
                         key="followup-sent",
                         title=tasks_messages["timeline_followup_sent"],
-                        timestamp_display=_format_timestamp(
-                            followup_sent_at,
-                            fallback=self._messages["common"]["unknown"],
-                        ),
+                        timestamp_iso=followup_sent_display.raw_iso,
+                        timestamp_display=followup_sent_display.display,
                         note=tasks_messages["timeline_followup_sent_note"],
                     ),
                 )

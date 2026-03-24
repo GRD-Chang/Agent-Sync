@@ -3,9 +3,109 @@
   const SCROLL_STORAGE_KEY = "task-bridge.dashboard.scroll";
   const DEFAULT_FONT_PRESET = "sans";
   const FONT_PRESETS = new Set(["sans", "editorial", "precision", "mono"]);
+  const UTC_TIME_ZONE = "UTC";
 
   function normalizeFontPreset(value) {
     return FONT_PRESETS.has(value) ? value : DEFAULT_FONT_PRESET;
+  }
+
+  function isValidTimeZone(value) {
+    if (!value) {
+      return false;
+    }
+    try {
+      Intl.DateTimeFormat("en", { timeZone: value }).format(new Date());
+      return true;
+    } catch (error) {
+      void error;
+      return false;
+    }
+  }
+
+  function resolveDashboardTimeZone() {
+    const explicitTimeZone = document.body?.dataset.explicitTimezone || "";
+    if (isValidTimeZone(explicitTimeZone)) {
+      return explicitTimeZone;
+    }
+
+    try {
+      const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (isValidTimeZone(browserTimeZone)) {
+        return browserTimeZone;
+      }
+    } catch (error) {
+      void error;
+    }
+
+    return UTC_TIME_ZONE;
+  }
+
+  function zonedDateParts(date, timeZone) {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    const values = {};
+    formatter.formatToParts(date).forEach((part) => {
+      if (part.type !== "literal") {
+        values[part.type] = part.value;
+      }
+    });
+    return values;
+  }
+
+  function formatDashboardTimestamp(date, timeZone) {
+    const parts = zonedDateParts(date, timeZone);
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+  }
+
+  function formatDashboardUtcOffset(date, timeZone) {
+    const parts = zonedDateParts(date, timeZone);
+    const zonedMillis = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    let offsetMinutes = Math.round((zonedMillis - date.getTime()) / 60000);
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    offsetMinutes = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(offsetMinutes / 60)).padStart(2, "0");
+    const minutes = String(offsetMinutes % 60).padStart(2, "0");
+    return `UTC${sign}${hours}:${minutes}`;
+  }
+
+  function initDashboardTimes() {
+    const resolvedTimeZone = resolveDashboardTimeZone();
+    document.documentElement.setAttribute("data-resolved-timezone", resolvedTimeZone);
+    document.body?.setAttribute("data-resolved-timezone", resolvedTimeZone);
+
+    document.querySelectorAll("[data-local-time]").forEach((node) => {
+      const rawIso = node.getAttribute("datetime") || "";
+      if (!rawIso) {
+        return;
+      }
+
+      const date = new Date(rawIso);
+      if (Number.isNaN(date.getTime())) {
+        return;
+      }
+
+      const display = formatDashboardTimestamp(date, resolvedTimeZone);
+      const offset = formatDashboardUtcOffset(date, resolvedTimeZone);
+      node.textContent = display;
+      node.title = `${display} · ${offset} · ${resolvedTimeZone}`;
+      node.setAttribute("data-resolved-offset", offset);
+      node.setAttribute("data-resolved-timezone", resolvedTimeZone);
+    });
   }
 
   function syncFontButtons(activePreset) {
@@ -344,6 +444,7 @@
   });
 
   document.addEventListener("DOMContentLoaded", () => {
+    initDashboardTimes();
     initFontSwitcher();
     restoreScrollIntent();
     initJobScopePanels();

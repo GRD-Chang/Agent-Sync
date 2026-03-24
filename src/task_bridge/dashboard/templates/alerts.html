@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import render_pagination %}
+{% from "_time.html" import render_local_time %}
 
 {% block content %}
 <div class="ops-page ops-page--alerts">
@@ -16,7 +17,7 @@
       </div>
       <div>
         <dt>{{ ui.alerts.generated_at }}</dt>
-        <dd>{{ alerts.generated_at }}</dd>
+        <dd>{{ render_local_time(alerts.generated_at, alerts.generated_at_iso) }}</dd>
       </div>
       <div>
         <dt>{{ ui.alerts.pending_followups }}</dt>
@@ -93,12 +94,12 @@
               <p class="eyebrow">{{ group.label }}</p>
               <h3>{{ group.label }}</h3>
             </div>
-            <span class="status-pill status-{{ 'blocked' if group.state == 'due' else 'queued' }}">{{ group.count }}</span>
+            <span class="status-pill status-{{ 'followup-due' if group.state == 'due' else 'followup-scheduled' }}">{{ group.count }}</span>
           </header>
           <div class="signal-card-grid signal-card-grid--followups{% if alerts.followup_tasks|length <= 2 %} signal-card-grid--followups-compact{% endif %}">
             {% for task in group.tasks %}
             <a
-              class="detail-card signal-card signal-card--{{ 'due' if task.is_overdue else 'scheduled' }} signal-card--followup"
+              class="detail-card signal-card signal-card--followup-{{ 'due' if task.is_overdue else 'scheduled' }} signal-card--followup"
               data-testid="dashboard-alerts-followup-task-{{ task.task_id }}"
               href="{{ task.detail_href }}"
             >
@@ -107,13 +108,13 @@
                   <p class="eyebrow">{{ task.job_id }}</p>
                   <h3>{{ task.task_id }}</h3>
                 </div>
-                <span class="status-pill status-{{ 'blocked' if task.is_overdue else 'queued' }}">
+                <span class="status-pill status-{{ 'followup-due' if task.is_overdue else 'followup-scheduled' }}">
                   {{ ui.alerts.followup_due if task.is_overdue else ui.alerts.followup_scheduled }}
                 </span>
               </div>
               <div class="signal-card-emphasis signal-card-emphasis--followup">
                 <span class="signal-card-kicker">{{ ui.alerts.due_at }}</span>
-                <strong>{{ task.due_at }}</strong>
+                <strong>{{ render_local_time(task.due_at, task.due_at_iso) }}</strong>
               </div>
               <div class="detail-callout detail-callout--compact">
                 <p class="eyebrow">{{ task.summary_label }}</p>
@@ -122,7 +123,7 @@
               <dl class="meta-grid meta-grid--compact">
                 <div>
                   <dt>{{ ui.alerts.notified_at }}</dt>
-                  <dd>{{ task.final_notified_at }}</dd>
+                  <dd>{{ render_local_time(task.final_notified_at, task.final_notified_at_iso) }}</dd>
                 </div>
               </dl>
             </a>
@@ -151,25 +152,25 @@
         <h2 id="alerts-risk-title">{{ ui.alerts.risk_title }}</h2>
         <p class="section-note">{{ ui.alerts.risk_note }}</p>
       </div>
-      {% if alerts.risk_groups %}
-      <div class="status-group-list status-group-list--dense status-group-list--risk">
-        {% for group in alerts.risk_groups %}
+      <div class="alerts-risk-columns">
         <section
-          class="status-group-card status-group-card--{{ group.state }}"
-          data-testid="dashboard-alerts-risk-group-{{ group.state }}"
+          id="alerts-failed-list"
+          class="status-group-card status-group-card--failed risk-stream-card risk-stream-card--failed"
+          data-testid="dashboard-alerts-risk-group-failed"
         >
           <header class="status-group-header">
             <div>
-              <p class="eyebrow">{{ group.label }}</p>
-              <h3>{{ group.label }}</h3>
+              <p class="eyebrow">{{ ui.alerts.failed_tasks }}</p>
+              <h3>{{ ui.alerts.failed_stream_title }}</h3>
             </div>
             <div class="status-group-meta">
-              <span class="status-pill status-{{ group.state }}">{{ group.count }}</span>
-              <p>{{ group.description }}</p>
+              <span class="status-pill status-failed">{{ alerts.failed_count }}</span>
+              <p>{{ ui.alerts.failed_stream_note }}</p>
             </div>
           </header>
+          {% if alerts.failed_tasks %}
           <div class="signal-card-grid signal-card-grid--risk">
-            {% for task in group.tasks %}
+            {% for task in alerts.failed_tasks %}
             <a
               class="detail-card signal-card signal-card--{{ task.state }} signal-card--risk"
               data-testid="dashboard-alerts-risk-task-{{ task.task_id }}"
@@ -199,16 +200,81 @@
             </a>
             {% endfor %}
           </div>
+          {{ render_pagination(alerts.failed_pagination, ui, "dashboard-alerts-failed-pagination") }}
+          {% else %}
+          <div
+            class="state-panel state-panel--compact"
+            role="status"
+            aria-live="polite"
+            data-testid="dashboard-alerts-failed-empty-state"
+          >
+            <h3>{{ ui.alerts.failed_empty_title }}</h3>
+            <p>{{ ui.alerts.failed_empty_body }}</p>
+          </div>
+          {% endif %}
         </section>
-        {% endfor %}
+
+        <section
+          id="alerts-blocked-list"
+          class="status-group-card status-group-card--blocked risk-stream-card risk-stream-card--blocked"
+          data-testid="dashboard-alerts-risk-group-blocked"
+        >
+          <header class="status-group-header">
+            <div>
+              <p class="eyebrow">{{ ui.alerts.blocked_tasks }}</p>
+              <h3>{{ ui.alerts.blocked_stream_title }}</h3>
+            </div>
+            <div class="status-group-meta">
+              <span class="status-pill status-blocked">{{ alerts.blocked_count }}</span>
+              <p>{{ ui.alerts.blocked_stream_note }}</p>
+            </div>
+          </header>
+          {% if alerts.blocked_tasks %}
+          <div class="signal-card-grid signal-card-grid--risk">
+            {% for task in alerts.blocked_tasks %}
+            <a
+              class="detail-card signal-card signal-card--{{ task.state }} signal-card--risk"
+              data-testid="dashboard-alerts-risk-task-{{ task.task_id }}"
+              href="{{ task.detail_href }}"
+            >
+              <div class="detail-title-row detail-title-row--alert">
+                <div class="detail-title-copy">
+                  <p class="eyebrow">{{ task.job_id }}</p>
+                  <h3>{{ task.task_id }}</h3>
+                </div>
+                <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
+              </div>
+              <dl class="meta-grid">
+                <div>
+                  <dt>{{ ui.alerts.updated_at }}</dt>
+                  <dd>{{ task.updated_at }}</dd>
+                </div>
+                <div>
+                  <dt>{{ ui.tasks.assigned_agent }}</dt>
+                  <dd>{{ task.assigned_agent }}</dd>
+                </div>
+              </dl>
+              <div class="detail-callout detail-callout--risk">
+                <p class="eyebrow">{{ task.summary_label }}</p>
+                <p>{{ task.summary_text }}</p>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {{ render_pagination(alerts.blocked_pagination, ui, "dashboard-alerts-blocked-pagination") }}
+          {% else %}
+          <div
+            class="state-panel state-panel--compact"
+            role="status"
+            aria-live="polite"
+            data-testid="dashboard-alerts-blocked-empty-state"
+          >
+            <h3>{{ ui.alerts.blocked_empty_title }}</h3>
+            <p>{{ ui.alerts.blocked_empty_body }}</p>
+          </div>
+          {% endif %}
+        </section>
       </div>
-      {{ render_pagination(alerts.risk_pagination, ui, "dashboard-alerts-risk-pagination") }}
-      {% else %}
-      <div class="state-panel" role="status" aria-live="polite">
-        <h3>{{ ui.alerts.risk_empty_title }}</h3>
-        <p>{{ ui.alerts.risk_empty_body }}</p>
-      </div>
-      {% endif %}
     </section>
   </div>
 </div>

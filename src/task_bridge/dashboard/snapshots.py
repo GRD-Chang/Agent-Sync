@@ -43,6 +43,7 @@ class OverviewSnapshot:
     home_path: str
     current_job_id: str | None
     generated_at: str
+    generated_at_iso: str | None
     jobs_count: int
     tasks_count: int
     terminal_count: int
@@ -160,9 +161,7 @@ class JobDispatchTimelineNode:
     state: str
     state_label: str
     dispatch_at_iso: str
-    dispatch_at_full: str
-    dispatch_date_display: str
-    dispatch_time_display: str
+    dispatch_at_display: str
     detail_href: str
     is_newest: bool
 
@@ -193,6 +192,7 @@ class JobDetailSnapshot:
 class TaskTimelineEvent:
     key: str
     title: str
+    timestamp_iso: str | None
     timestamp_display: str
     note: str
 
@@ -223,6 +223,7 @@ class JobsPageSnapshot:
     home_path: str
     current_job_id: str | None
     generated_at: str
+    generated_at_iso: str | None
     jobs_count: int
     tasks_count: int
     visible_jobs_count: int
@@ -292,6 +293,7 @@ class TasksPageSnapshot:
     home_path: str
     current_job_id: str | None
     generated_at: str
+    generated_at_iso: str | None
     jobs_count: int
     tasks_count: int
     visible_tasks_count: int
@@ -318,6 +320,7 @@ class QueueTaskSnapshot:
     assigned_agent_fallback_kind: str
     state: str
     updated_at: str
+    updated_at_iso: str | None
     summary_label: str
     summary_text: str
 
@@ -337,6 +340,7 @@ class WorkerQueueSnapshot:
     home_path: str
     current_job_id: str | None
     generated_at: str
+    generated_at_iso: str | None
     worker_count: int
     busy_workers: int
     idle_workers: int
@@ -371,7 +375,9 @@ class FollowupTaskSnapshot:
     state: str
     notify_target: str
     final_notified_at: str
+    final_notified_at_iso: str | None
     due_at: str
+    due_at_iso: str | None
     is_overdue: bool
     summary_label: str
     summary_text: str
@@ -401,15 +407,18 @@ class AlertsSnapshot:
     home_path: str
     current_job_id: str | None
     generated_at: str
+    generated_at_iso: str | None
     blocked_count: int
     failed_count: int
     pending_followups_count: int
     overdue_followups_count: int
     risk_tasks: list[AlertTaskSnapshot]
-    risk_groups: list[AlertTaskGroup]
+    failed_tasks: list[AlertTaskSnapshot]
+    blocked_tasks: list[AlertTaskSnapshot]
     followup_tasks: list[FollowupTaskSnapshot]
     followup_groups: list[FollowupTaskGroup]
-    risk_pagination: PaginationSnapshot
+    failed_pagination: PaginationSnapshot
+    blocked_pagination: PaginationSnapshot
     followup_pagination: PaginationSnapshot
     has_alerts: bool
 
@@ -427,8 +436,10 @@ class HealthSnapshot:
     home_path: str
     current_job_id: str | None
     generated_at: str
+    generated_at_iso: str | None
     jobs_count: int
     tasks_count: int
     worker_prompt_entries: int
     leader_last_running_notice_at: str
+    leader_last_running_notice_at_iso: str | None
     checks: list[HealthCheck]

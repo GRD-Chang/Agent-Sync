@@ -68,7 +68,11 @@ def create_dashboard_app(home: Path | None = None) -> Starlette:
 
 async def redirect_to_overview(request: Request):
     return RedirectResponse(
-        _path_with_locale(request.url_for("overview_page").path, (), _request_locale(request)),
+        _path_with_locale(
+            request.url_for("overview_page").path,
+            [("tz", _request_timezone(request) or "")],
+            _request_locale(request),
+        ),
         status_code=307,
     )
 
@@ -191,7 +195,8 @@ async def alerts_page(request: Request):
     context["page_title"] = context["ui"]["alerts"]["title"]
     try:
         snapshot = _dashboard_service(request).alerts(
-            risk_page=_query_param_value(request, "risk_page"),
+            failed_page=_query_param_value(request, "failed_page") or _query_param_value(request, "risk_page"),
+            blocked_page=_query_param_value(request, "blocked_page"),
             followup_page=_query_param_value(request, "followup_page"),
         )
     except Exception as exc:  # pragma: no cover
@@ -268,6 +273,7 @@ def _render_live_page_error(
 
 def _base_context(request: Request, active_page: str) -> dict[str, object]:
     locale = _request_locale(request)
+    explicit_timezone = _request_timezone(request)
     ui = get_messages(locale)
     return {
         "request": request,
@@ -277,11 +283,16 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
             {
                 "key": item.key,
                 "label": ui["nav"][item.key],
-                "href": _path_with_locale(item.href, (), locale),
+                "href": _path_with_locale(
+                    item.href,
+                    [("tz", explicit_timezone or "")],
+                    locale,
+                ),
             }
             for item in NAV_ITEMS
         ],
         "locale": locale,
+        "explicit_timezone": explicit_timezone,
         "locale_options": _locale_options(request, locale),
         "font_options": [
             {
@@ -316,18 +327,24 @@ def _query_param_value(request: Request, key: str) -> str | None:
 
 def _dashboard_service(request: Request) -> DashboardQueryService:
     locale = _request_locale(request)
+    timezone = _request_timezone(request)
     now_override = os.environ.get("TASK_BRIDGE_DASHBOARD_NOW")
     if now_override:
         return DashboardQueryService(
             request.app.state.dashboard_home,
             locale=locale,
+            timezone=timezone,
             now_provider=lambda: now_override,
         )
-    return DashboardQueryService(request.app.state.dashboard_home, locale=locale)
+    return DashboardQueryService(request.app.state.dashboard_home, locale=locale, timezone=timezone)
 
 
 def _request_locale(request: Request) -> str:
     return resolve_locale(_query_param_value(request, "lang"))
+
+
+def _request_timezone(request: Request) -> str | None:
+    return _query_param_value(request, "tz")
 
 
 def _locale_options(request: Request, active_locale: str) -> list[dict[str, object]]:

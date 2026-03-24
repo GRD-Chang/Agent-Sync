@@ -1,3 +1,5 @@
+{% from "_time.html" import render_local_time %}
+
 <article class="detail-card">
   <div class="detail-title-row">
     <div>
@@ -104,19 +106,14 @@
                 data-agent-fallback="{{ item.assigned_agent_fallback_kind }}"
                 href="{{ item.detail_href }}"
                 data-testid="dashboard-jobs-timeline-node-{{ item.task_id }}"
-                aria-label="{{ item.task_id }} · {{ item.assigned_agent }} · {{ item.state_label }} · {{ item.dispatch_at_full }}"
-                title="{{ item.task_id }} · {{ item.dispatch_at_full }}"
+                aria-label="{{ item.task_id }} · {{ item.assigned_agent }} · {{ item.state_label }} · {{ item.dispatch_at_display }}"
+                title="{{ item.task_id }} · {{ item.dispatch_at_display }}"
                 {% if item.is_newest %}aria-current="step"{% endif %}
               >
                 <span class="dispatch-node-dot" aria-hidden="true"></span>
                 <div class="dispatch-node-meta">
                   <header class="dispatch-node-header">
-                    <time class="dispatch-node-time" datetime="{{ item.dispatch_at_iso }}">
-                      <span>{{ item.dispatch_date_display }}</span>
-                      {% if item.dispatch_time_display %}
-                      <span>{{ item.dispatch_time_display }}</span>
-                      {% endif %}
-                    </time>
+                    {{ render_local_time(item.dispatch_at_display, item.dispatch_at_iso, "dispatch-node-time") }}
                     <span class="status-pill status-{{ item.state }}">{{ item.state_label }}</span>
                   </header>
                   <div class="dispatch-node-main">

@@ -55,6 +55,14 @@
   word-break: break-word;
 }
 
+.dashboard-time {
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  word-break: break-word;
+}
+
 .hero-home {
   grid-column: 1 / -1;
 }
@@ -250,6 +258,11 @@
   color: var(--accent-deep);
 }
 
+.status-attention {
+  background: rgba(203, 146, 35, 0.18);
+  color: #8b6310;
+}
+
 .status-blocked {
   background: rgba(185, 138, 42, 0.16);
   color: #89651d;
@@ -258,6 +271,16 @@
 .status-failed {
   background: rgba(122, 56, 56, 0.16);
   color: var(--maroon);
+}
+
+.status-followup-scheduled {
+  background: rgba(103, 124, 148, 0.14);
+  color: #506277;
+}
+
+.status-followup-due {
+  background: rgba(63, 84, 108, 0.18);
+  color: #31465d;
 }
 
 .status-current {

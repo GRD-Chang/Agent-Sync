@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from .detail_preview import detail_preview_status as _detail_preview_status
 from .formatting import format_timestamp as _format_timestamp
+from .formatting import format_timestamp_for_client as _format_timestamp_for_client
 from .pagination import page_for_task as _page_for_task
 from .pagination import paginate_items
 from .pagination import parse_page_number as _parse_page_number
@@ -91,14 +92,16 @@ class TasksPageQueryAssembler:
             )
             for task in paged_tasks
         ]
+        generated_at = _format_timestamp_for_client(
+            self._service._now_provider(),
+            fallback=self._messages["common"]["unknown"],
+        )
 
         return TasksPageSnapshot(
             home_path=self._service.home_path,
             current_job_id=self._service.store.get_current_job_id(),
-            generated_at=_format_timestamp(
-                self._service._now_provider(),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            generated_at=generated_at.display,
+            generated_at_iso=generated_at.raw_iso,
             jobs_count=len(jobs),
             tasks_count=len(tasks),
             visible_tasks_count=len(filtered_tasks),

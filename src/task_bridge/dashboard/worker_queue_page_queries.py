@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from task_bridge.store import queue_for_agent
 
 from .formatting import format_timestamp as _format_timestamp
+from .formatting import format_timestamp_for_client as _format_timestamp_for_client
 from .formatting import optional_text as _optional_text
 from .snapshots import QueueTaskSnapshot, WorkerLaneSnapshot, WorkerQueueSnapshot
 
@@ -66,13 +67,15 @@ class WorkerQueuePageQueryAssembler:
             key=self._lane_priority_key,
         )
         quiet_lanes = [lane for lane in lanes if not self._is_active_lane(lane)]
+        generated_at = _format_timestamp_for_client(
+            self._service._now_provider(),
+            fallback=self._messages["common"]["unknown"],
+        )
         return WorkerQueueSnapshot(
             home_path=self._service.home_path,
             current_job_id=self._service.store.get_current_job_id(),
-            generated_at=_format_timestamp(
-                self._service._now_provider(),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            generated_at=generated_at.display,
+            generated_at_iso=generated_at.raw_iso,
             worker_count=len(lanes),
             busy_workers=busy_workers,
             idle_workers=max(len(lanes) - busy_workers, 0),
@@ -99,6 +102,10 @@ class WorkerQueuePageQueryAssembler:
             task.get("assigned_agent"),
             empty_label=self._messages["common"]["none"],
         )
+        updated_at = _format_timestamp_for_client(
+            str(task.get("updatedAt") or task.get("createdAt") or ""),
+            fallback=self._messages["common"]["unknown"],
+        )
         return QueueTaskSnapshot(
             task_id=str(task["id"]),
             job_id=str(task["job_id"]),
@@ -106,10 +113,8 @@ class WorkerQueuePageQueryAssembler:
             assigned_agent_raw=agent.raw_key,
             assigned_agent_fallback_kind=agent.fallback_kind,
             state=str(task.get("state") or "queued"),
-            updated_at=_format_timestamp(
-                str(task.get("updatedAt") or task.get("createdAt") or ""),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            updated_at=updated_at.display,
+            updated_at_iso=updated_at.raw_iso,
             summary_label=summary_label,
             summary_text=summary_text,
         )

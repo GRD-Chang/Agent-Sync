@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_time.html" import render_local_time %}
 
 {% block content %}
 <section class="hero-panel" aria-labelledby="jobs-title" data-testid="dashboard-jobs-page">
@@ -22,7 +23,7 @@
     </div>
     <div>
       <dt>{{ ui.jobs.generated_at }}</dt>
-      <dd>{{ jobs.generated_at }}</dd>
+      <dd>{{ render_local_time(jobs.generated_at, jobs.generated_at_iso) }}</dd>
     </div>
     <div class="hero-home">
       <dt>{{ ui.overview.store_home }}</dt>

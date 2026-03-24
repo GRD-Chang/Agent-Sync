@@ -341,6 +341,62 @@ async function seedDenseDashboard(homeDir) {
   return { job, tasksByState };
 }
 
+async function seedAlertsPaginationDashboard(homeDir) {
+  const job = runBridgeJson(homeDir, ["create-job", "--title", "alerts pagination"]);
+  const failedTasks = [];
+  const blockedTasks = [];
+
+  for (let index = 0; index < 9; index += 1) {
+    const failed = runBridgeJson(homeDir, [
+      "create-task",
+      "--job",
+      job.id,
+      "--requirement",
+      `failed pagination task ${index}`,
+      "--assign",
+      "ops-agent",
+    ]);
+    runBridgeJson(homeDir, [
+      "fail",
+      failed.id,
+      "--job",
+      job.id,
+      "--result",
+      `failed pagination result ${index}`,
+    ]);
+    const failedPath = path.join(homeDir, "jobs", job.id, "tasks", `${failed.id}.json`);
+    const failedPayload = JSON.parse(await fs.readFile(failedPath, "utf-8"));
+    failedPayload.updatedAt = `2026-03-20T1${index}:10:00Z`;
+    await fs.writeFile(failedPath, `${JSON.stringify(failedPayload, null, 2)}\n`, "utf-8");
+    failedTasks.push(failed);
+
+    const blocked = runBridgeJson(homeDir, [
+      "create-task",
+      "--job",
+      job.id,
+      "--requirement",
+      `blocked pagination task ${index}`,
+      "--assign",
+      "review-agent",
+    ]);
+    runBridgeJson(homeDir, [
+      "block",
+      blocked.id,
+      "--job",
+      job.id,
+      "--result",
+      `blocked pagination result ${index}`,
+    ]);
+    const blockedPath = path.join(homeDir, "jobs", job.id, "tasks", `${blocked.id}.json`);
+    const blockedPayload = JSON.parse(await fs.readFile(blockedPath, "utf-8"));
+    blockedPayload.updatedAt = `2026-03-19T1${index}:10:00Z`;
+    await fs.writeFile(blockedPath, `${JSON.stringify(blockedPayload, null, 2)}\n`, "utf-8");
+    blockedTasks.push(blocked);
+  }
+
+  return { job, failedTasks, blockedTasks };
+}
+
 async function seedJobsPaginationDashboard(homeDir) {
   const entries = [];
   const titles = [
@@ -882,7 +938,8 @@ test("worker queue, alerts, and health render live read-only base pages", async 
     await page.goto(`${server.baseUrl}/alerts`);
     await expect(page.getByTestId("dashboard-alerts-hero")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-summary")).toContainText("What needs attention now");
-    await expect(page.getByTestId("dashboard-alerts-risk-list")).toContainText(seeded.taskB2.id);
+    await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toContainText(seeded.taskB2.id);
+    await expect(page.getByTestId("dashboard-alerts-risk-group-blocked")).toContainText(seeded.taskB1.id);
     await expect(page.getByTestId("dashboard-alerts-followups")).toContainText(seeded.taskB2.id);
     await expect(page.getByTestId(`dashboard-alerts-followup-task-${seeded.taskB1.id}`)).toHaveCount(0);
 
@@ -891,6 +948,37 @@ test("worker queue, alerts, and health render live read-only base pages", async 
     await expect(page.getByTestId("dashboard-health-summary")).toContainText("Key runtime facts");
     await expect(page.getByTestId("dashboard-health-checks")).toContainText("daemon_state.json");
   } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard times honor explicit request timezone before browser timezone", async ({ browser }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-timezone-"));
+  await seedLiveDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4191);
+  const context = await browser.newContext({
+    timezoneId: "America/Los_Angeles",
+    viewport: { width: 1280, height: 960 },
+  });
+  const page = await context.newPage();
+
+  try {
+    await page.goto(`${server.baseUrl}/health`);
+    const browserZoneTime = page.locator('time[data-local-time][datetime="2026-03-20T11:45:00Z"]').first();
+    await expect(browserZoneTime).toHaveText("2026-03-20 04:45");
+    await expect(browserZoneTime).toHaveAttribute("data-resolved-timezone", "America/Los_Angeles");
+    await expect(browserZoneTime).toHaveAttribute("data-resolved-offset", "UTC-07:00");
+
+    await page.goto(`${server.baseUrl}/alerts?tz=Asia/Shanghai`);
+    await expect(page.locator("body")).toHaveAttribute("data-explicit-timezone", "Asia/Shanghai");
+    const followupDue = page.locator('time[data-local-time][datetime="2026-03-20T09:00:00Z"]').first();
+    await expect(followupDue).toHaveText("2026-03-20 17:00");
+    await expect(followupDue).toHaveAttribute("data-resolved-timezone", "Asia/Shanghai");
+    await expect(followupDue).toHaveAttribute("data-resolved-offset", "UTC+08:00");
+    await expect(followupDue).toHaveAttribute("title", /Asia\/Shanghai/);
+  } finally {
+    await context.close();
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
   }
@@ -925,7 +1013,8 @@ test("worker queue, alerts, and health stay within the viewport on desktop width
       expect(Math.abs(riskBox.x - followupBox.x)).toBeLessThanOrEqual(8);
       expect(Math.abs(riskBox.width - followupBox.width)).toBeLessThanOrEqual(8);
       expect(riskBox.y).toBeGreaterThan(followupBox.y + 48);
-      expect(followupBox.height + 40).toBeLessThan(riskBox.height);
+      await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
+      await expect(page.getByTestId("dashboard-alerts-risk-group-blocked")).toBeVisible();
 
       await page.goto(`${server.baseUrl}/health`);
       await expect(page.getByTestId("dashboard-health-checks")).toBeVisible();
@@ -990,21 +1079,36 @@ test("dense tasks and alerts keep pagination, anchors, and priority visibility s
     await page.setViewportSize({ width: 390, height: 844 });
     await expectNoHorizontalOverflow(page);
 
+    const alertsSeed = await seedAlertsPaginationDashboard(homeDir);
     await page.goto(`${server.baseUrl}/alerts`);
     await expect(page.getByTestId("dashboard-alerts-risk-group-blocked")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
-    await expect(page.getByTestId("dashboard-alerts-risk-pagination-page-2")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-failed-pagination-page-2")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-blocked-pagination-page-2")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-followups")).toContainText("No unresolved follow-ups");
     await expect(page.getByTestId("dashboard-alerts-followup-pagination")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
+    const riskOrder = await page.locator('[data-testid^="dashboard-alerts-risk-group-"]').evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("data-testid")),
+    );
+    expect(riskOrder).toEqual([
+      "dashboard-alerts-risk-group-failed",
+      "dashboard-alerts-risk-group-blocked",
+    ]);
+    await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toContainText(
+      alertsSeed.failedTasks[alertsSeed.failedTasks.length - 1].id,
+    );
 
-    await page.getByTestId("dashboard-alerts-risk-pagination-page-2").click();
-    await expect(page).toHaveURL(new RegExp("/alerts\\?(?=.*risk_page=2).*#alerts-risk-list$"));
-    const riskTop = await page.locator("#alerts-risk-list").evaluate((node) =>
+    await page.getByTestId("dashboard-alerts-failed-pagination-page-2").click();
+    await expect(page).toHaveURL(new RegExp("/alerts\\?(?=.*failed_page=2).*#alerts-failed-list$"));
+    const riskTop = await page.locator("#alerts-failed-list").evaluate((node) =>
       Math.round(node.getBoundingClientRect().top),
     );
     expect(riskTop).toBeLessThan(180);
     await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
+    await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toContainText(
+      alertsSeed.failedTasks[0].id,
+    );
 
     await expect(page.getByTestId("dashboard-alerts-followups")).toContainText("No unresolved follow-ups");
     await expect(page.getByTestId("dashboard-alerts-followup-pagination")).toHaveCount(0);

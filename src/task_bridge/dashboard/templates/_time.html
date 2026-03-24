@@ -1,0 +1,14 @@
+{% macro render_local_time(display, raw_iso=None, class_name="", testid=None) -%}
+  {%- set classes = ("dashboard-time " ~ class_name).strip() -%}
+  {%- if raw_iso -%}
+  <time
+    class="{{ classes }}"
+    datetime="{{ raw_iso }}"
+    data-local-time
+    title="{{ display }} · UTC+00:00"
+    {%- if testid %} data-testid="{{ testid }}"{% endif -%}
+  >{{ display }}</time>
+  {%- else -%}
+  <span class="{{ classes }}"{%- if testid %} data-testid="{{ testid }}"{% endif -%}>{{ display }}</span>
+  {%- endif -%}
+{%- endmacro %}

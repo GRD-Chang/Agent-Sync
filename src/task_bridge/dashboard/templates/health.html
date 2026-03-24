@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_time.html" import render_local_time %}
 
 {% block content %}
 <div class="ops-page ops-page--health">
@@ -15,7 +16,7 @@
       </div>
       <div>
         <dt>{{ ui.health.generated_at }}</dt>
-        <dd>{{ health.generated_at }}</dd>
+        <dd>{{ render_local_time(health.generated_at, health.generated_at_iso) }}</dd>
       </div>
       <div>
         <dt>{{ ui.health.daemon_state_path }}</dt>
@@ -48,7 +49,7 @@
       </article>
       <article class="util-card">
         <p class="summary-label">{{ ui.health.leader_running_notice }}</p>
-        <p class="summary-value">{{ health.leader_last_running_notice_at }}</p>
+        <p class="summary-value">{{ render_local_time(health.leader_last_running_notice_at, health.leader_last_running_notice_at_iso) }}</p>
       </article>
     </div>
   </section>

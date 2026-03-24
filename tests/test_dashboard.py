@@ -1029,6 +1029,49 @@ def seed_dense_dashboard_store(home: Path) -> dict[str, object]:
     return {"job": job, "tasks_by_state": tasks_by_state}
 
 
+def seed_alerts_pagination_store(home: Path) -> dict[str, object]:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="alerts-pagination")
+    failed_tasks: list[dict[str, str]] = []
+    blocked_tasks: list[dict[str, str]] = []
+
+    for index in range(9):
+        failed = store.create_task(
+            job_id=job["id"],
+            requirement=f"failed pagination task {index}",
+            assigned_agent="ops-agent",
+        )
+        store.update_task(
+            failed["id"],
+            job_id=job["id"],
+            state="failed",
+            result=f"failed pagination result {index}",
+        )
+        failed_record = store.load_task(failed["id"], job_id=job["id"])
+        failed_record["updatedAt"] = f"2026-03-20T1{index % 10}:10:00Z"
+        store.save_task(failed_record)
+        failed_tasks.append(failed)
+
+        blocked = store.create_task(
+            job_id=job["id"],
+            requirement=f"blocked pagination task {index}",
+            assigned_agent="review-agent",
+        )
+        store.update_task(
+            blocked["id"],
+            job_id=job["id"],
+            state="blocked",
+            result=f"blocked pagination result {index}",
+        )
+        blocked_record = store.load_task(blocked["id"], job_id=job["id"])
+        blocked_record["updatedAt"] = f"2026-03-19T1{index % 10}:10:00Z"
+        store.save_task(blocked_record)
+        blocked_tasks.append(blocked)
+
+    return {"job": job, "failed_tasks": failed_tasks, "blocked_tasks": blocked_tasks}
+
+
 def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> None:
     seeded = seed_operational_dashboard_store(home)
 
@@ -1115,6 +1158,9 @@ def test_dashboard_alerts_query_builds_live_base_snapshot(home: Path) -> None:
     assert alerts.pending_followups_count == 1
     assert alerts.overdue_followups_count == 1
     assert alerts.has_alerts is True
+    assert alerts.generated_at_iso == "2026-03-20T12:00:00Z"
+    assert [task.task_id for task in alerts.failed_tasks] == [seeded["task_b2"]["id"]]
+    assert [task.task_id for task in alerts.blocked_tasks] == [seeded["task_b1"]["id"]]
     assert {task.task_id for task in alerts.risk_tasks} == {seeded["task_b1"]["id"], seeded["task_b2"]["id"]}
     assert {
         task.detail_href for task in alerts.risk_tasks
@@ -1123,6 +1169,8 @@ def test_dashboard_alerts_query_builds_live_base_snapshot(home: Path) -> None:
         f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b2']['id']}#tasks-detail",
     }
     assert alerts.followup_tasks[0].task_id == seeded["task_b2"]["id"]
+    assert alerts.followup_tasks[0].final_notified_at_iso == "2026-03-20T08:00:00Z"
+    assert alerts.followup_tasks[0].due_at_iso == "2026-03-20T09:00:00Z"
     assert (
         alerts.followup_tasks[0].detail_href
         == f"/tasks?job={seeded['job_b']['id']}&task={seeded['task_b2']['id']}#tasks-detail"
@@ -1154,11 +1202,12 @@ def test_dashboard_alerts_query_uses_current_job_latest_followup_window(home: Pa
 
     alerts = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts()
 
-    assert alerts.risk_pagination.page == 1
-    assert alerts.risk_pagination.page_count == 1
-    assert [group.state for group in alerts.risk_groups] == ["blocked"]
-    assert [group.count for group in alerts.risk_groups] == [1]
-    assert alerts.risk_groups[0].tasks[0].task_id == task_a["id"]
+    assert alerts.failed_pagination.page == 1
+    assert alerts.failed_pagination.page_count == 1
+    assert alerts.blocked_pagination.page == 1
+    assert alerts.blocked_pagination.page_count == 1
+    assert alerts.failed_tasks == []
+    assert [task.task_id for task in alerts.blocked_tasks] == [task_a["id"]]
     assert alerts.pending_followups_count == 1
     assert alerts.overdue_followups_count == 0
     assert alerts.followup_pagination.page == 1
@@ -1169,12 +1218,13 @@ def test_dashboard_alerts_query_uses_current_job_latest_followup_window(home: Pa
     assert alerts.followup_tasks[0].task_id == task_b["id"]
     assert alerts.followup_tasks[0].is_overdue is False
 
-    later_page = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts(risk_page="2")
+    later_page = DashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").alerts(blocked_page="2")
 
-    assert later_page.risk_pagination.page == 1
+    assert later_page.failed_pagination.page == 1
+    assert later_page.blocked_pagination.page == 1
     assert later_page.followup_pagination.page == 1
-    assert [group.state for group in later_page.risk_groups] == ["blocked"]
-    assert [group.count for group in later_page.risk_groups] == [1]
+    assert later_page.failed_tasks == []
+    assert [task.task_id for task in later_page.blocked_tasks] == [task_a["id"]]
     assert [group.state for group in later_page.followup_groups] == ["scheduled"]
     assert [group.count for group in later_page.followup_groups] == [1]
 
@@ -1237,7 +1287,9 @@ def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
     assert health.jobs_count == 2
     assert health.tasks_count == 5
     assert health.worker_prompt_entries == 3
-    assert health.leader_last_running_notice_at == "2026-03-20 11:45 UTC"
+    assert health.generated_at_iso == "2026-03-20T12:00:00Z"
+    assert health.leader_last_running_notice_at == "2026-03-20 11:45"
+    assert health.leader_last_running_notice_at_iso == "2026-03-20T11:45:00Z"
     assert {check.key: check.status for check in health.checks} == {
         "store-home": "ok",
         "records": "ok",
@@ -1367,9 +1419,7 @@ def test_dashboard_jobs_query_timeline_visual_metadata_falls_back_for_unassigned
     assert node.state == "queued"
     assert node.state_label == "Queued"
     assert node.dispatch_at_iso == "dispatch-pending"
-    assert node.dispatch_at_full == "dispatch-pending"
-    assert node.dispatch_date_display == "dispatch-pending"
-    assert node.dispatch_time_display == ""
+    assert node.dispatch_at_display == "dispatch-pending"
     assert node.detail_href.endswith(f"/jobs?job={job['id']}&task={task['id']}#job-task-detail")
     assert node.is_newest is True
 
@@ -1893,6 +1943,8 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert 'data-testid="dashboard-alerts-hero"' in body
     assert 'data-testid="dashboard-alerts-summary"' in body
     assert 'data-testid="dashboard-alerts-risk-list"' in body
+    assert 'id="alerts-failed-list"' in body
+    assert 'id="alerts-blocked-list"' in body
     assert 'data-testid="dashboard-alerts-followups"' in body
     assert seeded["task_b1"]["id"] in body
     assert seeded["task_b2"]["id"] in body
@@ -1908,13 +1960,33 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert 'class="alerts-layout"' in body
     assert "signal-panel--followup-band" in body
     assert "signal-panel--primary" in body
+    assert "dashboard-alerts-failed-pagination" not in body
+    assert "dashboard-alerts-blocked-pagination" not in body
     assert "browse-layout" not in body
     assert "latest unresolved follow-up window appears here" in body
+    assert 'data-local-time' in body
+    assert 'datetime="2026-03-20T12:00:00Z"' in body
     assert re.search(r'data-testid="dashboard-nav-alerts"[^>]*aria-current="page"', body)
     assert "<form" not in body
     assert "<input" not in body
     assert "<textarea" not in body
     assert "<select" not in body
+
+
+def test_dashboard_timezone_query_is_exposed_and_propagated_in_dashboard_links(home: Path) -> None:
+    seeded = seed_operational_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/alerts?tz=Asia/Shanghai")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-explicit-timezone="Asia/Shanghai"' in body
+    assert re.search(r'href="/overview\?tz=Asia%2FShanghai"', body)
+    assert re.search(
+        rf'href="/tasks\?job={seeded["job_b"]["id"]}&amp;task={seeded["task_b2"]["id"]}&amp;tz=Asia%2FShanghai#tasks-detail"',
+        body,
+    )
 
 
 def test_dashboard_worker_queue_route_limits_backlog_preview_to_keep_lane_cards_compact(home: Path) -> None:
@@ -1945,29 +2017,47 @@ def test_dashboard_worker_queue_route_limits_backlog_preview_to_keep_lane_cards_
 
 
 def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
-    seed_dense_dashboard_store(home)
+    seeded = seed_alerts_pagination_store(home)
 
     with TestClient(create_dashboard_app(home)) as client:
         response = client.get("/alerts")
-        second_page = client.get("/alerts?risk_page=2")
+        failed_second_page = client.get("/alerts?failed_page=2")
+        blocked_second_page = client.get("/alerts?blocked_page=2")
 
     assert response.status_code == 200
     body = response.text
     assert 'data-testid="dashboard-alerts-risk-group-blocked"' in body
     assert 'data-testid="dashboard-alerts-risk-group-failed"' in body
     assert 'data-testid="dashboard-alerts-followup-group-scheduled"' not in body
-    assert 'data-testid="dashboard-alerts-risk-pagination"' in body
-    assert 'data-testid="dashboard-alerts-risk-pagination-page-2"' in body
-    assert "#alerts-risk-list" in body
+    assert 'data-testid="dashboard-alerts-failed-pagination"' in body
+    assert 'data-testid="dashboard-alerts-failed-pagination-page-2"' in body
+    assert 'data-testid="dashboard-alerts-blocked-pagination"' in body
+    assert 'data-testid="dashboard-alerts-blocked-pagination-page-2"' in body
+    assert "#alerts-failed-list" in body
+    assert "#alerts-blocked-list" in body
     assert "No unresolved follow-ups" in body
+    assert seeded["failed_tasks"][-1]["id"] in body
+    assert seeded["blocked_tasks"][-1]["id"] in body
 
-    assert second_page.status_code == 200
-    second_body = second_page.text
-    assert 'data-testid="dashboard-alerts-risk-pagination"' in second_body
-    assert re.search(r'data-testid="dashboard-alerts-risk-pagination-page-2"[^>]*aria-current="page"', second_body)
-    assert 'data-testid="dashboard-alerts-risk-group-failed"' in second_body
-    assert 'data-testid="dashboard-alerts-followup-group-scheduled"' not in second_body
-    assert 'data-testid="dashboard-alerts-followup-pagination"' not in second_body
+    assert failed_second_page.status_code == 200
+    failed_second_body = failed_second_page.text
+    assert 'data-testid="dashboard-alerts-failed-pagination"' in failed_second_body
+    assert re.search(
+        r'data-testid="dashboard-alerts-failed-pagination-page-2"[^>]*aria-current="page"',
+        failed_second_body,
+    )
+    assert seeded["failed_tasks"][0]["id"] in failed_second_body
+    assert 'data-testid="dashboard-alerts-followup-pagination"' not in failed_second_body
+
+    assert blocked_second_page.status_code == 200
+    blocked_second_body = blocked_second_page.text
+    assert 'data-testid="dashboard-alerts-blocked-pagination"' in blocked_second_body
+    assert re.search(
+        r'data-testid="dashboard-alerts-blocked-pagination-page-2"[^>]*aria-current="page"',
+        blocked_second_body,
+    )
+    assert seeded["blocked_tasks"][0]["id"] in blocked_second_body
+    assert 'data-testid="dashboard-alerts-followup-pagination"' not in blocked_second_body
 
 
 def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:
@@ -1982,7 +2072,8 @@ def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:
     assert 'data-testid="dashboard-health-summary"' in body
     assert 'data-testid="dashboard-health-checks"' in body
     assert "daemon_state.json" in body
-    assert "2026-03-20 11:45 UTC" in body
+    assert 'datetime="2026-03-20T11:45:00Z"' in body
+    assert "2026-03-20 11:45" in body
     assert "Readability checks" in body
     assert "Warnings here come only from readable local files." in body
     assert re.search(r'data-testid="dashboard-nav-health"[^>]*aria-current="page"', body)

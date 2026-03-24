@@ -25,6 +25,8 @@
 #tasks-registry,
 #tasks-detail,
 #alerts-risk-list,
+#alerts-failed-list,
+#alerts-blocked-list,
 #alerts-followups {
   scroll-margin-top: 1rem;
 }

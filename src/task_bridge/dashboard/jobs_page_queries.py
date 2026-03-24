@@ -8,8 +8,8 @@ from .detail_preview import load_detail_preview as _load_detail_preview
 from .formatting import (
     file_timestamp_iso as _file_timestamp_iso,
     format_timestamp as _format_timestamp,
+    format_timestamp_for_client as _format_timestamp_for_client,
     optional_text as _optional_text,
-    parse_timestamp as _parse_timestamp,
 )
 from .pagination import page_for_item as _page_for_item
 from .pagination import paginate_items
@@ -100,14 +100,16 @@ class JobsPageQueryAssembler:
             has_selected_task=resolved_task is not None,
             selected_page=pagination.page,
         )
+        generated_at = _format_timestamp_for_client(
+            self._service._now_provider(),
+            fallback=self._messages["common"]["unknown"],
+        )
 
         return JobsPageSnapshot(
             home_path=self._service.home_path,
             current_job_id=self._service.store.get_current_job_id(),
-            generated_at=_format_timestamp(
-                self._service._now_provider(),
-                fallback=self._messages["common"]["unknown"],
-            ),
+            generated_at=generated_at.display,
+            generated_at_iso=generated_at.raw_iso,
             jobs_count=len(jobs),
             tasks_count=len(tasks),
             visible_jobs_count=len(ordered_jobs),
@@ -355,7 +357,10 @@ class JobsPageQueryAssembler:
                 continue
 
             state = str(task.get("state") or "queued")
-            dispatch_date_display, dispatch_time_display = self._format_dispatch_parts(dispatch_at)
+            dispatch_at_display = _format_timestamp_for_client(
+                dispatch_at,
+                fallback=self._messages["common"]["unknown"],
+            )
             task_id = str(task["id"])
             agent = self._service._agent_presentation(
                 task.get("assigned_agent"),
@@ -371,12 +376,7 @@ class JobsPageQueryAssembler:
                     state=state,
                     state_label=status_messages.get(state, status_messages["queued"])["label"],
                     dispatch_at_iso=dispatch_at,
-                    dispatch_at_full=_format_timestamp(
-                        dispatch_at,
-                        fallback=self._messages["common"]["unknown"],
-                    ),
-                    dispatch_date_display=dispatch_date_display,
-                    dispatch_time_display=dispatch_time_display,
+                    dispatch_at_display=dispatch_at_display.display,
                     detail_href=self._service._jobs_path(
                         job_id=str(task["job_id"]),
                         task_id=task_id,
@@ -388,13 +388,6 @@ class JobsPageQueryAssembler:
                 )
             )
         return nodes
-
-    def _format_dispatch_parts(self, value: str) -> tuple[str, str]:
-        parsed = _parse_timestamp(value)
-        if parsed is None:
-            fallback = value or self._messages["common"]["unknown"]
-            return fallback, ""
-        return parsed.strftime("%m-%d"), parsed.strftime("%H:%M UTC")
 
     @staticmethod
     def _short_task_id(task_id: str) -> str:

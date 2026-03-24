@@ -1,4 +1,5 @@
 {% from "_markdown_preview.html" import render_markdown_preview %}
+{% from "_time.html" import render_local_time %}
 {% macro render_task_detail(task, ui, section_id, heading_id, panel_testid, preview_testid, timeline_testid, eyebrow, title, note) %}
 <section id="{{ section_id }}" class="detail-panel task-detail-panel" aria-labelledby="{{ heading_id }}" data-testid="{{ panel_testid }}">
   <div class="section-heading">
@@ -87,7 +88,7 @@
           <div class="timeline-copy">
             <header>
               <h4>{{ item.title }}</h4>
-              <time datetime="{{ item.timestamp_display }}">{{ item.timestamp_display }}</time>
+              {{ render_local_time(item.timestamp_display, item.timestamp_iso) }}
             </header>
             <p>{{ item.note }}</p>
           </div>

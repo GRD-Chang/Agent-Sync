@@ -6,7 +6,9 @@ from task_bridge.dashboard import DashboardQueryService
 from task_bridge.dashboard.agent_presentation import resolve_agent_presentation
 from task_bridge.dashboard.detail_preview import load_detail_preview
 from task_bridge.dashboard.formatting import (
+    canonical_timestamp_iso,
     format_timestamp,
+    format_timestamp_for_client,
     is_overdue,
     optional_display_text,
     parse_timestamp,
@@ -65,7 +67,11 @@ def test_dashboard_formatting_helpers_preserve_dashboard_copy_contract() -> None
 
     assert optional_display_text("line one\\nline two") == "line one\nline two"
     assert optional_display_text("line one\r\nline two") == "line one\nline two"
+    formatted = format_timestamp_for_client("2026-03-20T12:00:00Z", fallback="unknown")
+    assert formatted.raw_iso == "2026-03-20T12:00:00Z"
+    assert formatted.display == "2026-03-20 12:00"
     assert format_timestamp("2026-03-20T12:00:00Z", fallback="unknown") == "2026-03-20 12:00 UTC"
+    assert canonical_timestamp_iso("2026-03-20T12:00:00+00:00") == "2026-03-20T12:00:00Z"
     assert format_timestamp("", fallback="unknown") == "unknown"
     assert is_overdue("2026-03-19T10:00:00Z", now_value) is True
     assert is_overdue("2026-03-21T10:00:00Z", now_value) is False
@@ -161,6 +167,8 @@ def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_cont
         "followup-sent",
     ]
     assert detail.timeline[0].title == "Task 已创建"
+    assert detail.timeline[0].timestamp_iso == "2026-03-20T12:00:00Z"
+    assert detail.timeline[0].timestamp_display == "2026-03-20 12:00"
     assert "结果：result line 1\nresult line 2" in detail.timeline[1].note
     assert "按最新 terminal 通知窗口聚合出来的那组 task" in detail.timeline[4].note
     assert "后续又出现新的 task" in detail.timeline[5].note
@@ -213,8 +221,7 @@ def test_dashboard_jobs_query_builds_horizontal_dispatch_timeline_nodes_from_sch
     assert timeline[0].state == "blocked"
     assert timeline[0].state_label == "Blocked"
     assert timeline[0].dispatch_at_iso == "2026-03-20T12:20:00Z"
-    assert timeline[0].dispatch_date_display == "03-20"
-    assert timeline[0].dispatch_time_display == "12:20 UTC"
+    assert timeline[0].dispatch_at_display == "2026-03-20 12:20"
     assert timeline[0].detail_href.endswith(
         f"/jobs?job={job['id']}&task={older['id']}&view=active#job-task-detail"
     )

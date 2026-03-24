@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class TimestampRenderData:
+    raw_iso: str | None
+    display: str
 
 
 def parse_timestamp(value: str) -> datetime | None:
@@ -34,13 +41,30 @@ def truncate(value: str, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 3].rstrip() + "..."
 
 
-def format_timestamp(value: str, *, fallback: str) -> str:
-    if not value:
-        return fallback
+def canonical_timestamp_iso(value: str) -> str | None:
     parsed = parse_timestamp(value)
     if parsed is None:
-        return value
-    return parsed.strftime("%Y-%m-%d %H:%M UTC")
+        return None
+    return parsed.isoformat().replace("+00:00", "Z")
+
+
+def format_timestamp_for_client(value: str, *, fallback: str) -> TimestampRenderData:
+    if not value:
+        return TimestampRenderData(raw_iso=None, display=fallback)
+    raw_iso = canonical_timestamp_iso(value)
+    if raw_iso is None:
+        return TimestampRenderData(raw_iso=None, display=value)
+    parsed = parse_timestamp(raw_iso)
+    if parsed is None:
+        return TimestampRenderData(raw_iso=raw_iso, display=fallback)
+    return TimestampRenderData(raw_iso=raw_iso, display=parsed.strftime("%Y-%m-%d %H:%M"))
+
+
+def format_timestamp(value: str, *, fallback: str) -> str:
+    formatted = format_timestamp_for_client(value, fallback=fallback)
+    if formatted.raw_iso is None:
+        return formatted.display
+    return f"{formatted.display} UTC"
 
 
 def file_timestamp_iso(path: Path) -> str | None:

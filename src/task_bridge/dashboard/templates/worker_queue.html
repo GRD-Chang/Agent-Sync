@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_time.html" import render_local_time %}
 
 {% block content %}
 <div class="ops-page ops-page--worker-queue">
@@ -15,7 +16,7 @@
       </div>
       <div>
         <dt>{{ ui.worker_queue.generated_at }}</dt>
-        <dd>{{ worker_queue.generated_at }}</dd>
+        <dd>{{ render_local_time(worker_queue.generated_at, worker_queue.generated_at_iso) }}</dd>
       </div>
       <div>
         <dt>{{ ui.worker_queue.workers_tracked }}</dt>
@@ -55,7 +56,7 @@
 
   {% if worker_queue.has_activity %}
   <div class="queue-layout">
-    <section class="section-block queue-panel queue-panel--unassigned queue-panel--band" aria-labelledby="worker-queue-unassigned-title" data-testid="dashboard-worker-queue-unassigned">
+    <section class="section-block queue-panel queue-panel--unassigned queue-panel--band queue-panel--attention" aria-labelledby="worker-queue-unassigned-title" data-testid="dashboard-worker-queue-unassigned">
       <div class="section-heading section-heading--band">
         <div>
           <p class="eyebrow">{{ ui.worker_queue.unassigned_eyebrow }}</p>
@@ -72,13 +73,13 @@
       {% if worker_queue.unassigned_queued_tasks %}
       <div class="signal-card-grid signal-card-grid--queue-band">
         {% for task in worker_queue.unassigned_queued_tasks %}
-        <article class="detail-card signal-card signal-card--queued signal-card--compact" data-testid="dashboard-worker-queue-unassigned-task-{{ task.task_id }}">
+        <article class="detail-card signal-card signal-card--attention signal-card--compact" data-testid="dashboard-worker-queue-unassigned-task-{{ task.task_id }}">
           <div class="detail-title-row detail-title-row--band">
             <div class="detail-title-copy">
               <p class="eyebrow">{{ task.job_id }}</p>
               <h3>{{ task.task_id }}</h3>
             </div>
-            <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
+            <span class="status-pill status-attention">{{ ui.status[task.state].label }}</span>
           </div>
           <dl class="meta-grid">
             <div>
@@ -87,7 +88,7 @@
             </div>
             <div>
               <dt>{{ ui.jobs.updated_at }}</dt>
-              <dd>{{ task.updated_at }}</dd>
+              <dd>{{ render_local_time(task.updated_at, task.updated_at_iso) }}</dd>
             </div>
           </dl>
           <div class="detail-callout">
@@ -155,7 +156,7 @@
                   </div>
                   <div class="task-preview-meta">
                     <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
-                    <span>{{ task.updated_at }}</span>
+                    {{ render_local_time(task.updated_at, task.updated_at_iso, "task-preview-time") }}
                   </div>
                 </div>
               </article>

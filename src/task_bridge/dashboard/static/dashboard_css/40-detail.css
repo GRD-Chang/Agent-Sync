@@ -511,20 +511,13 @@
 }
 
 .dispatch-node-time {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+  display: inline-flex;
   align-items: center;
   font-family: var(--font-mono);
-  font-size: 0.74rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
   color: var(--muted);
   min-width: 0;
-}
-
-.dispatch-node-time span {
-  white-space: nowrap;
 }
 
 .dispatch-node-header {

@@ -11,6 +11,7 @@ from task_bridge.worker_registry import roster_with_assigned_agents
 from .agent_presentation import AgentPresentation, resolve_agent_presentation
 from .formatting import (
     format_timestamp as _format_timestamp,
+    format_timestamp_for_client as _format_timestamp_for_client,
     optional_text as _optional_text,
 )
 from .i18n import DEFAULT_LOCALE, get_messages, resolve_locale
@@ -63,10 +64,12 @@ class DashboardQueryService:
         *,
         now_provider: Callable[[], str] = _dashboard_now_iso,
         locale: str = DEFAULT_LOCALE,
+        timezone: str | None = None,
     ) -> None:
         self.store = TaskStore(home)
         self._now_provider = now_provider
         self._locale = resolve_locale(locale)
+        self._timezone = timezone.strip() if timezone else None
         self._messages = get_messages(self._locale)
         self._task_display = TaskDisplayQueryAssembler(self)
 
@@ -113,10 +116,15 @@ class DashboardQueryService:
                 reverse=True,
             )[:RECENT_UPDATES_LIMIT]
         ]
+        generated_at = _format_timestamp_for_client(
+            self._now_provider(),
+            fallback=self._messages["common"]["unknown"],
+        )
         return OverviewSnapshot(
             home_path=self.home_path,
             current_job_id=current_job_id,
-            generated_at=_format_timestamp(self._now_provider(), fallback=self._messages["common"]["unknown"]),
+            generated_at=generated_at.display,
+            generated_at_iso=generated_at.raw_iso,
             jobs_count=len(jobs),
             tasks_count=len(tasks),
             terminal_count=sum(status_counts.get(state, 0) for state in TERMINAL_TASK_STATES),
@@ -176,13 +184,15 @@ class DashboardQueryService:
     def alerts(
         self,
         *,
-        risk_page: str | None = None,
+        failed_page: str | None = None,
+        blocked_page: str | None = None,
         followup_page: str | None = None,
     ) -> AlertsSnapshot:
         from .alerts_page_queries import AlertsPageQueryAssembler
 
         return AlertsPageQueryAssembler(self).build(
-            risk_page=risk_page,
+            failed_page=failed_page,
+            blocked_page=blocked_page,
             followup_page=followup_page,
         )
 
@@ -267,6 +277,8 @@ class DashboardQueryService:
 
     def _path_with_locale(self, path: str, *pairs: tuple[str, str]) -> str:
         query_items = [(key, value) for key, value in pairs if value]
+        if self._timezone:
+            query_items.append(("tz", self._timezone))
         if self._locale != DEFAULT_LOCALE:
             query_items.append(("lang", self._locale))
         return f"{path}?{urlencode(query_items)}" if query_items else path
