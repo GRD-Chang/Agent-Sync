@@ -14,9 +14,11 @@ Turn local jobs, tasks, worker queues, alerts, and health into a visual read-onl
 task-bridge dashboard
 ```
 
-| Overview | Job detail |
-|---|---|
-| ![Dashboard overview](docs/assets/dashboard/overview.png) | ![Dashboard job detail](docs/assets/dashboard/job_detail.png) |
+One `Job detail` screen tells the story quickly: the leader can inspect the current job, dispatch rhythm, surfaced blockers, and execution evidence without reconstructing progress from chat history.
+
+![Dashboard job detail](artifacts/ui-screenshots/manual-20260322/job_detail.png)
+
+> This screenshot uses reviewed, scrubbed sample data already committed in the repository. It shows how `task-bridge` keeps the job summary, dispatch timeline, and task cards on one read-only page.
 
 If you are trying to build an agent team with OpenClaw, the main problem is usually not the lack of agents. The problem is that agents struggle to keep a long engineering workflow under control. State gets lost, asynchronous execution breaks the chain, and the workflow stops moving.
 
@@ -135,11 +137,12 @@ TASK_BRIDGE_HOME=/tmp/task-bridge-demo task-bridge dashboard
 - The dashboard is read-only over your local store and exposes no mutation endpoints.
 - In-page switcher for `en` / `zh-CN` and local font style.
 
-| Overview | Jobs |
+Quick tour: start from the job register to see which workstreams are active, then drill into a task when you need the timeline, result summary, and attached `detail.md` evidence.
+
+| Job register | Task detail |
 |---|---|
-| ![Dashboard overview](docs/assets/dashboard/overview.png) | ![Dashboard jobs list](docs/assets/dashboard/job_list.png) |
-| Job detail | Task detail |
-| ![Dashboard job detail](docs/assets/dashboard/job_detail.png) | ![Dashboard task detail](docs/assets/dashboard/task_detail.png) |
+| ![Dashboard job list](artifacts/ui-screenshots/manual-20260322/jog_list.png) | ![Dashboard task detail](artifacts/ui-screenshots/manual-20260322/task_detail.png) |
+| See active jobs, notification targets, and whether work has already converged. | Review task timestamps, the latest worker write-back, and the supporting detail artifact in one place. |
 
 ### 3. Give the Team Leader a Requirement
 
