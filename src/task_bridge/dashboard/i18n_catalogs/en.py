@@ -204,7 +204,9 @@ EN_MESSAGES: dict[str, Any] = {
         "notify_target": "Notify target",
         "created_at": "Created",
         "updated_at": "Updated",
-        "detail_path": "Details location",
+        "detail_path": "Saved details",
+        "detail_path_available": "Available for preview below",
+        "detail_path_unavailable": "No saved details yet",
         "detail_status": "Detail status",
         "detail_status_labels": {
             "rendered": "Preview ready",

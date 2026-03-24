@@ -221,6 +221,7 @@ class TaskDetailSnapshot:
     requirement: str
     result: str | None
     detail_path: str
+    detail_path_display: str
     detail_status_label: str
     detail_preview: DetailPreview
     timeline: list[TaskTimelineEvent]

@@ -67,6 +67,7 @@ class TaskDisplayQueryAssembler:
         job_id = str(task["job_id"])
         detail_path = str(task.get("detail_path") or "")
         detail_preview = _load_detail_preview(detail_path)
+        detail_path_display = self._messages["tasks"]["detail_path_available"] if detail_path else self._messages["tasks"]["detail_path_unavailable"]
         resolved_back_links = (
             back_links
             if back_links is not None
@@ -107,6 +108,7 @@ class TaskDisplayQueryAssembler:
             requirement=_optional_display_text(task.get("requirement")) or self._messages["common"]["unknown"],
             result=_optional_display_text(task.get("result")),
             detail_path=detail_path,
+            detail_path_display=detail_path_display,
             detail_status_label=self._messages["tasks"]["detail_status_labels"][detail_preview.status],
             detail_preview=detail_preview,
             timeline=self.build_task_timeline(task),

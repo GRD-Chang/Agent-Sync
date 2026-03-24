@@ -204,7 +204,9 @@ ZH_CN_MESSAGES: dict[str, Any] = {
         "notify_target": "通知目标",
         "created_at": "创建时间",
         "updated_at": "更新时间",
-        "detail_path": "详情位置",
+        "detail_path": "已保存详情",
+        "detail_path_available": "可在下方预览查看",
+        "detail_path_unavailable": "暂时还没有已保存详情",
         "detail_status": "详情状态",
         "detail_status_labels": {
             "rendered": "预览可用",
