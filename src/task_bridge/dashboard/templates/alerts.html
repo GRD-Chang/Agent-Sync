@@ -159,13 +159,13 @@
           data-testid="dashboard-alerts-risk-group-failed"
         >
           <header class="status-group-header">
-            <div>
+            <div class="status-group-copy">
               <p class="eyebrow">{{ ui.alerts.failed_tasks }}</p>
               <h3>{{ ui.alerts.failed_stream_title }}</h3>
             </div>
             <div class="status-group-meta">
               <span class="status-pill status-failed">{{ alerts.failed_count }}</span>
-              <p>{{ ui.alerts.failed_stream_note }}</p>
+              <p class="status-group-meta-note">{{ ui.status.failed.description }}</p>
             </div>
           </header>
           {% if alerts.failed_tasks %}
@@ -220,13 +220,13 @@
           data-testid="dashboard-alerts-risk-group-blocked"
         >
           <header class="status-group-header">
-            <div>
+            <div class="status-group-copy">
               <p class="eyebrow">{{ ui.alerts.blocked_tasks }}</p>
               <h3>{{ ui.alerts.blocked_stream_title }}</h3>
             </div>
             <div class="status-group-meta">
               <span class="status-pill status-blocked">{{ alerts.blocked_count }}</span>
-              <p>{{ ui.alerts.blocked_stream_note }}</p>
+              <p class="status-group-meta-note">{{ ui.status.blocked.description }}</p>
             </div>
           </header>
           {% if alerts.blocked_tasks %}

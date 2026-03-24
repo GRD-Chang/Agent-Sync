@@ -1973,6 +1973,10 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert "dashboard-alerts-blocked-pagination" not in body
     assert "browse-layout" not in body
     assert "latest outstanding reminder for the current job appears here" in body
+    assert "Closed with failure" in body
+    assert "Needs intervention" in body
+    assert "Review failures first so the most serious issues are visible immediately." not in body
+    assert "Blocked work appears separately so dependency issues stay visible without crowding out failures." not in body
     assert 'data-local-time' in body
     assert 'datetime="2026-03-20T12:00:00Z"' in body
     assert re.search(r'data-testid="dashboard-nav-alerts"[^>]*aria-current="page"', body)
@@ -2100,6 +2104,20 @@ def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
     )
     assert seeded["blocked_tasks"][0]["id"] in blocked_second_body
     assert 'data-testid="dashboard-alerts-followup-pagination"' not in blocked_second_body
+
+
+def test_dashboard_alerts_route_uses_short_status_copy_in_chinese_locale(home: Path) -> None:
+    seed_operational_dashboard_store(home)
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/alerts?lang=zh-CN")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "以失败结束" in body
+    assert "需要介入" in body
+    assert "先查看失败任务，让最严重的问题一眼可见。" not in body
+    assert "阻塞任务会单独展示，方便继续追踪依赖问题，也不会盖住失败项。" not in body
 
 
 def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:

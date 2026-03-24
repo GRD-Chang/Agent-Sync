@@ -100,6 +100,32 @@ async function getTestIdBox(page, testId) {
   return box;
 }
 
+async function getAlertsRiskGroupMetrics(page) {
+  return await page.evaluate(() => {
+    const readGroup = (state) => {
+      const group = document.querySelector(`[data-testid="dashboard-alerts-risk-group-${state}"]`);
+      const header = group?.querySelector(".status-group-header");
+      const card = group?.querySelector('[data-testid^="dashboard-alerts-risk-task-"]');
+      const note = group?.querySelector(".status-group-meta-note");
+      if (!group || !header || !card || !note) {
+        return null;
+      }
+      const headerBox = header.getBoundingClientRect();
+      const cardBox = card.getBoundingClientRect();
+      return {
+        headerHeight: Math.round(headerBox.height),
+        firstCardTop: Math.round(cardBox.top),
+        noteText: (note.textContent || "").trim(),
+      };
+    };
+
+    return {
+      failed: readGroup("failed"),
+      blocked: readGroup("blocked"),
+    };
+  });
+}
+
 async function expectLocatorContained(locator) {
   const metrics = await locator.evaluate((node) => {
     const rect = node.getBoundingClientRect();
@@ -1081,6 +1107,19 @@ test("worker queue, alerts, and health stay within the viewport on desktop width
       expect(riskBox.y).toBeGreaterThan(followupBox.y + 48);
       await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
       await expect(page.getByTestId("dashboard-alerts-risk-group-blocked")).toBeVisible();
+      await expect(page.locator("body")).not.toContainText(
+        "Review failures first so the most serious issues are visible immediately.",
+      );
+      await expect(page.locator("body")).not.toContainText(
+        "Blocked work appears separately so dependency issues stay visible without crowding out failures.",
+      );
+      const riskMetrics = await getAlertsRiskGroupMetrics(page);
+      expect(riskMetrics.failed).not.toBeNull();
+      expect(riskMetrics.blocked).not.toBeNull();
+      expect(Math.abs(riskMetrics.failed.headerHeight - riskMetrics.blocked.headerHeight)).toBeLessThanOrEqual(8);
+      expect(Math.abs(riskMetrics.failed.firstCardTop - riskMetrics.blocked.firstCardTop)).toBeLessThanOrEqual(8);
+      expect(riskMetrics.failed.noteText).toBe("Closed with failure");
+      expect(riskMetrics.blocked.noteText).toBe("Needs intervention");
 
       await page.goto(`${server.baseUrl}/health`);
       await expect(page.getByTestId("dashboard-health-checks")).toBeVisible();

@@ -330,6 +330,11 @@
   align-items: center;
 }
 
+.detail-title-row--alert {
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .detail-title-row--alert .detail-title-copy .eyebrow,
 .detail-title-row--band .detail-title-copy .eyebrow {
   margin: 0 0 0.25rem;
@@ -362,18 +367,37 @@
 
 .risk-stream-card {
   align-content: start;
+  background:
+    linear-gradient(180deg, var(--risk-stream-wash, rgba(30, 26, 22, 0.04)), rgba(255, 255, 255, 0.84)),
+    rgba(255, 255, 255, 0.42);
 }
 
 .risk-stream-card--failed {
-  background:
-    linear-gradient(180deg, rgba(122, 56, 56, 0.06), rgba(255, 255, 255, 0.8)),
-    rgba(255, 255, 255, 0.42);
+  --risk-stream-wash: rgba(122, 56, 56, 0.06);
 }
 
 .risk-stream-card--blocked {
-  background:
-    linear-gradient(180deg, rgba(185, 138, 42, 0.08), rgba(255, 255, 255, 0.82)),
-    rgba(255, 255, 255, 0.42);
+  --risk-stream-wash: rgba(185, 138, 42, 0.08);
+}
+
+.risk-stream-card .status-group-header {
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(30, 26, 22, 0.08);
+}
+
+.status-group-copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.risk-stream-card .status-group-meta {
+  align-content: start;
+  max-width: 14rem;
+}
+
+.status-group-meta-note {
+  margin: 0;
+  color: var(--muted);
 }
 
 .risk-stream-card .pagination-bar {

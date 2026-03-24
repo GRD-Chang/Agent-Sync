@@ -155,6 +155,10 @@ async function seedDashboard(homeDir) {
 const forbiddenVisible = [
   "把 failed 固定放在最前面，首屏先看到最硬的故障，再处理后续协同阻塞。",
   "把 blocked 放在第二条独立流里，既保留依赖阻塞的可见性，也不再淹没 failed。",
+  "Review failures first so the most serious issues are visible immediately.",
+  "Blocked work appears separately so dependency issues stay visible without crowding out failures.",
+  "先查看失败任务，让最严重的问题一眼可见。",
+  "阻塞任务会单独展示，方便继续追踪依赖问题，也不会盖住失败项。",
   "Failures stay pinned first",
   "Blocked work stays in a second lane",
   "current job pointer",
