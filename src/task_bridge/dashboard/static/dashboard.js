@@ -224,6 +224,12 @@
     });
   }
 
+  function formatTemplate(template, values) {
+    return String(template || "").replace(/\{(\w+)\}/g, (match, key) => {
+      return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match;
+    });
+  }
+
   function initDispatchTimelines() {
     document.querySelectorAll("[data-dispatch-timeline]").forEach((timeline) => {
       const scrollport = timeline.querySelector("[data-dispatch-scrollport]");
@@ -343,6 +349,14 @@
       const collapsedLabel = panel.querySelector('[data-collapsed-label]');
       const expandedLabel = panel.querySelector('[data-expanded-label]');
       const chips = Array.from(panel.querySelectorAll('[data-job-scope-chip]'));
+      const copy = {
+        summaryDefault: panel.dataset.summaryDefault || 'Job filter',
+        summarySelected: panel.dataset.summarySelected || 'Selected: {active}',
+        summaryTotal: panel.dataset.summaryTotal || '{total} jobs',
+        summaryWindow: panel.dataset.summaryWindow || 'Showing {shown} of {total}',
+        summaryMatches: panel.dataset.summaryMatches || '{count} results',
+        optionsLabel: panel.dataset.optionsLabel || 'Job filter options',
+      };
 
       if (!toggle || !list || chips.length === 0) {
         return;
@@ -355,11 +369,23 @@
       const activeChip = chips.find((chip) => chip.classList.contains('is-active'));
       const activeLabel = activeChip ? (activeChip.querySelector('span')?.textContent || '').trim() : '';
 
+      function buildSummary(total, shown, visibleCount) {
+        const parts = [
+          activeLabel ? formatTemplate(copy.summarySelected, { active: activeLabel }) : copy.summaryDefault,
+          formatTemplate(total > shown ? copy.summaryWindow : copy.summaryTotal, { shown, total }),
+        ];
+        if (query.trim()) {
+          parts.push(formatTemplate(copy.summaryMatches, { count: visibleCount }));
+        }
+        return parts.join(' · ');
+      }
+
       function updateSummary() {
         const total = chips.length;
         const shown = expanded ? total : Math.min(DEFAULT_VISIBLE, total);
-        const suffix = total > shown ? ` · showing ${shown}/${total}` : ` · ${total} jobs`;
-        summary && (summary.textContent = activeLabel ? `Selected: ${activeLabel}${suffix}` : `Job scope${suffix}`);
+        if (summary) {
+          summary.textContent = buildSummary(total, shown, shown);
+        }
       }
 
       function applyFilter() {
@@ -378,9 +404,7 @@
         if (summary) {
           const total = chips.length;
           const windowed = expanded ? total : Math.min(DEFAULT_VISIBLE, total);
-          const filterSuffix = q ? ` · ${visibleCount} match${visibleCount === 1 ? '' : 'es'}` : '';
-          const suffix = total > windowed ? ` · showing ${windowed}/${total}` : ` · ${total} jobs`;
-          summary.textContent = activeLabel ? `Selected: ${activeLabel}${suffix}${filterSuffix}` : `Job scope${suffix}${filterSuffix}`;
+          summary.textContent = buildSummary(total, windowed, visibleCount);
         }
       }
 
@@ -418,7 +442,7 @@
       // Ensure keyboard users can reach the scrollport area.
       list.setAttribute('tabindex', '0');
       list.setAttribute('role', 'region');
-      list.setAttribute('aria-label', 'Job scope options');
+      list.setAttribute('aria-label', copy.optionsLabel);
     });
   }
 

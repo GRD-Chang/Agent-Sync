@@ -248,12 +248,12 @@ def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:
     assert response.status_code == 200
     body = response.text
     assert_html_lang(body, "en")
-    assert "Live dispatch posture for the current task bridge" in body
+    assert "Current work at a glance" in body
     assert "Recent updates" in body
     assert "Current view" in body
     assert "Task status summary" in body
-    assert "Dispatch dashboard" in body
-    assert "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health." in body
+    assert "task-bridge dashboard" in body
+    assert "Use one view to keep up with work, blockers, and system health." in body
     assert 'data-font-preset="sans"' in body
     assert 'data-testid="dashboard-locale-switch"' in body
     assert 'data-testid="dashboard-page-chrome"' in body
@@ -340,7 +340,7 @@ def test_dashboard_locale_switch_preserves_selected_task_context(home: Path) -> 
     assert zh_response.status_code == 200
     zh_body = zh_response.text
     assert_html_lang(zh_body, "zh-CN")
-    assert "Tasks 总表与详情预览" in zh_body
+    assert "Task 列表与详情" in zh_body
     assert "进行中" in zh_body
     assert 'data-testid="dashboard-back-link"' in zh_body
     assert re.search(
@@ -363,9 +363,9 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
             "dashboard-tasks-page",
             "时间线",
         ),
-        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "当前负载与 queue 深度"),
+        ("/worker-queue?lang=zh-CN", "dashboard-worker-queue-hero", "当前负载与待处理工作"),
         ("/alerts?lang=zh-CN", "dashboard-alerts-hero", "当前需要处理的事项"),
-        ("/health?lang=zh-CN", "dashboard-health-hero", "关键运行摘要"),
+        ("/health?lang=zh-CN", "dashboard-health-hero", "关键健康信号"),
     ]
 
     with TestClient(create_dashboard_app(home)) as client:
@@ -378,7 +378,7 @@ def test_dashboard_chinese_locale_renders_all_live_pages(home: Path) -> None:
             assert 'data-testid="dashboard-locale-switch"' in body
             assert 'data-testid="dashboard-page-chrome"' in body
             assert re.search(r'data-testid="dashboard-locale-zh-cn"[^>]*aria-current="page"', body)
-            assert "集中查看当前 store 里已有的 jobs、tasks、queue、告警和健康信息。" in body
+            assert "用一个视图查看任务进度、待处理事项和系统健康。" in body
             assert "总览" in body
             assert "Jobs" in body
             assert "Tasks" in body
@@ -1298,8 +1298,8 @@ def test_dashboard_health_query_builds_live_base_snapshot(home: Path) -> None:
         "daemon-state": "ok",
         "prompt-cache": "ok",
     }
-    assert checks["prompt-cache"].detail == "3 worker prompt cache entries."
-    assert checks["prompt-cache"].detail_time_label == "Leader running notice"
+    assert checks["prompt-cache"].detail == "3 saved agent prompt entries are available."
+    assert checks["prompt-cache"].detail_time_label == "Latest coordination note"
     assert checks["prompt-cache"].detail_time_display == "2026-03-20 11:45"
     assert checks["prompt-cache"].detail_time_iso == "2026-03-20T11:45:00Z"
 
@@ -1315,10 +1315,10 @@ def test_dashboard_health_query_defaults_when_daemon_state_file_is_absent(home: 
     assert health.worker_prompt_entries == 0
     assert health.leader_last_running_notice_at == "None recorded"
     assert checks["daemon-state"].status == "ok"
-    assert checks["daemon-state"].detail == "`daemon_state.json` has not been written yet; default empty values are shown."
+    assert checks["daemon-state"].detail == "No background status file has been created yet, so default values are shown."
     assert checks["prompt-cache"].status == "ok"
-    assert checks["prompt-cache"].detail == "0 worker prompt cache entries."
-    assert checks["prompt-cache"].detail_time_label == "Leader running notice"
+    assert checks["prompt-cache"].detail == "0 saved agent prompt entries are available."
+    assert checks["prompt-cache"].detail_time_label == "Latest coordination note"
     assert checks["prompt-cache"].detail_time_display == "None recorded"
     assert checks["prompt-cache"].detail_time_iso is None
 
@@ -1566,9 +1566,9 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert seeded["job_b"]["id"] in body
     assert "job-a" in body
     assert "queued req" in body
-    assert "Dispatch timeline" in body
-    assert "Newest dispatches stay pinned on the live edge" in body
-    assert "Showing the latest dispatch slice first" in body
+    assert "Activity timeline" in body
+    assert "Newest activity stays on the right" in body
+    assert "The latest activity is shown first" in body
     assert body.index('data-testid="dashboard-jobs-timeline"') < body.index('data-testid="dashboard-jobs-task-groups"')
     assert f"/jobs?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}#job-task-detail" in body
     assert 'data-testid="dashboard-jobs-pagination"' not in body
@@ -1793,7 +1793,7 @@ def test_dashboard_tasks_route_renders_live_list_detail_preview_and_timeline(hom
     assert "Runbook" in body
     assert "capture logs" in body
     assert "Task created" in body
-    assert "Last dispatch recorded" in body
+    assert "Last sent out" in body
     assert f"/jobs?job={seeded['job_a']['id']}" in body
     assert 'data-testid="dashboard-tasks-empty-state"' not in body
 
@@ -1812,7 +1812,7 @@ def test_dashboard_tasks_route_filters_and_handles_missing_detail(home: Path) ->
     assert seeded["task_a1"]["id"] in body
     assert seeded["task_a2"]["id"] not in body
     assert 'data-testid="dashboard-tasks-detail-preview-missing"' in body
-    assert "File missing" in body
+    assert "Not available" in body
 
 
 def test_dashboard_tasks_route_renders_unassigned_and_extension_agent_filter_states(home: Path) -> None:
@@ -1929,7 +1929,7 @@ def test_dashboard_worker_queue_route_renders_live_base_page(home: Path) -> None
     assert "Worker queue across agents" in body
     assert 'class="queue-layout"' in body
     assert "browse-layout" not in body
-    assert "Lanes with running work or queued backlog stay expanded" in body
+    assert "Agents with active or waiting work stay expanded." in body
     assert f'data-testid="dashboard-worker-queue-lane-card-quality-agent"' in body
     assert 'data-testid="dashboard-worker-queue-lane-card-planning-agent"' not in body
     assert 'data-testid="dashboard-worker-queue-quiet-lane-planning-agent"' in body
@@ -1972,7 +1972,7 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
     assert "dashboard-alerts-failed-pagination" not in body
     assert "dashboard-alerts-blocked-pagination" not in body
     assert "browse-layout" not in body
-    assert "latest unresolved follow-up window appears here" in body
+    assert "latest outstanding reminder for the current job appears here" in body
     assert 'data-local-time' in body
     assert 'datetime="2026-03-20T12:00:00Z"' in body
     assert re.search(r'data-testid="dashboard-nav-alerts"[^>]*aria-current="page"', body)
@@ -2028,7 +2028,7 @@ def test_dashboard_time_surfaces_emit_local_time_contract_markup(home: Path) -> 
         rf'data-testid="dashboard-tasks-list-card-{seeded["task_b2"]["id"]}"[\s\S]*?data-local-time[\s\S]*?data-local-time',
         tasks_body,
     )
-    assert re.search(r'Scheduler cache[\s\S]*?Leader running notice:[\s\S]*?data-local-time', health_body)
+    assert re.search(r'Recent reminder data[\s\S]*?Latest coordination note:[\s\S]*?data-local-time', health_body)
 
 
 def test_dashboard_worker_queue_route_limits_backlog_preview_to_keep_lane_cards_compact(home: Path) -> None:
@@ -2055,7 +2055,7 @@ def test_dashboard_worker_queue_route_limits_backlog_preview_to_keep_lane_cards_
     assert queued_tasks[2]["id"] not in body
     assert queued_tasks[3]["id"] not in body
     assert 'data-testid="dashboard-worker-queue-lane-more-code-agent"' in body
-    assert "2 more queued" in body
+    assert "2 more waiting" in body
 
 
 def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
@@ -2077,7 +2077,7 @@ def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:
     assert 'data-testid="dashboard-alerts-blocked-pagination-page-2"' in body
     assert "#alerts-failed-list" in body
     assert "#alerts-blocked-list" in body
-    assert "No unresolved follow-ups" in body
+    assert "No pending follow-up reminders" in body
     assert seeded["failed_tasks"][-1]["id"] in body
     assert seeded["blocked_tasks"][-1]["id"] in body
 
@@ -2116,8 +2116,8 @@ def test_dashboard_health_route_renders_live_base_page(home: Path) -> None:
     assert "daemon_state.json" in body
     assert 'datetime="2026-03-20T11:45:00Z"' in body
     assert "2026-03-20 11:45" in body
-    assert "Readability checks" in body
-    assert "Warnings here come only from readable local files." in body
+    assert "Key checks" in body
+    assert "These checks reflect what the dashboard can read right now." in body
     assert re.search(r'data-testid="dashboard-nav-health"[^>]*aria-current="page"', body)
     assert "<form" not in body
     assert "<input" not in body
@@ -2140,7 +2140,7 @@ def test_dashboard_overview_error_state_preserves_shell(home: Path) -> None:
     assert 'data-testid="dashboard-page-title"' in body
     assert 'data-testid="dashboard-overview-error-state"' in body
     assert "Overview unavailable" in body
-    assert "Store read failed" in body
+    assert "Unable to load overview" in body
 
 
 def test_dashboard_overview_error_state_localizes_to_chinese(home: Path) -> None:
@@ -2157,4 +2157,4 @@ def test_dashboard_overview_error_state_localizes_to_chinese(home: Path) -> None
     assert 'data-testid="dashboard-shell"' in body
     assert 'data-testid="dashboard-overview-error-state"' in body
     assert "总览暂不可用" in body
-    assert "读取存储失败" in body
+    assert "无法载入总览" in body

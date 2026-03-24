@@ -7,20 +7,29 @@
   <div class="route-groups">
     {% for group in tasks.filter_groups %}
     {% if group.key == "job" %}
-    <article class="route-group route-group--job-scope" data-testid="dashboard-tasks-filter-job">
+    <article
+      class="route-group route-group--job-scope"
+      data-testid="dashboard-tasks-filter-job"
+      data-summary-default="{{ ui.tasks.job_scope_summary_default }}"
+      data-summary-selected="{{ ui.tasks.job_scope_summary_selected }}"
+      data-summary-total="{{ ui.tasks.job_scope_summary_total }}"
+      data-summary-window="{{ ui.tasks.job_scope_summary_window }}"
+      data-summary-matches="{{ ui.tasks.job_scope_summary_matches }}"
+      data-options-label="{{ ui.tasks.job_scope_options_label }}"
+    >
       <div class="route-group-heading">
         <h3>{{ group.label }}</h3>
         <div class="route-group-tools">
           <label class="route-group-search" data-readonly-control="job-scope-search">
             <input type="hidden" data-readonly-control="hidden" aria-hidden="true" tabindex="-1">
-            <span class="sr-only">Search job scope</span>
+            <span class="sr-only">{{ ui.tasks.job_scope_search_label }}</span>
             <input
               type="search"
               inputmode="search"
               autocomplete="off"
               spellcheck="false"
-              placeholder="Search jobs"
-              aria-label="Search jobs"
+              placeholder="{{ ui.tasks.job_scope_search_placeholder }}"
+              aria-label="{{ ui.tasks.job_scope_search_label }}"
               data-job-scope-search
               data-readonly-control="job-scope-search"
             >
@@ -32,8 +41,8 @@
             aria-controls="job-scope-panel"
             data-job-scope-toggle
           >
-            <span class="route-group-toggle-label" data-collapsed-label>Show more</span>
-            <span class="route-group-toggle-label" data-expanded-label hidden>Show less</span>
+            <span class="route-group-toggle-label" data-collapsed-label>{{ ui.tasks.job_scope_show_more }}</span>
+            <span class="route-group-toggle-label" data-expanded-label hidden>{{ ui.tasks.job_scope_show_less }}</span>
           </button>
         </div>
       </div>

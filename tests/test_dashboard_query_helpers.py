@@ -170,8 +170,8 @@ def test_dashboard_task_display_helpers_preserve_locale_detail_and_timeline_cont
     assert detail.timeline[0].timestamp_iso == "2026-03-20T12:00:00Z"
     assert detail.timeline[0].timestamp_display == "2026-03-20 12:00"
     assert "结果：result line 1\nresult line 2" in detail.timeline[1].note
-    assert "按最新 terminal 通知窗口聚合出来的那组 task" in detail.timeline[4].note
-    assert "后续又出现新的 task" in detail.timeline[5].note
+    assert "当前 job 这一轮工作仍有一条待发送的跟进提醒。" in detail.timeline[4].note
+    assert "同一个 job 后续出现更新任务" in detail.timeline[5].note
     assert detail.back_links[0].href == "/tasks#tasks-registry"
     assert detail.assigned_agent_raw == "quality-agent"
     assert detail.assigned_agent_fallback_kind == "explicit-theme"
