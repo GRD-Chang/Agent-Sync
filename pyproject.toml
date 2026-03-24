@@ -6,7 +6,19 @@ build-backend = "setuptools.build_meta"
 name = "task-bridge"
 version = "0.1.0"
 description = "Minimal local task bridge for team-leader and workers"
+readme = {file = "README.en.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
+keywords = ["openclaw", "agents", "task-bridge", "orchestration", "cli", "dashboard"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
   "jinja2>=3.1",
   "starlette>=0.37",
@@ -20,6 +32,11 @@ test = [
 
 [project.scripts]
 task-bridge = "task_bridge.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/GRD-Chang/Agent-Sync"
+Repository = "https://github.com/GRD-Chang/Agent-Sync.git"
+Issues = "https://github.com/GRD-Chang/Agent-Sync/issues"
 
 [tool.setuptools.package-data]
 task_bridge = [

@@ -57,7 +57,9 @@
     aria-label="{{ ui.jobs.timeline }}"
   >
     <div class="dispatch-timeline-topbar">
-      <p class="dispatch-timeline-legend">{{ ui.jobs.timeline_live_edge }}</p>
+      <p class="dispatch-timeline-legend" data-testid="dashboard-jobs-timeline-live-edge">
+        {{ ui.jobs.timeline_live_edge }}
+      </p>
       <div class="dispatch-timeline-controls" aria-label="{{ ui.jobs.timeline_controls }}">
         <button
           type="button"
@@ -131,8 +133,9 @@
         </div>
       </div>
     </div>
-
-    <p class="dispatch-timeline-hint">{{ ui.jobs.timeline_browse_hint }}</p>
+    <p class="dispatch-timeline-hint" data-testid="dashboard-jobs-timeline-browse-hint">
+      {{ ui.jobs.timeline_browse_hint }}
+    </p>
   </section>
   {% else %}
   <div class="state-panel" role="status" aria-live="polite">

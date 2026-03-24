@@ -54,7 +54,7 @@ This repository already includes:
 Copy those files into each workspace:
 
 ```bash
-REPO_ROOT=/path/to/task-bridge
+REPO_ROOT=/path/to/<repo-root>
 
 for agent in team-leader planning-agent code-agent quality-agent release-agent; do
   mkdir -p "$HOME/.openclaw/workspaces/$agent/memory"
@@ -152,7 +152,7 @@ For a quick smoke check, you should at least see:
 This project is a Python package, so you usually do not need to build a standalone binary. The recommended setup is an editable install:
 
 ```bash
-cd /path/to/task-bridge
+cd /path/to/<repo-root>
 python -m pip install -e .
 ```
 
@@ -165,13 +165,15 @@ task-bridge -h
 
 If you only changed `src/task_bridge/**`, editable install usually does not need to be re-run.
 
-If you do want build artifacts, run:
+If you are preparing a wheel or sdist publish, treat that as a separate verification path:
 
 ```bash
-cd /path/to/task-bridge
+cd /path/to/<repo-root>
 python -m pip install build
 python -m build
 ```
+
+After building, verify the packaged artifact separately before publishing, especially the dashboard static assets. The editable install path above is the runtime flow verified in this repository.
 
 ## 5. Configure `tools.exec.pathPrepend`
 
@@ -229,9 +231,13 @@ After you get the `chat_id`, put it in `.env`:
 TASK_BRIDGE_USER_CHAT_ID=oc_xxx
 ```
 
+Use `TASK_BRIDGE_USER_CHAT_ID` exactly. Current code does not fall back to `TASK_BRIDGE_USER_FEISHU_ID`.
+
 If you run `task-bridge` directly from this repository, use the repo root `.env`.
 
 If you mainly use OpenClaw agents, `~/.openclaw/.env` is the safer default.
+
+Only `TASK_BRIDGE_USER_CHAT_ID` is auto-read from those `.env` files. Variables such as `TASK_BRIDGE_HOME` and `TASK_BRIDGE_CAPTURE_FILE` still need to be exported in the shell or service manager that starts `task-bridge`.
 
 ## 7. Final check
 

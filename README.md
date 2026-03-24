@@ -14,11 +14,13 @@
 task-bridge dashboard
 ```
 
-一张 `Job 详情` 页面就足够说明它的价值：Leader 能在同一屏里看到当前 Job 的推进节奏、阻塞点和执行证据，不必再回翻零散聊天记录。
+以下以 Dashboard 的总览页与 `Job 详情` 页为例，展示 Leader 如何查看整体状态、任务分布、dispatch 时间线与执行证据。
 
-![Dashboard Job 详情（中文）](artifacts/ui-screenshots/manual-20260322/job_detail_zh.png)
+| Dashboard 总览 | Dashboard Job 详情 |
+|---|---|
+| ![Dashboard 总览（中文）](docs/assets/dashboard/overview_zh.png) | ![Dashboard Job 详情（中文）](docs/assets/dashboard/job_detail_zh.png) |
+| 先从这里看任务状态分布、Agent 利用率和最近更新。 | 再进入单个 Job，集中查看 dispatch 时间线、任务分布和当前卡点。 |
 
-> 上图使用仓库内已审过、脱敏且可公开的样例数据，集中展示 `task-bridge` 如何把 Job 概览、dispatch 时间线和任务卡片收拢到同一个只读页面里。
 
 如果你正在尝试用 OpenClaw 组建 Agent 团队，你可能会发现一个核心痛点：问题往往不在于有没有 Agent，而在于 Agent 无法稳定地把控一个长流程的开发任务，极易因为状态丢失或异步执行而导致工作流断裂。
 
@@ -95,6 +97,17 @@ User
 
 你需要将本仓库提供的 Agent Prompt 和 Skill 配置到你的 OpenClaw 环境中，并安装 `task-bridge` 到 Agent 可执行的环境。
 
+最小安装步骤（在仓库根目录执行）：
+
+```bash
+python -m pip install -e .
+```
+
+说明：
+- `task-bridge` 的运行时是 Python CLI，入口定义在 `pyproject.toml`。
+- 仓库里的 `package.json` 只用于 dashboard 的 Playwright 浏览器测试，不参与 `task-bridge` / `daemon` / `dashboard` 的运行时启动。
+- 如果你修改了 `pyproject.toml`、依赖或 console script 入口，请重新执行 `python -m pip install -e .`。
+
 **💡 最佳实践：让 AI 帮你配置**
 你不必手动敲命令！只需将配置文档直接丢给 OpenClaw 的 `default-agent` 或 Claude Code，让它们代劳即可：
 - **中文保姆级教程**：请让 Agent 阅读并执行 `docs/zh/openclaw-agent-setup.md`
@@ -150,14 +163,17 @@ TASK_BRIDGE_HOME=/tmp/task-bridge-demo task-bridge dashboard
 - Dashboard 只读取本地数据，不提供任何写操作，适合审计、定位卡点与回归检查。
 - 页面内支持 `en` / `zh-CN` 与本地字体风格切换。
 
-快速导览：先从 Job 注册表判断当前有哪些工作流和通知对象，再进入 Task 详情核对时间线、结果摘要与 `detail.md` 证据。
+快速导览：先从 Job 注册表判断当前有哪些工作流和通知对象，再进入 Job / Task 详情核对时间线、结果摘要与 `detail.md` 证据。
 
-> 补充图使用同一批已审过的脱敏样例数据；这两张图当前以英文字段为主，但页面结构与中文模式一致。
-
-| Job 注册表 | Task 详情 |
+| Job 注册表 | Job 详情 |
 |---|---|
-| ![Dashboard Job 列表](artifacts/ui-screenshots/manual-20260322/jog_list.png) | ![Dashboard Task 详情](artifacts/ui-screenshots/manual-20260322/task_detail.png) |
-| 从这里快速判断哪些 job 正在推进、是否已收口，以及应该由谁接收终态通知。 | 进入单个 task 后，可以直接审查事件时间线、最新结果摘要，以及随任务附带的执行细节。 |
+| ![Dashboard Job 列表（中文）](docs/assets/dashboard/job_list_zh.png) | ![Dashboard Job 详情（中文）](docs/assets/dashboard/job_detail_zh.png) |
+| 从这里快速判断哪些 job 正在推进、是否已收口，以及应该由谁接收终态通知。 | Leader 可以在单页里看到 dispatch 节奏、任务分布和当前卡点，更快决定下一步。 |
+
+| Task 详情 | 总览首页 |
+|---|---|
+| ![Dashboard Task 详情（中文）](docs/assets/dashboard/task_detail_zh.png) | ![Dashboard 总览（中文）](docs/assets/dashboard/overview_zh.png) |
+| 进入单个 task 后，可以直接审查事件时间线、最新结果摘要，以及随任务附带的执行细节。 | 回到总览页时，可以快速确认整个协作系统是否健康、是否还有空闲 worker 可以继续推进。 |
 
 ### 3. 给 Team Leader 下发需求
 
@@ -189,6 +205,13 @@ task-bridge queue code-agent --json
 task-bridge dispatch-once --json
 ```
 
+如果你是在手动验证、且没有启动 `daemon`，那么任务进入终态后还需要显式发送一次通知：
+
+```bash
+task-bridge complete <task_id> --job <job_id> --result "完成摘要"
+task-bridge notify <task_id> --job <job_id>
+```
+
 ### 数据模型
 
 简单的目录结构，方便随时人工审查进展：
@@ -214,11 +237,15 @@ jobs/<job_id>/
 
 ## 环境变量
 
-可通过当前目录的 `.env` 或 `~/.openclaw/.env` 配置（参考 `.env.example`）：
+当前代码会自动从“当前工作目录 `.env`”或 `~/.openclaw/.env` 读取的变量只有一个（参考 `.env.example`）：
+
+- `TASK_BRIDGE_USER_CHAT_ID`：注入通知 Prompt 的用户 `chat_id`。通知链路需要它；当前代码不会回退读取 `TASK_BRIDGE_USER_FEISHU_ID`。
+
+下面这些变量需要由 shell、service manager 或命令前缀显式注入；`task-bridge` 不会自行从 `.env` 文件里加载它们：
 
 - `TASK_BRIDGE_HOME`：自定义数据目录（默认 `~/.openclaw/task-bridge`）。
-- `TASK_BRIDGE_USER_CHAT_ID`：注入通知 Prompt 的用户 `chat_id`（必填，用于准确推送）。
 - `TASK_BRIDGE_CAPTURE_FILE`：拦截发送动作并写入文件，适合做隔离的 E2E 测试。
+- `TASK_BRIDGE_DASHBOARD_SSH_TARGET`：覆盖 dashboard 启动提示中的 SSH 目标地址，仅影响提示文案，不影响实际监听地址。
 
 ---
 
@@ -233,16 +260,33 @@ jobs/<job_id>/
 
 ## 开发与测试
 
-直接运行源码：
+下面的 `<repo-root>` 指当前仓库根目录；目录名不要求叫 `task-bridge`。
+
+安装本地可执行入口：
 ```bash
-cd /path/to/task-bridge
+cd /path/to/<repo-root>
+python -m pip install -e .
+```
+
+直接从源码运行（不依赖 PATH）：
+```bash
+cd /path/to/<repo-root>
 PYTHONPATH=src python -m task_bridge create-job --title "Dev task"
 ```
 
-运行单元测试：
+运行 Python 测试：
 ```bash
-cd /path/to/task-bridge
-PYTHONPATH=src pytest -q
+cd /path/to/<repo-root>
+python -m pip install -e .[test] pytest
+python -m pytest -q
+```
+
+可选：运行 dashboard 的 Playwright 浏览器测试：
+```bash
+cd /path/to/<repo-root>
+npm install
+npm run playwright:install
+npm run test:playwright
 ```
 
 ---

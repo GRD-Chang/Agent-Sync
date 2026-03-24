@@ -146,7 +146,7 @@ def test_dashboard_command_prints_actionable_launch_output(
         "run_dashboard",
         lambda **kwargs: captured.update(kwargs),
     )
-    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@10.10.0.8")
+    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@example.test")
     monkeypatch.setattr(cli_module, "_dashboard_is_remote_session", lambda: True)
     monkeypatch.setattr(cli_module, "_dashboard_has_gui_session", lambda: False)
 
@@ -158,7 +158,7 @@ def test_dashboard_command_prints_actionable_launch_output(
     assert f"监听端口: {port}" in output
     assert f"本机打开: http://127.0.0.1:{port}/overview" in output
     assert f"数据目录: {home}" in output
-    assert f"远程访问: ssh -L {port}:127.0.0.1:{port} dev@10.10.0.8" in output
+    assert f"远程访问: ssh -L {port}:127.0.0.1:{port} dev@example.test" in output
     assert "当前会话看起来像远程或无 GUI 环境" in output
     assert "<remote-host>" not in output
     assert "Ctrl+C" in output
@@ -200,16 +200,16 @@ def test_dashboard_launch_message_falls_back_to_generic_remote_guidance(monkeypa
 def test_dashboard_launch_message_shows_network_url_for_wildcard_host(monkeypatch: pytest.MonkeyPatch) -> None:
     import task_bridge.cli as cli_module
 
-    monkeypatch.setattr(cli_module, "_dashboard_detect_network_host", lambda: "10.20.30.40")
-    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@10.20.30.40")
+    monkeypatch.setattr(cli_module, "_dashboard_detect_network_host", lambda: "198.51.100.24")
+    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@example.test")
     monkeypatch.setattr(cli_module, "_dashboard_is_remote_session", lambda: False)
     monkeypatch.setattr(cli_module, "_dashboard_has_gui_session", lambda: True)
 
     output = cli_module._dashboard_launch_message(home=Path("/tmp/demo-home"), host="0.0.0.0", port=8050)
 
     assert "本机打开: http://127.0.0.1:8050/overview" in output
-    assert "同网段打开: http://10.20.30.40:8050/overview" in output
-    assert "远程访问: ssh -L 8050:127.0.0.1:8050 dev@10.20.30.40" in output
+    assert "同网段打开: http://198.51.100.24:8050/overview" in output
+    assert "远程访问: ssh -L 8050:127.0.0.1:8050 dev@example.test" in output
 
 
 def test_dashboard_launch_message_guides_local_browser_when_gui_available(
@@ -217,7 +217,7 @@ def test_dashboard_launch_message_guides_local_browser_when_gui_available(
 ) -> None:
     import task_bridge.cli as cli_module
 
-    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@10.20.30.40")
+    monkeypatch.setattr(cli_module, "_dashboard_ssh_target", lambda: "dev@example.test")
     monkeypatch.setattr(cli_module, "_dashboard_is_remote_session", lambda: False)
     monkeypatch.setattr(cli_module, "_dashboard_has_gui_session", lambda: True)
 
@@ -225,7 +225,7 @@ def test_dashboard_launch_message_guides_local_browser_when_gui_available(
 
     assert "浏览器: 当前命令不会自动打开浏览器；请手动打开 http://127.0.0.1:8052/overview" in output
     assert "当前会话看起来像远程或无 GUI 环境" not in output
-    assert "远程访问: ssh -L 8052:127.0.0.1:8052 dev@10.20.30.40" in output
+    assert "远程访问: ssh -L 8052:127.0.0.1:8052 dev@example.test" in output
 
 
 def test_dashboard_detect_ssh_host_prefers_network_host_before_hostname(
@@ -234,11 +234,11 @@ def test_dashboard_detect_ssh_host_prefers_network_host_before_hostname(
     import task_bridge.cli as cli_module
 
     monkeypatch.delenv("SSH_CONNECTION", raising=False)
-    monkeypatch.setattr(cli_module, "_dashboard_detect_network_host", lambda: "10.10.0.8")
-    monkeypatch.setattr(cli_module.socket, "getfqdn", lambda: "builder-host.internal")
+    monkeypatch.setattr(cli_module, "_dashboard_detect_network_host", lambda: "198.51.100.24")
+    monkeypatch.setattr(cli_module.socket, "getfqdn", lambda: "builder-host.example.test")
     monkeypatch.setattr(cli_module.socket, "gethostname", lambda: "builder-host")
 
-    assert cli_module._dashboard_detect_ssh_host() == "10.10.0.8"
+    assert cli_module._dashboard_detect_ssh_host() == "198.51.100.24"
 
 
 def test_dashboard_default_ui_language_stays_single_locale(home: Path) -> None:

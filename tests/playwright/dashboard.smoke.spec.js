@@ -1,11 +1,10 @@
 const { test, expect } = require("@playwright/test");
-const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
+const { spawnBridge, spawnBridgeSync } = require("./helpers/task-bridge");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
-const pythonBin = path.join(repoRoot, ".venv", "bin", "python");
 const navItems = [
   { key: "overview", label: "Overview", route: "/overview" },
   { key: "jobs", label: "Jobs", route: "/jobs" },
@@ -19,18 +18,10 @@ const liveBaseItems = navItems.filter((item) =>
 );
 
 async function startDashboard(homeDir, port) {
-  const child = spawn(
-    pythonBin,
-    ["-m", "task_bridge", "dashboard", "--host", "127.0.0.1", "--port", String(port)],
+  const child = spawnBridge(
+    homeDir,
+    ["dashboard", "--host", "127.0.0.1", "--port", String(port)],
     {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        PYTHONPATH: path.join(repoRoot, "src"),
-        TASK_BRIDGE_HOME: homeDir,
-        HOME: homeDir,
-        PYTHONUNBUFFERED: "1",
-      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -192,20 +183,8 @@ async function expectResolvedDashboardTime(locator, timeZone) {
   expect(title).not.toContain("CST");
 }
 
-function bridgeEnv(homeDir) {
-  return {
-    ...process.env,
-    PYTHONPATH: path.join(repoRoot, "src"),
-    TASK_BRIDGE_HOME: homeDir,
-    HOME: homeDir,
-    PYTHONUNBUFFERED: "1",
-  };
-}
-
 function runBridgeJson(homeDir, args) {
-  const completed = spawnSync(pythonBin, ["-m", "task_bridge", ...args], {
-    cwd: repoRoot,
-    env: bridgeEnv(homeDir),
+  const completed = spawnBridgeSync(homeDir, args, {
     encoding: "utf-8",
   });
   if (completed.status !== 0) {
@@ -592,15 +571,13 @@ test("overview renders the live happy path shell", async ({ page }) => {
     await expect(page.getByTestId("dashboard-locale-en")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("dashboard-locale-zh-cn")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
+      "Use one view to keep up with work, blockers, and system health.",
     );
     for (const item of navItems) {
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveText(item.label);
     }
     await expect(page.getByTestId("dashboard-nav-overview")).toHaveAttribute("aria-current", "page");
-    await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Live dispatch posture for the current task bridge",
-    );
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("Current work at a glance");
     await expect(page.getByTestId("dashboard-overview-hero")).toBeVisible();
     await expect(page.getByTestId("dashboard-overview-task-status")).toContainText(
       "Task status summary",
@@ -677,8 +654,12 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByTestId("dashboard-jobs-timeline-scrollport")).toBeVisible();
     await expect(page.getByTestId("dashboard-jobs-timeline-older")).toBeVisible();
     await expect(page.getByTestId("dashboard-jobs-timeline-newer")).toBeVisible();
-    await expect(page.getByText("Newest dispatches stay pinned on the live edge")).toBeVisible();
-    await expect(page.getByText("Showing the latest dispatch slice first.")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-timeline-live-edge")).toContainText(
+      "Newest activity stays on the right",
+    );
+    await expect(page.getByTestId("dashboard-jobs-timeline-browse-hint")).toContainText(
+      "The latest activity is shown first.",
+    );
     await expect(page.getByTestId("dashboard-jobs-task-groups")).toBeVisible();
     const scrollMetrics = await page.getByTestId("dashboard-jobs-timeline-scrollport").evaluate((node) => ({
       left: node.scrollLeft,
@@ -695,7 +676,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     expect(jobTimelineTop).toBeLessThan(jobTaskGroupsTop);
     await expect(page.getByText("Back to job cards")).toBeVisible();
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
+      "Use one view to keep up with work, blockers, and system health.",
     );
     await expectReadOnlyContent(page);
 
@@ -707,7 +688,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     );
     await expect(page.getByTestId("dashboard-jobs-task-detail")).toContainText("actively working");
     await expect(page.getByTestId("dashboard-jobs-task-detail-preview")).toContainText("Runbook");
-    await expect(page.getByTestId("dashboard-jobs-task-timeline")).toContainText("Last dispatch recorded");
+    await expect(page.getByTestId("dashboard-jobs-task-timeline")).toContainText("Last sent out");
     await expect(page.getByTestId("dashboard-jobs-detail")).toHaveCount(0);
     await expect(page.getByTestId("dashboard-jobs-task-groups")).toHaveCount(0);
     await expect(page.getByText("Back to job detail")).toBeVisible();
@@ -748,7 +729,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
     await expect(page.getByText("Back to filtered task cards")).toBeVisible();
     await expect(page.getByText("Back to job detail")).toBeVisible();
     await expect(page.getByTestId("dashboard-tasks-detail-preview")).toContainText("Runbook");
-    await expect(page.getByTestId("dashboard-tasks-timeline")).toContainText("Last dispatch recorded");
+    await expect(page.getByTestId("dashboard-tasks-timeline")).toContainText("Last sent out");
     const taskTimelineTop = await page.getByTestId("dashboard-tasks-timeline").evaluate((node) =>
       Math.round(node.getBoundingClientRect().top),
     );
@@ -762,7 +743,7 @@ test("jobs and tasks render filtered read-only pages", async ({ page }) => {
       `${server.baseUrl}/tasks?job=${seeded.jobA.id}&state=queued&agent=code-agent&task=${seeded.taskA1.id}`,
     );
     await expect(page.getByTestId("dashboard-tasks-detail-preview-missing")).toContainText(
-      "No detail.md file exists at the recorded path yet.",
+      "No saved details are available for this task yet.",
     );
   } finally {
     await stopDashboard(server);
@@ -807,27 +788,23 @@ test("locale switch toggles tasks page between English and Simplified Chinese", 
 
   try {
     await page.goto(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
-    await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Task register with detail preview",
-    );
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("Task list and details");
     await page.getByTestId("dashboard-locale-zh-cn").click();
     await expect(page).toHaveURL(
       `${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}&lang=zh-CN`,
     );
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
-    await expect(page.getByTestId("dashboard-page-title")).toHaveText("Tasks 总表与详情预览");
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("Task 列表与详情");
     await expect(page.getByTestId("dashboard-tasks-detail")).toContainText("进行中");
     await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-      "集中查看当前 store 里已有的 jobs、tasks、queue、告警和健康信息。",
+      "用一个视图查看任务进度、待处理事项和系统健康。",
     );
     await expect(page.getByTestId("dashboard-locale-zh-cn")).toHaveAttribute("aria-current", "page");
 
     await page.getByTestId("dashboard-locale-en").click();
     await expect(page).toHaveURL(`${server.baseUrl}/tasks?job=${seeded.jobA.id}&task=${seeded.taskA2.id}`);
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
-    await expect(page.getByTestId("dashboard-page-title")).toHaveText(
-      "Task register with detail preview",
-    );
+    await expect(page.getByTestId("dashboard-page-title")).toHaveText("Task list and details");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
@@ -981,14 +958,16 @@ test("worker queue, alerts, and health render live read-only base pages", async 
       await page.goto(`${server.baseUrl}${item.route}`);
       await expect(page.getByTestId(`dashboard-nav-${item.key}`)).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("dashboard-boundary-note")).toContainText(
-        "A single place to inspect the live picture across jobs, tasks, queues, alerts, and health.",
+        "Use one view to keep up with work, blockers, and system health.",
       );
       await expectReadOnlyContent(page);
     }
 
     await page.goto(`${server.baseUrl}/worker-queue`);
     await expect(page.getByTestId("dashboard-worker-queue-hero")).toBeVisible();
-    await expect(page.getByTestId("dashboard-worker-queue-summary")).toContainText("Current load and queue depth");
+    await expect(page.getByTestId("dashboard-worker-queue-summary")).toContainText(
+      "Current load and waiting work",
+    );
     await expect(page.getByTestId("dashboard-worker-queue-lanes")).toContainText("quality-agent");
     await expect(page.getByTestId("dashboard-worker-queue-unassigned")).toContainText(seeded.taskA3.id);
     await expect(page.getByTestId("dashboard-worker-queue-quiet-lanes")).toContainText("planning-agent");
@@ -1003,8 +982,10 @@ test("worker queue, alerts, and health render live read-only base pages", async 
 
     await page.goto(`${server.baseUrl}/health`);
     await expect(page.getByTestId("dashboard-health-hero")).toBeVisible();
-    await expect(page.getByTestId("dashboard-health-summary")).toContainText("Key runtime facts");
-    await expect(page.getByTestId("dashboard-health-checks")).toContainText("daemon_state.json");
+    await expect(page.getByTestId("dashboard-health-summary")).toContainText("Key health signals");
+    await expect(page.getByTestId("dashboard-health-check-daemon-state")).toContainText(
+      "Background status",
+    );
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });
@@ -1065,9 +1046,7 @@ test("dashboard times honor explicit request timezone before browser timezone", 
     await expectResolvedDashboardTime(taskListCard.locator("time[data-local-time]").nth(1), shanghaiTimeZone);
 
     await page.goto(`${server.baseUrl}/health?tz=${encodeURIComponent(shanghaiTimeZone)}`);
-    const promptCacheCard = page
-      .locator("article.health-check-card")
-      .filter({ has: page.getByRole("heading", { name: "Scheduler cache" }) });
+    const promptCacheCard = page.getByTestId("dashboard-health-check-prompt-cache");
     await expectResolvedDashboardTime(promptCacheCard.locator("time[data-local-time]"), shanghaiTimeZone);
   } finally {
     await context.close();
@@ -1190,7 +1169,7 @@ test("dense tasks and alerts keep pagination, anchors, and priority visibility s
     await expect(page.getByTestId("dashboard-alerts-risk-group-failed")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-failed-pagination-page-2")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-blocked-pagination-page-2")).toBeVisible();
-    await expect(page.getByTestId("dashboard-alerts-followups")).toContainText("No unresolved follow-ups");
+    await expect(page.getByTestId("dashboard-alerts-followups-empty-state")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-followup-pagination")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
     const riskOrder = await page.locator('[data-testid^="dashboard-alerts-risk-group-"]').evaluateAll((nodes) =>
@@ -1215,7 +1194,7 @@ test("dense tasks and alerts keep pagination, anchors, and priority visibility s
       alertsSeed.failedTasks[0].id,
     );
 
-    await expect(page.getByTestId("dashboard-alerts-followups")).toContainText("No unresolved follow-ups");
+    await expect(page.getByTestId("dashboard-alerts-followups-empty-state")).toBeVisible();
     await expect(page.getByTestId("dashboard-alerts-followup-pagination")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   } finally {
@@ -1341,7 +1320,7 @@ test("overview renders an error state when store data is unreadable", async ({ p
     expect(response.status()).toBe(500);
     await expect(page.getByTestId("dashboard-primary-nav")).toBeVisible();
     await expect(page.getByTestId("dashboard-page-title")).toHaveText("Overview unavailable");
-    await expect(page.getByTestId("dashboard-overview-error-state")).toContainText("Store read failed");
+    await expect(page.getByTestId("dashboard-overview-error-state")).toContainText("Unable to load overview");
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

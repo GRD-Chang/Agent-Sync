@@ -134,7 +134,12 @@
       </div>
       {{ render_pagination(alerts.followup_pagination, ui, "dashboard-alerts-followup-pagination") }}
       {% else %}
-      <div class="state-panel state-panel--compact" role="status" aria-live="polite">
+      <div
+        class="state-panel state-panel--compact"
+        role="status"
+        aria-live="polite"
+        data-testid="dashboard-alerts-followups-empty-state"
+      >
         <h3>{{ ui.alerts.followup_empty_title }}</h3>
         <p>{{ ui.alerts.followup_empty_body }}</p>
       </div>

@@ -14,11 +14,13 @@ Turn local jobs, tasks, worker queues, alerts, and health into a visual read-onl
 task-bridge dashboard
 ```
 
-One `Job detail` screen tells the story quickly: the leader can inspect the current job, dispatch rhythm, surfaced blockers, and execution evidence without reconstructing progress from chat history.
+The examples below use the dashboard overview page and the `Job detail` page to show how the leader can inspect overall state, task distribution, dispatch timelines, and execution evidence.
 
-![Dashboard job detail](artifacts/ui-screenshots/manual-20260322/job_detail.png)
+| Dashboard overview | Dashboard job detail |
+|---|---|
+| ![Dashboard overview](docs/assets/dashboard/overview.png) | ![Dashboard job detail](docs/assets/dashboard/job_detail.png) |
+| Read task-state totals, worker utilization, and recent updates at a glance. | Drill into one job to review the dispatch timeline, task distribution, and surfaced blockers. |
 
-> This screenshot uses reviewed, scrubbed sample data already committed in the repository. It shows how `task-bridge` keeps the job summary, dispatch timeline, and task cards on one read-only page.
 
 If you are trying to build an agent team with OpenClaw, the main problem is usually not the lack of agents. The problem is that agents struggle to keep a long engineering workflow under control. State gets lost, asynchronous execution breaks the chain, and the workflow stops moving.
 
@@ -97,6 +99,18 @@ From a human operator's perspective, you do **not** need to manage tasks manuall
 
 You need to import the agent prompts and skills from this repository into your OpenClaw environment, and install `task-bridge` in the environment that agents can execute.
 
+Minimum install step from the repository root:
+
+```bash
+python -m pip install -e .
+```
+
+Notes:
+
+- `task-bridge` is a Python CLI entry point defined in `pyproject.toml`.
+- The repository `package.json` is only for Playwright browser tests of the dashboard. It is not required to run `task-bridge`, the daemon, or the dashboard itself.
+- If you change `pyproject.toml`, Python dependencies, or the console-script entry point, run `python -m pip install -e .` again.
+
 Best practice: let an AI agent do the setup for you.
 
 - Chinese step-by-step setup guide: ask the agent to read and execute `docs/zh/openclaw-agent-setup.md`
@@ -137,12 +151,17 @@ TASK_BRIDGE_HOME=/tmp/task-bridge-demo task-bridge dashboard
 - The dashboard is read-only over your local store and exposes no mutation endpoints.
 - In-page switcher for `en` / `zh-CN` and local font style.
 
-Quick tour: start from the job register to see which workstreams are active, then drill into a task when you need the timeline, result summary, and attached `detail.md` evidence.
+Quick tour: start from the job register to see which workstreams are active, then open the job or task detail page when you need the timeline, result summary, and attached `detail.md` evidence.
 
-| Job register | Task detail |
+| Job register | Job detail |
 |---|---|
-| ![Dashboard job list](artifacts/ui-screenshots/manual-20260322/jog_list.png) | ![Dashboard task detail](artifacts/ui-screenshots/manual-20260322/task_detail.png) |
-| See active jobs, notification targets, and whether work has already converged. | Review task timestamps, the latest worker write-back, and the supporting detail artifact in one place. |
+| ![Dashboard job list](docs/assets/dashboard/job_list.png) | ![Dashboard job detail](docs/assets/dashboard/job_detail.png) |
+| See active jobs, notification targets, and whether work has already converged. | Inspect dispatch rhythm, task distribution, and surfaced blockers without leaving the selected job. |
+
+| Task detail | Dashboard overview |
+|---|---|
+| ![Dashboard task detail](docs/assets/dashboard/task_detail.png) | ![Dashboard overview](docs/assets/dashboard/overview.png) |
+| Review task timestamps, the latest worker write-back, and the supporting detail artifact in one place. | Return to the overview page to confirm system health and whether idle workers are available for the next dispatch. |
 
 ### 3. Give the Team Leader a Requirement
 
@@ -174,6 +193,13 @@ Run a single dispatch cycle without starting the daemon:
 task-bridge dispatch-once --json
 ```
 
+If you are testing manually without the daemon running, a terminal state only updates local files. Send the final notification explicitly:
+
+```bash
+task-bridge complete <task_id> --job <job_id> --result "final summary"
+task-bridge notify <task_id> --job <job_id>
+```
+
 ### Data Model
 
 The directory layout stays simple so humans can inspect progress directly:
@@ -199,11 +225,15 @@ jobs/<job_id>/
 
 ## Environment Variables
 
-Configure via `.env` in the current directory or `~/.openclaw/.env` (see `.env.example`):
+The current code auto-loads only one variable from the current working directory `.env` or `~/.openclaw/.env` (see `.env.example`):
+
+- `TASK_BRIDGE_USER_CHAT_ID`: user `chat_id` injected into notification prompts. The notification flow expects this exact variable name; current code does not fall back to `TASK_BRIDGE_USER_FEISHU_ID`.
+
+The variables below must be exported by your shell, service manager, or command prefix. `task-bridge` does not auto-read them from `.env` files:
 
 - `TASK_BRIDGE_HOME`: custom data directory. Default: `~/.openclaw/task-bridge`.
-- `TASK_BRIDGE_USER_CHAT_ID`: user `chat_id` injected into notification prompts. Required for accurate delivery.
 - `TASK_BRIDGE_CAPTURE_FILE`: intercept outbound sending actions and write them to a file. Useful for isolated end-to-end testing.
+- `TASK_BRIDGE_DASHBOARD_SSH_TARGET`: override the SSH target shown in dashboard launch guidance. This only changes the printed hint, not the bind address.
 
 ---
 
@@ -218,18 +248,36 @@ Use these documents to run the workflow end to end:
 
 ## Development and Testing
 
-Run from source:
+`<repo-root>` below means this repository root; the folder does not need to be named `task-bridge`.
+
+Install the local executable entry point:
+```bash
+cd /path/to/<repo-root>
+python -m pip install -e .
+```
+
+Run from source without relying on PATH:
 
 ```bash
-cd /path/to/task-bridge
+cd /path/to/<repo-root>
 PYTHONPATH=src python -m task_bridge create-job --title "Dev task"
 ```
 
-Run tests:
+Run Python tests:
 
 ```bash
-cd /path/to/task-bridge
-PYTHONPATH=src pytest -q
+cd /path/to/<repo-root>
+python -m pip install -e .[test] pytest
+python -m pytest -q
+```
+
+Optional: run Playwright browser tests for the dashboard:
+
+```bash
+cd /path/to/<repo-root>
+npm install
+npm run playwright:install
+npm run test:playwright
 ```
 
 ---

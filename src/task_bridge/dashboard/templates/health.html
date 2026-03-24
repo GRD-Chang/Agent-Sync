@@ -62,7 +62,10 @@
     </div>
     <div class="item-list health-check-grid">
       {% for check in health.checks %}
-      <article class="detail-card health-check-card health-check-card--{{ check.status }}">
+      <article
+        class="detail-card health-check-card health-check-card--{{ check.status }}"
+        data-testid="dashboard-health-check-{{ check.key }}"
+      >
         <div class="detail-title-row">
           <div class="detail-title-copy">
             <h3>{{ check.label }}</h3>

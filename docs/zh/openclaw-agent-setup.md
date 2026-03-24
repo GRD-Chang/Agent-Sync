@@ -54,7 +54,7 @@ openclaw agents list --json
 把这些文件复制到各自 workspace：
 
 ```bash
-REPO_ROOT=/path/to/task-bridge
+REPO_ROOT=/path/to/<repo-root>
 
 for agent in team-leader planning-agent code-agent quality-agent release-agent; do
   mkdir -p "$HOME/.openclaw/workspaces/$agent/memory"
@@ -152,7 +152,7 @@ find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack
 本项目是 Python 包，通常不需要单独编译二进制。推荐直接安装：
 
 ```bash
-cd /path/to/task-bridge
+cd /path/to/<repo-root>
 python -m pip install -e .
 ```
 
@@ -165,13 +165,15 @@ task-bridge -h
 
 如果只是改了 `src/task_bridge/**`，editable install 一般不需要重装。
 
-如果你确实要产出安装包，再执行：
+如果你准备发布 wheel / sdist，请把它视为单独的验证路径：
 
 ```bash
-cd /path/to/task-bridge
+cd /path/to/<repo-root>
 python -m pip install build
 python -m build
 ```
+
+构建完成后，请在发布前单独验证打包产物，尤其是 dashboard 的静态资源。当前仓库里已验证的运行路径仍然是上面的 editable install。
 
 ## 5. 配置 `tools.exec.pathPrepend`
 
@@ -229,9 +231,13 @@ systemctl --user restart openclaw-gateway.service
 TASK_BRIDGE_USER_CHAT_ID=oc_xxx
 ```
 
+请使用精确变量名 `TASK_BRIDGE_USER_CHAT_ID`；当前代码不会回退读取 `TASK_BRIDGE_USER_FEISHU_ID`。
+
 如果你是在仓库里直接运行 `task-bridge`，放到仓库根目录 `.env`。
 
 如果你主要通过 OpenClaw agent 使用，放到 `~/.openclaw/.env` 更稳妥。
+
+另外，只有 `TASK_BRIDGE_USER_CHAT_ID` 会被程序自动从这些 `.env` 文件读取；`TASK_BRIDGE_HOME`、`TASK_BRIDGE_CAPTURE_FILE` 这类变量仍需由 shell 或 service manager 显式导出。
 
 ## 7. 最后检查
 

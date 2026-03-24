@@ -1,11 +1,8 @@
 const { test, expect } = require("@playwright/test");
-const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-
-const repoRoot = path.resolve(__dirname, "..", "..");
-const pythonBin = path.join(repoRoot, ".venv", "bin", "python");
+const { spawnBridge, spawnBridgeSync, repoRoot } = require("./helpers/task-bridge");
 
 async function waitForServer(url) {
   for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -21,18 +18,10 @@ async function waitForServer(url) {
 }
 
 async function startDashboard(homeDir, port) {
-  const child = spawn(
-    pythonBin,
-    ["-m", "task_bridge", "dashboard", "--host", "127.0.0.1", "--port", String(port)],
+  const child = spawnBridge(
+    homeDir,
+    ["dashboard", "--host", "127.0.0.1", "--port", String(port)],
     {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        PYTHONPATH: path.join(repoRoot, "src"),
-        TASK_BRIDGE_HOME: homeDir,
-        HOME: homeDir,
-        PYTHONUNBUFFERED: "1",
-      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -65,20 +54,8 @@ function sanitize(name) {
   return name.replace(/[^a-z0-9_-]+/gi, "-").replace(/-+/g, "-");
 }
 
-function bridgeEnv(homeDir) {
-  return {
-    ...process.env,
-    PYTHONPATH: path.join(repoRoot, "src"),
-    TASK_BRIDGE_HOME: homeDir,
-    HOME: homeDir,
-    PYTHONUNBUFFERED: "1",
-  };
-}
-
 function runBridgeJson(homeDir, args) {
-  const completed = spawnSync(pythonBin, ["-m", "task_bridge", ...args], {
-    cwd: repoRoot,
-    env: bridgeEnv(homeDir),
+  const completed = spawnBridgeSync(homeDir, args, {
     encoding: "utf-8",
   });
   if (completed.status !== 0) {
