@@ -92,14 +92,12 @@ async function expectNoHorizontalOverflow(page) {
   expect(metrics.body).toBeLessThanOrEqual(metrics.viewport + 1);
 }
 
-async function getTestIdWidth(page, testId) {
-  return page.evaluate((value) => {
-    const element = document.querySelector(`[data-testid="${value}"]`);
-    if (!element) {
-      return 0;
-    }
-    return element.getBoundingClientRect().width;
-  }, testId);
+async function getTestIdBox(page, testId) {
+  const box = await page.getByTestId(testId).boundingBox();
+  if (!box) {
+    throw new Error(`Missing visible element for data-testid=${testId}`);
+  }
+  return box;
 }
 
 async function expectLocatorContained(locator) {
@@ -879,6 +877,7 @@ test("worker queue, alerts, and health render live read-only base pages", async 
     await expect(page.getByTestId("dashboard-worker-queue-summary")).toContainText("Current load and queue depth");
     await expect(page.getByTestId("dashboard-worker-queue-lanes")).toContainText("quality-agent");
     await expect(page.getByTestId("dashboard-worker-queue-unassigned")).toContainText(seeded.taskA3.id);
+    await expect(page.getByTestId("dashboard-worker-queue-quiet-lanes")).toContainText("planning-agent");
 
     await page.goto(`${server.baseUrl}/alerts`);
     await expect(page.getByTestId("dashboard-alerts-hero")).toBeVisible();
@@ -910,15 +909,23 @@ test("worker queue, alerts, and health stay within the viewport on desktop width
       await page.goto(`${server.baseUrl}/worker-queue`);
       await expect(page.getByTestId("dashboard-worker-queue-lanes")).toBeVisible();
       await expectNoHorizontalOverflow(page);
+      const lanesBox = await getTestIdBox(page, "dashboard-worker-queue-lanes");
+      const unassignedBox = await getTestIdBox(page, "dashboard-worker-queue-unassigned");
+      expect(Math.abs(lanesBox.x - unassignedBox.x)).toBeLessThanOrEqual(8);
+      expect(Math.abs(lanesBox.width - unassignedBox.width)).toBeLessThanOrEqual(8);
+      expect(lanesBox.y).toBeGreaterThan(unassignedBox.y + 48);
+      await expect(page.getByTestId("dashboard-worker-queue-quiet-lanes")).toBeVisible();
 
       await page.goto(`${server.baseUrl}/alerts`);
       await expect(page.getByTestId("dashboard-alerts-risk-list")).toBeVisible();
       await expect(page.getByTestId("dashboard-alerts-followups")).toBeVisible();
       await expectNoHorizontalOverflow(page);
-      const riskWidth = await getTestIdWidth(page, "dashboard-alerts-risk-list");
-      const followupWidth = await getTestIdWidth(page, "dashboard-alerts-followups");
-      expect(riskWidth).toBeGreaterThan(420);
-      expect(followupWidth).toBeGreaterThan(340);
+      const riskBox = await getTestIdBox(page, "dashboard-alerts-risk-list");
+      const followupBox = await getTestIdBox(page, "dashboard-alerts-followups");
+      expect(Math.abs(riskBox.x - followupBox.x)).toBeLessThanOrEqual(8);
+      expect(Math.abs(riskBox.width - followupBox.width)).toBeLessThanOrEqual(8);
+      expect(riskBox.y).toBeGreaterThan(followupBox.y + 48);
+      expect(followupBox.height + 40).toBeLessThan(riskBox.height);
 
       await page.goto(`${server.baseUrl}/health`);
       await expect(page.getByTestId("dashboard-health-checks")).toBeVisible();

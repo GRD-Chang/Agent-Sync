@@ -38,9 +38,12 @@
   .worker-card header,
   .list-card-header,
   .status-group-header,
+  .followup-cluster-header,
   .task-preview-header,
   .detail-title-row,
-  .timeline-item header {
+  .timeline-item header,
+  .section-heading--band,
+  .quiet-lane-chip {
     flex-direction: column;
   }
 
@@ -53,6 +56,19 @@
 
   .status-group-meta p {
     text-align: left;
+  }
+
+  .section-heading--band {
+    display: grid;
+  }
+
+  .band-stat-strip {
+    justify-content: flex-start;
+  }
+
+  .followup-cluster-header,
+  .quiet-lane-chip {
+    align-items: flex-start;
   }
 }
 
@@ -132,6 +148,11 @@
   .signal-card-grid,
   .health-check-grid {
     gap: 0.85rem;
+  }
+
+  .band-stat {
+    min-width: 0;
+    width: 100%;
   }
 
   .font-links {

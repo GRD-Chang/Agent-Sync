@@ -344,6 +344,8 @@ class WorkerQueueSnapshot:
     assigned_queue_depth: int
     unassigned_queue_depth: int
     lanes: list[WorkerLaneSnapshot]
+    active_lanes: list[WorkerLaneSnapshot]
+    quiet_lanes: list[WorkerLaneSnapshot]
     unassigned_queued_tasks: list[QueueTaskSnapshot]
     has_activity: bool
 

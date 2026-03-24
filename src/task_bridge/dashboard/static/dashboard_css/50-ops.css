@@ -26,19 +26,15 @@
   display: grid;
   gap: 1rem;
   align-items: start;
-}
-
-.queue-layout {
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
-}
-
-.alerts-layout {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .lane-grid,
 .signal-card-grid,
-.health-check-grid {
+.health-check-grid,
+.followup-cluster-list,
+.quiet-lane-grid,
+.lane-canvas {
   display: grid;
   gap: 1rem;
 }
@@ -47,8 +43,26 @@
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+.lane-grid--active {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+}
+
 .signal-card-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.signal-card-grid--risk {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+
+.signal-card-grid--followups {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.85rem;
+}
+
+.signal-card-grid--followups-compact,
+.signal-card-grid--queue-band {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
 }
 
 .health-check-grid {
@@ -139,7 +153,230 @@
   background: rgba(255, 255, 255, 0.68);
 }
 
-.queue-panel--unassigned .detail-stack,
-.signal-panel .signal-card-grid {
+.signal-panel--followup-band,
+.queue-panel--band {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(247, 241, 232, 0.96)),
+    var(--panel-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.signal-panel--followup-band::before,
+.queue-panel--band::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: min(32%, 18rem);
+  height: 100%;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(44, 109, 112, 0.12), transparent 62%),
+    linear-gradient(180deg, rgba(217, 106, 50, 0.08), transparent 58%);
+}
+
+.signal-panel--primary,
+.queue-panel--lanes {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 251, 246, 0.98)),
+    var(--panel-strong);
+}
+
+.section-heading--band {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.section-heading--subtle {
+  margin-bottom: 0;
+}
+
+.section-note--compact {
+  max-width: 56rem;
+  color: var(--muted);
+}
+
+.band-stat-strip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.band-stat {
+  min-width: 10rem;
+  padding: 0.8rem 0.9rem 0.85rem;
+  border: 1px solid rgba(30, 26, 22, 0.1);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 24px rgba(44, 31, 16, 0.06);
+}
+
+.band-stat-label,
+.signal-card-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.band-stat-value {
+  margin: 0.45rem 0 0;
+  font-family: var(--font-mono);
+  font-size: clamp(1.4rem, 2vw, 1.85rem);
+  line-height: 1;
+}
+
+.followup-cluster-list,
+.status-group-list--risk {
   margin-top: 1rem;
+}
+
+.followup-cluster {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.followup-cluster--due {
+  background:
+    linear-gradient(180deg, rgba(185, 138, 42, 0.08), rgba(255, 255, 255, 0.82)),
+    var(--panel-strong);
+}
+
+.followup-cluster--scheduled {
+  background:
+    linear-gradient(180deg, rgba(217, 106, 50, 0.08), rgba(255, 255, 255, 0.82)),
+    var(--panel-strong);
+}
+
+.followup-cluster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.followup-cluster-header h3,
+.quiet-lane-chip h4 {
+  margin: 0;
+}
+
+.signal-card--followup,
+.signal-card--compact {
+  gap: 0.8rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.signal-card--risk,
+.lane-card--active {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(252, 248, 241, 0.98)),
+    var(--panel-strong);
+}
+
+.detail-title-row--band {
+  align-items: center;
+}
+
+.detail-title-row--alert .detail-title-copy .eyebrow,
+.detail-title-row--band .detail-title-copy .eyebrow {
+  margin: 0 0 0.25rem;
+}
+
+.signal-card-emphasis {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: calc(var(--radius-card) - 0.2rem);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.signal-card-emphasis--followup {
+  border-left: 3px solid rgba(217, 106, 50, 0.58);
+  background:
+    linear-gradient(90deg, rgba(217, 106, 50, 0.08), transparent 88%),
+    rgba(255, 255, 255, 0.78);
+}
+
+.signal-card-emphasis strong {
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.detail-callout--compact,
+.detail-callout--risk {
+  padding: 0.85rem 0.95rem;
+  border-radius: calc(var(--radius-card) - 0.2rem);
+  background: rgba(30, 26, 22, 0.035);
+}
+
+.meta-grid--compact {
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+.meta-grid--lane {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lane-canvas {
+  gap: 1rem;
+}
+
+.queue-more-note {
+  margin: 0.8rem 0 0;
+  padding-top: 0.8rem;
+  border-top: 1px dashed rgba(30, 26, 22, 0.14);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.lane-quiet-band {
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(30, 26, 22, 0.08);
+}
+
+.quiet-lane-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.quiet-lane-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(30, 26, 22, 0.1);
+  border-radius: calc(var(--radius-card) - 0.1rem);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.quiet-lane-chip p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+
+.state-panel--compact {
+  padding: 0.95rem 1rem;
+  background: rgba(255, 255, 255, 0.68);
 }

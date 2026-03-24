@@ -61,6 +61,11 @@ class WorkerQueuePageQueryAssembler:
             )
         ]
         busy_workers = sum(1 for lane in lanes if lane.status == "busy")
+        active_lanes = sorted(
+            [lane for lane in lanes if self._is_active_lane(lane)],
+            key=self._lane_priority_key,
+        )
+        quiet_lanes = [lane for lane in lanes if not self._is_active_lane(lane)]
         return WorkerQueueSnapshot(
             home_path=self._service.home_path,
             current_job_id=self._service.store.get_current_job_id(),
@@ -75,9 +80,18 @@ class WorkerQueuePageQueryAssembler:
             assigned_queue_depth=assigned_queue_depth,
             unassigned_queue_depth=len(unassigned),
             lanes=lanes,
+            active_lanes=active_lanes,
+            quiet_lanes=quiet_lanes,
             unassigned_queued_tasks=unassigned,
             has_activity=bool(tasks),
         )
+
+    def _is_active_lane(self, lane: WorkerLaneSnapshot) -> bool:
+        return bool(lane.running_task_id or lane.queued_tasks)
+
+    def _lane_priority_key(self, lane: WorkerLaneSnapshot) -> tuple[int, int, str]:
+        load_score = len(lane.queued_tasks) + (2 if lane.running_task_id else 0)
+        return (-load_score, 0 if lane.running_task_id else 1, lane.agent)
 
     def _build_queue_task(self, task: dict[str, object]) -> QueueTaskSnapshot:
         summary_label, summary_text = self._service._task_summary(task)

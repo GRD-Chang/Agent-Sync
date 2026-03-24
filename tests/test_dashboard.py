@@ -1048,6 +1048,8 @@ def test_dashboard_worker_queue_query_builds_live_base_snapshot(home: Path) -> N
     assert lanes["quality-agent"].running_task_id == seeded["task_a2"]["id"]
     assert [task.task_id for task in lanes["code-agent"].queued_tasks] == [seeded["task_a1"]["id"]]
     assert lanes["release-agent"].queued_tasks == []
+    assert [lane.agent for lane in worker_queue.active_lanes] == ["quality-agent", "code-agent"]
+    assert {lane.agent for lane in worker_queue.quiet_lanes} == set(expected_workers) - {"quality-agent", "code-agent"}
     assert [task.task_id for task in worker_queue.unassigned_queued_tasks] == [seeded["task_a3"]["id"]]
 
 
@@ -1860,13 +1862,18 @@ def test_dashboard_worker_queue_route_renders_live_base_page(home: Path) -> None
     assert 'data-testid="dashboard-worker-queue-summary"' in body
     assert 'data-testid="dashboard-worker-queue-lanes"' in body
     assert 'data-testid="dashboard-worker-queue-unassigned"' in body
+    assert 'data-testid="dashboard-worker-queue-focus-lanes"' in body
+    assert 'data-testid="dashboard-worker-queue-quiet-lanes"' in body
     assert seeded["task_a1"]["id"] in body
     assert seeded["task_a3"]["id"] in body
     assert "quality-agent" in body
     assert "Worker queue across agents" in body
     assert 'class="queue-layout"' in body
     assert "browse-layout" not in body
-    assert "Each card shows the task in progress plus queued work for that agent." in body
+    assert "Lanes with running work or queued backlog stay expanded" in body
+    assert f'data-testid="dashboard-worker-queue-lane-card-quality-agent"' in body
+    assert 'data-testid="dashboard-worker-queue-lane-card-planning-agent"' not in body
+    assert 'data-testid="dashboard-worker-queue-quiet-lane-planning-agent"' in body
     assert 'data-testid="dashboard-worker-queue-empty-state"' not in body
     assert re.search(r'data-testid="dashboard-nav-worker-queue"[^>]*aria-current="page"', body)
     assert "<form" not in body
@@ -1899,13 +1906,42 @@ def test_dashboard_alerts_route_renders_live_base_page(home: Path) -> None:
         body,
     )
     assert 'class="alerts-layout"' in body
+    assert "signal-panel--followup-band" in body
+    assert "signal-panel--primary" in body
     assert "browse-layout" not in body
-    assert "Review the latest task summary before deciding the next action." in body
+    assert "latest unresolved follow-up window appears here" in body
     assert re.search(r'data-testid="dashboard-nav-alerts"[^>]*aria-current="page"', body)
     assert "<form" not in body
     assert "<input" not in body
     assert "<textarea" not in body
     assert "<select" not in body
+
+
+def test_dashboard_worker_queue_route_limits_backlog_preview_to_keep_lane_cards_compact(home: Path) -> None:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    job = store.create_job(title="lane-preview-cap")
+    queued_tasks = [
+        store.create_task(
+            job_id=job["id"],
+            requirement=f"queued backlog item {index}",
+            assigned_agent="code-agent",
+        )
+        for index in range(4)
+    ]
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/worker-queue")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-worker-queue-lane-card-code-agent"' in body
+    assert queued_tasks[0]["id"] in body
+    assert queued_tasks[1]["id"] in body
+    assert queued_tasks[2]["id"] not in body
+    assert queued_tasks[3]["id"] not in body
+    assert 'data-testid="dashboard-worker-queue-lane-more-code-agent"' in body
+    assert "2 more queued" in body
 
 
 def test_dashboard_alerts_route_paginates_large_card_sets(home: Path) -> None:

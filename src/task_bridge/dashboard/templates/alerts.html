@@ -59,8 +59,90 @@
 
   <div class="alerts-layout">
     <section
+      id="alerts-followups"
+      class="section-block signal-panel signal-panel--followup-band"
+      aria-labelledby="alerts-followups-title"
+      data-testid="dashboard-alerts-followups"
+    >
+      <div class="section-heading section-heading--band">
+        <div>
+          <p class="eyebrow">{{ ui.alerts.followup_eyebrow }}</p>
+          <h2 id="alerts-followups-title">{{ ui.alerts.followup_title }}</h2>
+          <p class="section-note section-note--compact">{{ ui.alerts.followup_note }}</p>
+        </div>
+        <div class="band-stat-strip" aria-label="{{ ui.alerts.followup_title }}">
+          <article class="band-stat">
+            <p class="band-stat-label">{{ ui.alerts.pending_followups }}</p>
+            <p class="band-stat-value">{{ alerts.pending_followups_count }}</p>
+          </article>
+          <article class="band-stat">
+            <p class="band-stat-label">{{ ui.alerts.overdue_followups }}</p>
+            <p class="band-stat-value">{{ alerts.overdue_followups_count }}</p>
+          </article>
+        </div>
+      </div>
+      {% if alerts.followup_groups %}
+      <div class="followup-cluster-list">
+        {% for group in alerts.followup_groups %}
+        <section
+          class="followup-cluster followup-cluster--{{ group.state }}"
+          data-testid="dashboard-alerts-followup-group-{{ group.state }}"
+        >
+          <header class="followup-cluster-header">
+            <div>
+              <p class="eyebrow">{{ group.label }}</p>
+              <h3>{{ group.label }}</h3>
+            </div>
+            <span class="status-pill status-{{ 'blocked' if group.state == 'due' else 'queued' }}">{{ group.count }}</span>
+          </header>
+          <div class="signal-card-grid signal-card-grid--followups{% if alerts.followup_tasks|length <= 2 %} signal-card-grid--followups-compact{% endif %}">
+            {% for task in group.tasks %}
+            <a
+              class="detail-card signal-card signal-card--{{ 'due' if task.is_overdue else 'scheduled' }} signal-card--followup"
+              data-testid="dashboard-alerts-followup-task-{{ task.task_id }}"
+              href="{{ task.detail_href }}"
+            >
+              <div class="detail-title-row detail-title-row--band">
+                <div class="detail-title-copy">
+                  <p class="eyebrow">{{ task.job_id }}</p>
+                  <h3>{{ task.task_id }}</h3>
+                </div>
+                <span class="status-pill status-{{ 'blocked' if task.is_overdue else 'queued' }}">
+                  {{ ui.alerts.followup_due if task.is_overdue else ui.alerts.followup_scheduled }}
+                </span>
+              </div>
+              <div class="signal-card-emphasis signal-card-emphasis--followup">
+                <span class="signal-card-kicker">{{ ui.alerts.due_at }}</span>
+                <strong>{{ task.due_at }}</strong>
+              </div>
+              <div class="detail-callout detail-callout--compact">
+                <p class="eyebrow">{{ task.summary_label }}</p>
+                <p>{{ task.summary_text }}</p>
+              </div>
+              <dl class="meta-grid meta-grid--compact">
+                <div>
+                  <dt>{{ ui.alerts.notified_at }}</dt>
+                  <dd>{{ task.final_notified_at }}</dd>
+                </div>
+              </dl>
+            </a>
+            {% endfor %}
+          </div>
+        </section>
+        {% endfor %}
+      </div>
+      {{ render_pagination(alerts.followup_pagination, ui, "dashboard-alerts-followup-pagination") }}
+      {% else %}
+      <div class="state-panel state-panel--compact" role="status" aria-live="polite">
+        <h3>{{ ui.alerts.followup_empty_title }}</h3>
+        <p>{{ ui.alerts.followup_empty_body }}</p>
+      </div>
+      {% endif %}
+    </section>
+
+    <section
       id="alerts-risk-list"
-      class="section-block signal-panel"
+      class="section-block signal-panel signal-panel--primary"
       aria-labelledby="alerts-risk-title"
       data-testid="dashboard-alerts-risk-list"
     >
@@ -70,7 +152,7 @@
         <p class="section-note">{{ ui.alerts.risk_note }}</p>
       </div>
       {% if alerts.risk_groups %}
-      <div class="status-group-list status-group-list--dense">
+      <div class="status-group-list status-group-list--dense status-group-list--risk">
         {% for group in alerts.risk_groups %}
         <section
           class="status-group-card status-group-card--{{ group.state }}"
@@ -86,17 +168,17 @@
               <p>{{ group.description }}</p>
             </div>
           </header>
-          <div class="signal-card-grid">
+          <div class="signal-card-grid signal-card-grid--risk">
             {% for task in group.tasks %}
             <a
-              class="detail-card signal-card signal-card--{{ task.state }}"
+              class="detail-card signal-card signal-card--{{ task.state }} signal-card--risk"
               data-testid="dashboard-alerts-risk-task-{{ task.task_id }}"
               href="{{ task.detail_href }}"
             >
-              <div class="detail-title-row">
+              <div class="detail-title-row detail-title-row--alert">
                 <div class="detail-title-copy">
+                  <p class="eyebrow">{{ task.job_id }}</p>
                   <h3>{{ task.task_id }}</h3>
-                  <p>{{ task.job_id }} / {{ task.assigned_agent }}</p>
                 </div>
                 <span class="status-pill status-{{ task.state }}">{{ ui.status[task.state].label }}</span>
               </div>
@@ -106,11 +188,11 @@
                   <dd>{{ task.updated_at }}</dd>
                 </div>
                 <div>
-                  <dt>{{ ui.alerts.detail_label }}</dt>
-                  <dd>{{ task.summary_label }}</dd>
+                  <dt>{{ ui.tasks.assigned_agent }}</dt>
+                  <dd>{{ task.assigned_agent }}</dd>
                 </div>
               </dl>
-              <div class="detail-callout">
+              <div class="detail-callout detail-callout--risk">
                 <p class="eyebrow">{{ task.summary_label }}</p>
                 <p>{{ task.summary_text }}</p>
               </div>
@@ -125,79 +207,6 @@
       <div class="state-panel" role="status" aria-live="polite">
         <h3>{{ ui.alerts.risk_empty_title }}</h3>
         <p>{{ ui.alerts.risk_empty_body }}</p>
-      </div>
-      {% endif %}
-    </section>
-
-    <section
-      id="alerts-followups"
-      class="section-block signal-panel"
-      aria-labelledby="alerts-followups-title"
-      data-testid="dashboard-alerts-followups"
-    >
-      <div class="section-heading">
-        <p class="eyebrow">{{ ui.alerts.followup_eyebrow }}</p>
-        <h2 id="alerts-followups-title">{{ ui.alerts.followup_title }}</h2>
-        <p class="section-note">{{ ui.alerts.followup_note }}</p>
-      </div>
-      {% if alerts.followup_groups %}
-      <div class="status-group-list status-group-list--dense">
-        {% for group in alerts.followup_groups %}
-        <section
-          class="status-group-card status-group-card--{{ group.state }}"
-          data-testid="dashboard-alerts-followup-group-{{ group.state }}"
-        >
-          <header class="status-group-header">
-            <div>
-              <p class="eyebrow">{{ group.label }}</p>
-              <h3>{{ group.label }}</h3>
-            </div>
-            <div class="status-group-meta">
-              <span class="status-pill status-{{ 'blocked' if group.state == 'due' else 'queued' }}">{{ group.count }}</span>
-              <p>{{ group.description }}</p>
-            </div>
-          </header>
-          <div class="signal-card-grid">
-            {% for task in group.tasks %}
-            <a
-              class="detail-card signal-card signal-card--{{ 'due' if task.is_overdue else 'scheduled' }}"
-              data-testid="dashboard-alerts-followup-task-{{ task.task_id }}"
-              href="{{ task.detail_href }}"
-            >
-              <div class="detail-title-row">
-                <div class="detail-title-copy">
-                  <h3>{{ task.task_id }}</h3>
-                  <p>{{ task.job_id }} / {{ task.notify_target }}</p>
-                </div>
-                <span class="status-pill status-{{ 'blocked' if task.is_overdue else 'queued' }}">
-                  {{ ui.alerts.followup_due if task.is_overdue else ui.alerts.followup_scheduled }}
-                </span>
-              </div>
-              <dl class="meta-grid">
-                <div>
-                  <dt>{{ ui.alerts.due_at }}</dt>
-                  <dd>{{ task.due_at }}</dd>
-                </div>
-                <div>
-                  <dt>{{ ui.alerts.notified_at }}</dt>
-                  <dd>{{ task.final_notified_at }}</dd>
-                </div>
-              </dl>
-              <div class="detail-callout">
-                <p class="eyebrow">{{ task.summary_label }}</p>
-                <p>{{ task.summary_text }}</p>
-              </div>
-            </a>
-            {% endfor %}
-          </div>
-        </section>
-        {% endfor %}
-      </div>
-      {{ render_pagination(alerts.followup_pagination, ui, "dashboard-alerts-followup-pagination") }}
-      {% else %}
-      <div class="state-panel" role="status" aria-live="polite">
-        <h3>{{ ui.alerts.followup_empty_title }}</h3>
-        <p>{{ ui.alerts.followup_empty_body }}</p>
       </div>
       {% endif %}
     </section>
