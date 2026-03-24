@@ -667,6 +667,8 @@ test("alerts cards navigate into canonical tasks detail routes", async ({ page }
     await page.setViewportSize({ width: 1280, height: 960 });
     await page.goto(`${server.baseUrl}/alerts`);
     await expect(page.getByTestId("dashboard-alerts-risk-list")).toBeVisible();
+    await expect(page.getByTestId(`dashboard-alerts-followup-task-${seeded.taskB2.id}`)).toBeVisible();
+    await expect(page.getByTestId(`dashboard-alerts-followup-task-${seeded.taskB1.id}`)).toHaveCount(0);
 
     await page.getByTestId(`dashboard-alerts-risk-task-${seeded.taskB2.id}`).click();
     await expect(page).toHaveURL(
@@ -883,6 +885,7 @@ test("worker queue, alerts, and health render live read-only base pages", async 
     await expect(page.getByTestId("dashboard-alerts-summary")).toContainText("What needs attention now");
     await expect(page.getByTestId("dashboard-alerts-risk-list")).toContainText(seeded.taskB2.id);
     await expect(page.getByTestId("dashboard-alerts-followups")).toContainText(seeded.taskB2.id);
+    await expect(page.getByTestId(`dashboard-alerts-followup-task-${seeded.taskB1.id}`)).toHaveCount(0);
 
     await page.goto(`${server.baseUrl}/health`);
     await expect(page.getByTestId("dashboard-health-hero")).toBeVisible();
