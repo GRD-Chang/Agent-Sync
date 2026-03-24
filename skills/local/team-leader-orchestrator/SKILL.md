@@ -20,7 +20,11 @@ This skill adds a planning-first workflow on top of the base `team-leader` agent
 - Follow the `team-leader` agent definition for identity, boundaries, and long-lived task-bridge rules.
 - Use `memory/work-plan.md` as the canonical human-readable coordination artifact.
 - Treat `task-bridge` `job/task` JSON as the execution fact source.
-- Treat `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` as stage-specialized workers with different default emphases.
+- Treat `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` as boundary-defined stage owners, not four interchangeable Codex executors.
+- Use `planning-agent` for scope clarification, plan shaping, task graphs, acceptance / verification criteria, design direction, and retrospectives; it is not the default owner for already-executable implementation work.
+- Use `code-agent` as the default implementation owner for code changes, debugging, refactors, and architecture-heavy execution tasks.
+- Use `quality-agent` for independent validation, review, QA, security, browser / visual / performance checks, and only bounded fixes discovered during validation; it is not the default owner for net-new feature implementation.
+- Use `release-agent` for release preparation, deploy configuration, merge / deploy, canary, and post-release documentation; outside explicit deploy setup, it normally enters after implementation and validation evidence exist.
 
 ## Activation
 
@@ -119,9 +123,10 @@ Create a planning task that asks a worker to propose an executable Work Plan can
 
 Assignment guidance:
 
-- `planning-agent` is the default owner for requirement clarification, scope shaping, and integrated plan generation
-- `code-agent` can lead architecture-heavy or implementation-heavy planning when the task needs deep code-aware design
-- `quality-agent` can review or strengthen validation-heavy, testing-heavy, or risk-heavy planning
+- `planning-agent` is the default owner for requirement clarification, scope shaping, integrated plan generation, and acceptance / verification design
+- `code-agent` can lead architecture-heavy or implementation-heavy planning when the task needs deep repository context to make the plan executable
+- `quality-agent` can review or strengthen validation-heavy, testing-heavy, security-heavy, browser-heavy, or risk-heavy planning
+- `release-agent` should lead planning only when deployment constraints, release sequencing, environment readiness, or rollback requirements dominate the task
 - choose the worker whose queue state and context continuity make the planning task cheapest to advance
 
 The planning task should ask for a task graph that is already ready to become `task-bridge` work:
@@ -276,9 +281,9 @@ Verification loop:
 Default review pattern:
 
 - scope clarification and plan shaping by `planning-agent` -> implementation by `code-agent`
-- implementation by `code-agent` -> validation or review by `quality-agent`
-- review findings by `quality-agent` -> repair task for `code-agent`
-- release preparation by `release-agent` runs after validation evidence is sufficient
+- implementation by `code-agent` -> independent validation or review by `quality-agent`
+- small, clearly bounded defects found by `quality-agent` may be fixed and re-verified by `quality-agent` in the same task; otherwise create a repair task for `code-agent`
+- release preparation by `release-agent` runs after validation evidence is sufficient, or earlier only for explicit deploy-setup work
 - release findings by `release-agent` -> repair or follow-up task for the most relevant upstream worker
 - switch ownership whenever queue state, context continuity, or task shape makes another worker the better next executor
 
@@ -288,6 +293,7 @@ After repeated repair loops, pause and ask the user for direction.
 
 - keep the approved objective and scope stable, and refresh the Work Plan when the user changes them
 - keep `memory/work-plan.md` as the single source for human-readable plan state, wisdom, and verification notes
+- do not route tasks by “谁现在空闲就给谁”; route by task shape first, then use queue state as a tie-breaker
 - seek user approval for destructive, irreversible, production, or scope-expanding work
 - preserve terminal task evidence and open follow-up tasks when the next step is repair, review, or continuation
 - close the loop with a concise summary of outcomes, evidence, and residual risks
