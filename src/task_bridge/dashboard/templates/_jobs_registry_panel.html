@@ -1,3 +1,5 @@
+{% from "_pagination.html" import render_pagination %}
+
 <section id="jobs-registry" class="browse-panel jobs-list-shell" aria-labelledby="jobs-list-title" data-testid="dashboard-jobs-list">
   <div class="section-heading">
     <p class="eyebrow">{{ ui.jobs.list_eyebrow }}</p>
@@ -48,5 +50,6 @@
     </a>
     {% endfor %}
   </div>
+  {{ render_pagination(jobs.pagination, ui, "dashboard-jobs-pagination") }}
   {% endif %}
 </section>

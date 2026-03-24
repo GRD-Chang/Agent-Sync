@@ -563,6 +563,52 @@ def test_dashboard_jobs_query_filters_by_active_view(home: Path) -> None:
     assert jobs.detail_back_link is None
 
 
+def test_dashboard_jobs_query_paginates_and_keeps_selected_job_on_its_page(home: Path) -> None:
+    seeded = seed_paged_jobs_store(home)
+    oldest = seeded["entries"][0]
+
+    snapshot = DashboardQueryService(home).jobs()
+
+    assert snapshot.visible_jobs_count == 14
+    assert snapshot.pagination.page == 1
+    assert snapshot.pagination.page_count == 2
+    assert len(snapshot.jobs) == 12
+    assert [item.job_id for item in snapshot.jobs[:2]] == [
+        seeded["entries"][-1]["job"]["id"],
+        seeded["entries"][-2]["job"]["id"],
+    ]
+
+    second_page = DashboardQueryService(home).jobs(selected_page="2")
+
+    assert second_page.pagination.page == 2
+    assert second_page.pagination.page_count == 2
+    assert second_page.pagination.prev_href == "/jobs#jobs-registry"
+    assert second_page.pagination.next_href is None
+    assert [item.job_id for item in second_page.jobs] == [
+        seeded["entries"][1]["job"]["id"],
+        seeded["entries"][0]["job"]["id"],
+    ]
+
+    selected_job = DashboardQueryService(home).jobs(selected_job_id=oldest["job"]["id"])
+
+    assert selected_job.pagination.page == 2
+    assert selected_job.selected_job is not None
+    assert selected_job.detail_back_link is not None
+    assert selected_job.detail_back_link.href == "/jobs?page=2#jobs-registry"
+    assert selected_job.jobs[-1].job_id == oldest["job"]["id"]
+    assert selected_job.jobs[-1].is_selected is True
+
+    selected_task = DashboardQueryService(home).jobs(
+        selected_job_id=oldest["job"]["id"],
+        selected_task_id=oldest["task"]["id"],
+    )
+
+    assert selected_task.pagination.page == 2
+    assert selected_task.selected_task is not None
+    assert selected_task.detail_back_link is not None
+    assert selected_task.detail_back_link.href == f"/jobs?job={oldest['job']['id']}&page=2#job-detail"
+
+
 def test_dashboard_jobs_query_keeps_grouped_task_snapshot_but_uses_focused_task_detail(home: Path) -> None:
     seeded = seed_dashboard_store_with_many_job_tasks(home)
     selected_task = str(seeded["tasks"][1]["id"])
@@ -882,6 +928,34 @@ def seed_dashboard_store_with_many_job_tasks(home: Path) -> dict[str, object]:
         seeded_tasks.append(store.load_task(task["id"], job_id=job["id"]))
 
     return {"job": job, "tasks": seeded_tasks}
+
+
+def seed_paged_jobs_store(home: Path) -> dict[str, object]:
+    store = TaskStore(home)
+    store.ensure_dirs()
+    entries: list[dict[str, dict[str, str]]] = []
+    long_titles = [
+        "Archive lane review: this long-lived job should stay readable on the last jobs page without pushing the pager off-canvas",
+        "NO_BREAK_JOB_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    ]
+    for index in range(14):
+        title = long_titles[index] if index < len(long_titles) else f"paged-job-{index:02d}"
+        job = store.create_job(title=title)
+        task = store.create_task(
+            job_id=job["id"],
+            requirement=f"job {index} pagination smoke task",
+            assigned_agent="code-agent",
+        )
+        if index % 3 == 1:
+            store.update_task(
+                task["id"],
+                job_id=job["id"],
+                state="running",
+                result=f"running result {index}",
+            )
+        entries.append({"job": job, "task": task})
+
+    return {"entries": entries}
 
 
 def seed_dense_dashboard_store(home: Path) -> dict[str, object]:
@@ -1436,9 +1510,37 @@ def test_dashboard_jobs_route_renders_live_list_and_detail(home: Path) -> None:
     assert "Showing the latest dispatch slice first" in body
     assert body.index('data-testid="dashboard-jobs-timeline"') < body.index('data-testid="dashboard-jobs-task-groups"')
     assert f"/jobs?job={seeded['job_a']['id']}&amp;task={seeded['task_a2']['id']}#job-task-detail" in body
+    assert 'data-testid="dashboard-jobs-pagination"' not in body
     assert "Open latest task here" not in body
     assert f"/tasks?job={seeded['job_a']['id']}#tasks-registry" not in body
     assert 'data-testid="dashboard-jobs-empty-state"' not in body
+
+
+def test_dashboard_jobs_route_renders_pagination_inside_list_panel(home: Path) -> None:
+    seeded = seed_paged_jobs_store(home)
+    oldest = seeded["entries"][0]
+
+    with TestClient(create_dashboard_app(home)) as client:
+        response = client.get("/jobs")
+        second_page = client.get(f"/jobs?page=2&job={oldest['job']['id']}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'data-testid="dashboard-jobs-pagination"' in body
+    assert 'data-testid="dashboard-jobs-pagination-page-2"' in body
+    assert "/jobs?page=2#jobs-registry" in body
+    assert re.search(
+        r'data-testid="dashboard-jobs-list".*data-testid="dashboard-jobs-pagination"',
+        body,
+        re.S,
+    )
+
+    assert second_page.status_code == 200
+    second_body = second_page.text
+    assert re.search(r'data-testid="dashboard-jobs-pagination-page-2"[^>]*aria-current="page"', second_body)
+    assert 'data-testid="dashboard-jobs-detail-shell"' in second_body
+    assert f'href="/jobs?page=2#jobs-registry"' in second_body
+    assert ">Next<" not in second_body
 
 
 def test_dashboard_jobs_route_renders_planning_and_release_dispatch_nodes(home: Path) -> None:
@@ -1605,6 +1707,7 @@ def test_dashboard_jobs_route_explicit_empty_state(home: Path) -> None:
     body = response.text
     assert 'data-testid="dashboard-jobs-page"' in body
     assert 'data-testid="dashboard-jobs-empty-state"' in body
+    assert 'data-testid="dashboard-jobs-pagination"' not in body
     assert "No jobs yet" in body
 
 

@@ -11,7 +11,7 @@ from task_bridge.dashboard.formatting import (
     optional_display_text,
     parse_timestamp,
 )
-from task_bridge.dashboard.pagination import page_for_task, paginate_items, parse_page_number
+from task_bridge.dashboard.pagination import page_for_item, page_for_task, paginate_items, parse_page_number
 from task_bridge.dashboard.snapshots import DetailBackLink
 from task_bridge.dashboard.task_display_queries import TaskDisplayQueryAssembler
 from task_bridge.store import TaskStore
@@ -36,10 +36,12 @@ def test_dashboard_detail_preview_loads_structured_markdown_blocks(tmp_path: Pat
 
 def test_dashboard_pagination_helpers_clamp_inputs_and_build_gap_links() -> None:
     tasks = [{"id": f"task-{index}"} for index in range(25)]
+    jobs = [{"id": f"job-{index}"} for index in range(25)]
 
     assert parse_page_number(None) == 1
     assert parse_page_number("0") == 1
     assert parse_page_number("bad-input") == 1
+    assert page_for_item(jobs, "job-14", per_page=12) == 2
     assert page_for_task(tasks, "task-14", per_page=12) == 2
 
     paged, snapshot = paginate_items(

@@ -17,11 +17,21 @@ def parse_page_number(value: str | None) -> int:
         return 1
 
 
-def page_for_task(tasks: list[dict[str, object]], task_id: str, *, per_page: int) -> int:
-    for index, task in enumerate(tasks):
-        if str(task["id"]) == task_id:
+def page_for_item(
+    items: list[dict[str, object]],
+    item_id: str,
+    *,
+    per_page: int,
+    key: str = "id",
+) -> int:
+    for index, item in enumerate(items):
+        if str(item.get(key) or "") == item_id:
             return index // per_page + 1
     return 1
+
+
+def page_for_task(tasks: list[dict[str, object]], task_id: str, *, per_page: int) -> int:
+    return page_for_item(tasks, task_id, per_page=per_page)
 
 
 def build_pagination_links(

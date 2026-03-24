@@ -229,6 +229,7 @@ class JobsPageSnapshot:
     active_view: str
     view_options: list[LinkOption]
     jobs: list[JobListItem]
+    pagination: PaginationSnapshot
     selected_job: JobDetailSnapshot | None
     selected_task: TaskDetailSnapshot | None
     detail_back_link: DetailBackLink | None

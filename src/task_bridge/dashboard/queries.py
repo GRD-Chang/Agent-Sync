@@ -52,6 +52,7 @@ RECENT_UPDATES_LIMIT = 6
 JOB_VIEW_OPTIONS = ("all", "current", "active", "terminal")
 JOB_DETAIL_VIEW_OPTIONS = ("tasks", "plan")
 UNASSIGNED_AGENT_FILTER = "__unassigned__"
+JOB_LIST_PAGE_SIZE = 12
 TASK_LIST_PAGE_SIZE = 12
 
 
@@ -136,6 +137,7 @@ class DashboardQueryService:
         selected_task_id: str | None = None,
         selected_view: str | None = None,
         selected_detail_view: str | None = None,
+        selected_page: str | None = None,
     ) -> JobsPageSnapshot:
         from .jobs_page_queries import JobsPageQueryAssembler
 
@@ -144,6 +146,7 @@ class DashboardQueryService:
             selected_task_id=selected_task_id,
             selected_view=selected_view,
             selected_detail_view=selected_detail_view,
+            selected_page=selected_page,
         )
 
     def tasks(
@@ -230,6 +233,7 @@ class DashboardQueryService:
         task_id: str | None = None,
         view: str | None = None,
         detail_view: str | None = None,
+        page: int | None = None,
     ) -> str:
         return self._path_with_locale(
             "/jobs",
@@ -237,6 +241,7 @@ class DashboardQueryService:
             ("task", task_id or ""),
             ("view", "" if view in (None, "all") else view),
             ("detail_view", "" if detail_view in (None, "tasks") else detail_view),
+            ("page", str(page) if page and page > 1 else ""),
         )
 
     def _tasks_path(

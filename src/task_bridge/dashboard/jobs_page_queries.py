@@ -11,6 +11,9 @@ from .formatting import (
     optional_text as _optional_text,
     parse_timestamp as _parse_timestamp,
 )
+from .pagination import page_for_item as _page_for_item
+from .pagination import paginate_items
+from .pagination import parse_page_number as _parse_page_number
 from .snapshots import (
     DetailBackLink,
     JobDispatchTimelineNode,
@@ -40,8 +43,9 @@ class JobsPageQueryAssembler:
         selected_task_id: str | None,
         selected_view: str | None,
         selected_detail_view: str | None,
+        selected_page: str | None,
     ) -> JobsPageSnapshot:
-        from .queries import ACTIVE_TASK_STATES, JOB_VIEW_OPTIONS, TERMINAL_TASK_STATES
+        from .queries import JOB_LIST_PAGE_SIZE, JOB_VIEW_OPTIONS
 
         jobs = self._service.store.list_jobs()
         tasks = self._service.store.list_tasks(all_jobs=True)
@@ -56,14 +60,28 @@ class JobsPageQueryAssembler:
             if self._job_matches_view(job, tasks_by_job.get(str(job["id"]), []), active_view)
         ]
         resolved_job_id, selection_missing = self._resolve_selected_job_id(ordered_jobs, selected_job_id)
+        page = _parse_page_number(selected_page)
+        if resolved_job_id is not None:
+            page = _page_for_item(ordered_jobs, resolved_job_id, per_page=JOB_LIST_PAGE_SIZE)
+        paged_jobs, pagination = paginate_items(
+            ordered_jobs,
+            page=page,
+            per_page=JOB_LIST_PAGE_SIZE,
+            href_builder=lambda page_number: self._service._jobs_path(
+                view=active_view,
+                page=page_number,
+            )
+            + "#jobs-registry",
+        )
         job_rows = [
             self._build_job_row(
                 job,
                 job_tasks=tasks_by_job.get(str(job["id"]), []),
                 selected_job_id=resolved_job_id,
                 active_view=active_view,
+                selected_page=pagination.page,
             )
-            for job in ordered_jobs
+            for job in paged_jobs
         ]
         selected_job_raw = next((job for job in ordered_jobs if str(job["id"]) == resolved_job_id), None)
         selected_job_tasks = tasks_by_job.get(resolved_job_id or "", [])
@@ -80,6 +98,7 @@ class JobsPageQueryAssembler:
             active_view=active_view,
             active_detail_view=active_detail_view,
             has_selected_task=resolved_task is not None,
+            selected_page=pagination.page,
         )
 
         return JobsPageSnapshot(
@@ -101,12 +120,14 @@ class JobsPageQueryAssembler:
                 selected_task_id=selected_task_id,
             ),
             jobs=job_rows,
+            pagination=pagination,
             selected_job=self._build_job_detail(
                 selected_job_raw,
                 selected_job_tasks,
                 active_view=active_view,
                 active_detail_view=active_detail_view,
                 selected_task_id=str(resolved_task["id"]) if resolved_task else None,
+                selected_page=pagination.page,
             )
             if selected_job_raw
             else None,
@@ -118,6 +139,7 @@ class JobsPageQueryAssembler:
                     job_id=resolved_job_id,
                     task_id=str(resolved_task["id"]),
                     view=active_view,
+                    page=pagination.page,
                 )
                 + "#job-task-detail",
             )
@@ -136,6 +158,7 @@ class JobsPageQueryAssembler:
         active_view: str,
         active_detail_view: str,
         has_selected_task: bool,
+        selected_page: int,
     ) -> DetailBackLink | None:
         if job is None:
             return None
@@ -150,13 +173,14 @@ class JobsPageQueryAssembler:
                     job_id=str(job["id"]),
                     view=active_view,
                     detail_view=detail_view,
+                    page=selected_page,
                 )
                 + anchor,
             )
 
         return DetailBackLink(
             label=self._messages["jobs"]["back_to_list"],
-            href=self._service._jobs_path(view=active_view) + "#jobs-registry",
+            href=self._service._jobs_path(view=active_view, page=selected_page) + "#jobs-registry",
         )
 
     def _build_job_row(
@@ -166,6 +190,7 @@ class JobsPageQueryAssembler:
         job_tasks: list[dict[str, object]],
         selected_job_id: str | None,
         active_view: str,
+        selected_page: int,
     ) -> JobListItem:
         from .queries import ACTIVE_TASK_STATES, TERMINAL_TASK_STATES
 
@@ -188,7 +213,12 @@ class JobsPageQueryAssembler:
             task_count=len(job_tasks),
             active_task_count=sum(counts.get(state, 0) for state in ACTIVE_TASK_STATES),
             terminal_task_count=sum(counts.get(state, 0) for state in TERMINAL_TASK_STATES),
-            detail_href=self._service._jobs_path(job_id=job_id, view=active_view) + "#job-detail",
+            detail_href=self._service._jobs_path(
+                job_id=job_id,
+                view=active_view,
+                page=selected_page,
+            )
+            + "#job-detail",
         )
 
     def _build_job_detail(
@@ -199,6 +229,7 @@ class JobsPageQueryAssembler:
         active_view: str,
         active_detail_view: str,
         selected_task_id: str | None,
+        selected_page: int,
     ) -> JobDetailSnapshot | None:
         from .queries import ACTIVE_TASK_STATES, CORE_TASK_STATES, TERMINAL_TASK_STATES
 
@@ -232,6 +263,7 @@ class JobsPageQueryAssembler:
                     job_id=str(task["job_id"]),
                     task_id=str(task["id"]),
                     view=active_view,
+                    page=selected_page,
                 )
                 + "#job-task-detail",
                 is_selected=str(task["id"]) == selected_task_id,
@@ -271,7 +303,11 @@ class JobsPageQueryAssembler:
             tasks_href=self._service._tasks_path(job_id=str(job["id"])) + "#tasks-registry",
             latest_task_href=latest_task_href,
             task_status_metrics=status_metrics,
-            timeline=self._build_job_timeline(job_tasks, active_view=active_view),
+            timeline=self._build_job_timeline(
+                job_tasks,
+                active_view=active_view,
+                selected_page=selected_page,
+            ),
             task_previews=task_previews,
             detail_view=active_detail_view,
             detail_view_options=self._build_job_detail_view_options(
@@ -279,6 +315,7 @@ class JobsPageQueryAssembler:
                 active_view=active_view,
                 active_detail_view=active_detail_view,
                 selected_task_id=selected_task_id,
+                selected_page=selected_page,
             )
             if is_current
             else [],
@@ -291,6 +328,7 @@ class JobsPageQueryAssembler:
         job_tasks: list[dict[str, object]],
         *,
         active_view: str,
+        selected_page: int,
     ) -> list[JobDispatchTimelineNode]:
         from .queries import _task_scheduler
 
@@ -343,6 +381,7 @@ class JobsPageQueryAssembler:
                         job_id=str(task["job_id"]),
                         task_id=task_id,
                         view=active_view,
+                        page=selected_page,
                     )
                     + "#job-task-detail",
                     is_newest=index == newest_index,
@@ -453,6 +492,7 @@ class JobsPageQueryAssembler:
         active_view: str,
         active_detail_view: str,
         selected_task_id: str | None,
+        selected_page: int,
     ) -> list[LinkOption]:
         messages = self._messages["jobs"]
         return [
@@ -464,6 +504,7 @@ class JobsPageQueryAssembler:
                     task_id=selected_task_id,
                     view=active_view,
                     detail_view="tasks",
+                    page=selected_page,
                 )
                 + "#job-task-groups",
                 is_active=active_detail_view == "tasks",
@@ -475,6 +516,7 @@ class JobsPageQueryAssembler:
                     job_id=job_id,
                     view=active_view,
                     detail_view="plan",
+                    page=selected_page,
                 )
                 + "#job-work-plan",
                 is_active=active_detail_view == "plan",

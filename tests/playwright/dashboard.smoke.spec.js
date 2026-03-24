@@ -338,6 +338,47 @@ async function seedDenseDashboard(homeDir) {
   return { job, tasksByState };
 }
 
+async function seedJobsPaginationDashboard(homeDir) {
+  const entries = [];
+  const titles = [
+    "Archive lane review: this long-lived job should stay readable on the last jobs page without pushing the pager off-canvas",
+    `NO_BREAK_JOB_${"X".repeat(120)}`,
+  ];
+
+  for (let index = 0; index < 14; index += 1) {
+    const job = runBridgeJson(homeDir, [
+      "create-job",
+      "--title",
+      titles[index] || `paged-job-${String(index).padStart(2, "0")}`,
+    ]);
+    const task = runBridgeJson(homeDir, [
+      "create-task",
+      "--job",
+      job.id,
+      "--requirement",
+      `job ${index} pagination smoke task`,
+      "--assign",
+      "code-agent",
+    ]);
+    if (index % 3 === 1) {
+      runBridgeJson(homeDir, [
+        "start",
+        task.id,
+        "--job",
+        job.id,
+        "--result",
+        `running result ${index}`,
+      ]);
+    }
+    entries.push({ job, task });
+  }
+
+  return {
+    entries,
+    lastPageEntry: entries[1],
+  };
+}
+
 async function seedOverflowDashboard(homeDir) {
   const job = runBridgeJson(homeDir, ["create-job", "--title", "overflow containment review"]);
   const longAgent =
@@ -959,6 +1000,109 @@ test("dense tasks and alerts keep pagination, anchors, and priority visibility s
     expect(followupsTop).toBeLessThan(180);
     await expect(page.getByTestId("dashboard-alerts-followup-group-scheduled")).toBeVisible();
     await expectNoHorizontalOverflow(page);
+  } finally {
+    await stopDashboard(server);
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("jobs pagination keeps anchors, selection, and narrow-width containment stable", async ({ page }) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-bridge-dashboard-jobs-pagination-"));
+  const seeded = await seedJobsPaginationDashboard(homeDir);
+  const server = await startDashboard(homeDir, 4186);
+
+  try {
+    await page.setViewportSize({ width: 1280, height: 960 });
+
+    await page.goto(`${server.baseUrl}/jobs`);
+    await expect(page.getByTestId("dashboard-jobs-pagination")).toBeVisible();
+    await expect(page.getByTestId("dashboard-jobs-pagination-page-2")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    const paginationPlacement = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="dashboard-jobs-list"]');
+      const pagination = document.querySelector('[data-testid="dashboard-jobs-pagination"]');
+      const cards = Array.from(document.querySelectorAll('[data-testid^="dashboard-jobs-list-card-"]'));
+      if (!list || !pagination || cards.length === 0) {
+        return null;
+      }
+      const listRect = list.getBoundingClientRect();
+      const paginationRect = pagination.getBoundingClientRect();
+      const lastCardBottom = Math.max(...cards.map((node) => node.getBoundingClientRect().bottom));
+      return {
+        listBottom: Math.round(listRect.bottom),
+        paginationTop: Math.round(paginationRect.top),
+        paginationBottom: Math.round(paginationRect.bottom),
+        lastCardBottom: Math.round(lastCardBottom),
+      };
+    });
+
+    expect(paginationPlacement).not.toBeNull();
+    expect(paginationPlacement.paginationTop).toBeGreaterThanOrEqual(
+      paginationPlacement.lastCardBottom - 1,
+    );
+    expect(paginationPlacement.paginationBottom).toBeLessThanOrEqual(
+      paginationPlacement.listBottom + 1,
+    );
+
+    await page.getByTestId("dashboard-jobs-pagination-page-2").click();
+    await expect(page).toHaveURL(new RegExp("/jobs\\?(?=.*page=2).*#jobs-registry$"));
+    await expect
+      .poll(async () => page.evaluate(() => Math.round(window.scrollY)))
+      .toBeGreaterThan(600);
+    await expect
+      .poll(async () =>
+        page.locator("#jobs-registry").evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          return {
+            top: Math.round(rect.top),
+            bottom: Math.round(rect.bottom),
+            viewport: window.innerHeight,
+          };
+        }),
+      )
+      .toMatchObject({
+        bottom: expect.any(Number),
+        top: expect.any(Number),
+        viewport: expect.any(Number),
+      });
+    const jobsRegistryMetrics = await page.locator("#jobs-registry").evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        viewport: window.innerHeight,
+      };
+    });
+    expect(jobsRegistryMetrics.top).toBeLessThan(jobsRegistryMetrics.viewport - 80);
+    expect(jobsRegistryMetrics.bottom).toBeGreaterThan(120);
+    await expect(
+      page.getByTestId("dashboard-jobs-pagination").getByRole("link", { name: "Next" }),
+    ).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId("dashboard-jobs-pagination")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.setViewportSize({ width: 1280, height: 960 });
+
+    await page.getByTestId(`dashboard-jobs-list-card-${seeded.lastPageEntry.job.id}`).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/jobs\\?(?=.*job=${seeded.lastPageEntry.job.id})(?=.*page=2).*#job-detail$`),
+    );
+    await expect(page.locator("a.inline-back-link")).toHaveAttribute(
+      "href",
+      `/jobs?page=2#jobs-registry`,
+    );
+
+    await page.getByTestId(`dashboard-jobs-task-card-${seeded.lastPageEntry.task.id}`).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/jobs\\?(?=.*job=${seeded.lastPageEntry.job.id})(?=.*task=${seeded.lastPageEntry.task.id})(?=.*page=2).*#job-task-detail$`,
+      ),
+    );
+    await expect(page.locator("a.inline-back-link")).toHaveAttribute(
+      "href",
+      `/jobs?job=${seeded.lastPageEntry.job.id}&page=2#job-detail`,
+    );
   } finally {
     await stopDashboard(server);
     await fs.rm(homeDir, { recursive: true, force: true });

@@ -101,6 +101,7 @@ async def jobs_page(request: Request):
             selected_task_id=_query_param_value(request, "task"),
             selected_view=_query_param_value(request, "view"),
             selected_detail_view=_query_param_value(request, "detail_view"),
+            selected_page=_query_param_value(request, "page"),
         )
     except Exception as exc:  # pragma: no cover
         return _render_live_page_error(
