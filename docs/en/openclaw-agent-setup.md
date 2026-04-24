@@ -4,7 +4,8 @@ Goals:
 
 - Create `team-leader`, `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` with the OpenClaw CLI
 - Migrate the agent definitions from this repository
-- Install the skills from `https://github.com/garrytan/gstack` so Codex can execute them
+- Confirm the external OpenClaw + Codex harness runtime is prepared by the operator; this project does not configure it
+- Install the skills from `https://github.com/garrytan/gstack` so the worker runtime can use them when needed
 - Install and verify `task-bridge`
 - Configure `tools.exec.pathPrepend` so agents can run `task-bridge` directly
 
@@ -12,6 +13,7 @@ References:
 
 - <https://docs.openclaw.ai/concepts/agent-workspace>
 - <https://docs.openclaw.ai/cli/agents>
+- <https://docs.openclaw.ai/plugins/codex-harness#codex-harness> (external runtime reference, not a project setup step)
 - <https://docs.openclaw.ai/tools/exec>
 
 ## 1. Create the 5 agents
@@ -48,8 +50,6 @@ This repository already includes:
 - `agents/code-agent/*`
 - `agents/quality-agent/*`
 - `agents/release-agent/*`
-- `skills/local/team-leader-orchestrator/SKILL.md`
-- `skills/coding-agent/SKILL.md`
 
 Copy those files into each workspace:
 
@@ -63,6 +63,9 @@ for agent in team-leader planning-agent code-agent quality-agent release-agent; 
   cp "$REPO_ROOT/agents/$agent/USER.md" "$HOME/.openclaw/workspaces/$agent/"
   cp "$REPO_ROOT/agents/$agent/IDENTITY.md" "$HOME/.openclaw/workspaces/$agent/"
   cp "$REPO_ROOT/agents/$agent/TOOLS.md" "$HOME/.openclaw/workspaces/$agent/"
+  if [ "$agent" = "team-leader" ] && [ -f "$REPO_ROOT/agents/team-leader/TASK_ROUTING.md" ]; then
+    cp "$REPO_ROOT/agents/team-leader/TASK_ROUTING.md" "$HOME/.openclaw/workspaces/team-leader/"
+  fi
 done
 ```
 
@@ -74,40 +77,34 @@ for agent in team-leader planning-agent code-agent quality-agent release-agent; 
 done
 ```
 
-Copy the required skills:
+Those copied files are this repo's agent definitions plus the `team-leader` `TASK_ROUTING.md`. `team-leader` orchestrates directly through `AGENTS.md` and `TASK_ROUTING.md`, and worker agents no longer need the repository's old bridge skill.
 
-```bash
-mkdir -p "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator"
-cp "$REPO_ROOT/skills/local/team-leader-orchestrator/SKILL.md" \
-  "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator/SKILL.md"
+The actual `office-hours`, `investigate`, `review`, `ship`, and other gstack skills must still be discoverable by the worker runtime when workers need them.
 
-for agent in planning-agent code-agent quality-agent release-agent; do
-  mkdir -p "$HOME/.openclaw/workspaces/$agent/skills/coding-agent"
-  cp "$REPO_ROOT/skills/coding-agent/SKILL.md" \
-    "$HOME/.openclaw/workspaces/$agent/skills/coding-agent/SKILL.md"
-done
-```
+## 3. External execution harness prerequisite
 
-Those copied files are only this repo's agent definitions plus the local `coding-agent` bridge skill.
+This project runs on top of OpenClaw + Codex harness, but it does not install, configure, or validate Codex harness.
 
-The actual `office-hours`, `investigate`, `review`, `ship`, and other gstack skills must still be installed for Codex itself, which is the runtime that executes them.
+Before continuing with `task-bridge`, the operator should confirm outside this repository that:
 
-## 3. Install `garrytan/gstack` skills for Codex
+- OpenClaw worker agents can execute tasks directly in the current environment.
+- If Codex harness is used, OpenClaw / Codex configuration is already handled according to official docs.
+- Workers do not need this repository's old bridge skill and should not launch a second execution layer.
 
-The worker `TOOLS.md` files tell the worker to write Codex prompts in this form:
+This repository owns agent definitions, task orchestration, state transitions, evidence collection, and handoff. Codex harness model, fallback, guardian, app-server transport, and related runtime policy are outside this repository's scope.
 
-```text
-$skill-name task description
-```
+## 4. Install `garrytan/gstack` skills for the worker runtime
 
-Those skills are executed by Codex, so they need to be installed into `~/.codex/skills`.
+The worker `TOOLS.md` files are lightweight resolvers: they describe which skills / tools fit which task scenarios, while the current Codex harness runtime owns the concrete triggering mechanism.
 
-Do not copy gstack skills into the `team-leader` workspace. `team-leader` only dispatches work and does not call Codex directly.
+If the current worker runtime uses Codex harness, installing those skills into `~/.codex/skills` is recommended so the runtime can discover them.
+
+Do not copy gstack skills into the `team-leader` workspace. `team-leader` only dispatches work and does not directly execute worker tasks.
 
 gstack ships with its own `setup` script. It will:
 
 - build the runtime assets and binaries needed by skills such as `/browse`
-- create Codex-discoverable gstack skills inside `~/.codex/skills/`
+- create worker-runtime-discoverable gstack skills inside `~/.codex/skills/` when Codex harness is the external runtime
 - prepare `~/.codex/skills/gstack` for the shared helper scripts those skills call
 
 First prepare the gstack repository:
@@ -131,7 +128,7 @@ Notes:
 
 - `bun` must be installed before running `./setup --host codex`
 - Windows also needs `node`
-- the installed directories are named `gstack-*`, but the actual skill names remain `office-hours`, `investigate`, `review`, `ship`, and so on, so your worker prompts should still use `$investigate ...`, `$review ...`, `$ship ...`
+- the installed directories are named `gstack-*`; workers only need those skills to be discoverable in the current Codex harness, and the active runtime owns the concrete triggering mechanism
 
 Verify:
 
@@ -147,7 +144,7 @@ For a quick smoke check, you should at least see:
 - `gstack-review`
 - `gstack-ship`
 
-## 4. Install `task-bridge`
+## 5. Install `task-bridge`
 
 This project is a Python package, so you usually do not need to build a standalone binary. The recommended setup is an editable install:
 
@@ -175,7 +172,7 @@ python -m build
 
 After building, verify the packaged artifact separately before publishing, especially the dashboard static assets. The editable install path above is the runtime flow verified in this repository.
 
-## 5. Configure `tools.exec.pathPrepend`
+## 6. Configure `tools.exec.pathPrepend`
 
 Find the directory that contains `task-bridge`:
 
@@ -202,7 +199,7 @@ If you just changed `~/.openclaw/openclaw.json`, restart the Gateway:
 systemctl --user restart openclaw-gateway.service
 ```
 
-## 6. Configure Feishu permissions and store the `chat_id`
+## 7. Configure Feishu permissions and store the `chat_id`
 
 Reference:
 

@@ -1,6 +1,6 @@
 # TOOLS.md - Local Notes
 
-本文件只记录这个工作区的本地环境约束与入口，不重复展开 skill 通用说明。
+本文件只记录这个工作区的本地环境约束，以及可用的工具 / 技能路由。
 
 ## Task Bridge
 
@@ -28,26 +28,16 @@
 - 失败：
   - `task-bridge fail <task_id> --job <job_id> --result "<failure reason + evidence>"`
 
-## Coding Entry
+## Execution Context
 
-- 优先使用已配置到 PATH 的 `codex`
-- 默认权限等级：
-  - `codex --yolo`
-- 执行要求：
-  - 使用 Codex 时给予最高权限 `--yolo`
-  - prompt 中继续写清完整上下文、范围、验证方式、风险口径和交付标准
+- 直接在当前环境中推进任务
+- 如果 task 指定了 repo / worktree / cwd / 工作路径，开始执行前先检查该路径下是否存在 `AGENTS.md`；如果存在，先阅读并遵守其中规则
+- 需要 shell、部署检查、构建、git 或浏览器动作时，直接使用当前可用工具
+- 每次推进前都要把上下文、范围、验证方式、风险口径和交付标准写清楚
 
-## Skill Prompt Pattern
+## Optional Skills
 
-如果需要让 Codex 使用某项技能，在 prompt 中直接使用下面的格式：
-
-`$技能名 任务说明`
-
-例如：
-
-- `$ship 基于当前分支和发布要求，完成发版前收口、跑必要检查、生成 PR 所需结果。`
-
-如果一个任务天然需要技能支持，优先用这种写法，不要只写抽象要求。
+下面只是常见能力示例，不是完整清单；当前运行环境中还有其他可用 skill / 工具时，可按任务需要选择。
 
 ## 常用技能
 
@@ -82,31 +72,30 @@
 按任务类型优先使用：
 
 - 部署平台尚未配置、生产地址或健康检查缺失：
-  - `$setup-deploy ...`
+  - 优先使用 `setup-deploy`
 - 正式发版前收口、创建 PR、整理发布动作：
-  - `$ship ...`
+  - 优先使用 `ship`
 - 合并、部署、等待 CI / deploy 并验证线上状态：
-  - `$land-and-deploy ...`
+  - 优先使用 `land-and-deploy`
 - 上线后短期持续观察：
-  - `$canary ...`
+  - 优先使用 `canary`
 - 发版后同步文档与说明：
-  - `$document-release ...`
+  - 优先使用 `document-release`
 - 生产、高风险或不可逆动作：
-  - 先 `$careful ...` 或 `$guard ...`，再执行主要交付任务
+  - 先使用 `careful` 或 `guard`，再执行主要交付任务
 
 ## Session Notes
 
 - 当前工作模式：常驻主会话 worker
 - 默认主会话：`agent:release-agent:main`
-- Codex 的具体调用方式、会话管理与长任务处理由当前运行环境统一定义
 
 ## Prompting Constraint
 
-- 你负责把 `task.requirement` 扩展成完整、可执行、可验证的 Codex prompt
-- 每次 Codex 调用都写清完整上下文
-- 每次 prompt 都明确范围、验证方式、风险口径和交付标准
-- 若任务明显需要某项技能，在 prompt 中用 `"$技能名 任务"` 的形式显式写出
-- 一个 prompt 可以只聚焦一个主技能，避免把多个不相干技能混在同一条指令里
+- 你负责把 `task.requirement` 扩展成完整、可执行、可验证的任务执行方案
+- 每次会话推进都写清目标、边界、证据和当前判断
+- 每次执行前都明确范围、验证方式、风险口径和交付标准
+- 若任务明显需要某项能力，按上面的 resolver 选择最小必要 skill / 工具
+- 一次动作只聚焦一个主能力，避免把多个不相干要求混在同一轮里
 
 ## Final Result Format
 
@@ -120,9 +109,9 @@
 
 ## Repo Safety Notes
 
-- 普通交付任务在任务指定 repo / workdir 中启动 Codex，保持执行目录与任务范围一致
-- Codex 只在目标任务相关目录中运行，避免读入无关 agent 上下文
-- 如果目标目录不是 Git 仓库，按 `coding-agent` skill 的规则组织执行环境
+- 普通交付任务在任务指定 repo / workdir 中执行，保持执行目录与任务范围一致
+- 所有动作都聚焦目标任务相关目录，避免读入无关 agent 上下文
+- 如果目标目录不是 Git 仓库，先在结果里明确这一点，并保持所有动作局限在任务边界内
 - 所有修改都聚焦当前交付任务相关范围
 - 结果记录保持与实际工作区状态一致
 - 对发布准备、部署配置、发版文档同步相关的局部修改，默认允许直接在当前任务内完成，只要范围受控且证据可回写

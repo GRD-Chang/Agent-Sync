@@ -1,10 +1,10 @@
-# OpenClaw Multi-Agent Orchestration for Codex
+# OpenClaw Multi-Agent Task Orchestration
 
-> Build an OpenClaw multi-agent development team that can actually deliver, and fix both the state-loss problem and workflow breakage that appear when agents orchestrate tools like Codex.
+> Build an OpenClaw multi-agent development team that can actually deliver, and fix the state-loss, evidence-loss, and handoff breakage that appear in long-running agent work.
 
 [English](README.en.md) | [中文](README.md)
 
-`task-bridge` is a local-first, lightweight task coordination system built for OpenClaw multi-agent collaboration. Its core mission is straightforward: let an OpenClaw-built agent team reliably orchestrate lower-level execution engines such as Codex or Claude Code to complete real long-running development work.
+`task-bridge` is a local-first, lightweight task coordination system built for OpenClaw multi-agent collaboration. Its core mission is straightforward: let an OpenClaw-built agent team reliably break work down, dispatch tasks, and let execution agents close long-running development work directly.
 
 ---
 
@@ -34,17 +34,17 @@ As a human operator or Team Leader, you can use the dashboard to monitor the who
 
 When you try to assemble an agent team with OpenClaw, the hardest problem is usually not the lack of agents. The real problem is that **agents struggle to keep long-running development work under control**.
 
-While integrating OpenClaw with lower-level engines such as Codex, people usually try one of two mainstream approaches. In real engineering workflows, both can cause catastrophic orchestration breakage:
+When building an OpenClaw multi-agent engineering team, people usually try one of two mainstream approaches. In real engineering workflows, both can cause catastrophic orchestration breakage:
 
-### 1. Direct ACP Invocation
+### 1. Treating "Execution Started" as "Execution Finished"
 
-- **Approach**: the Team Leader breaks work down and sends it to a Code Agent, which directly wakes Codex through commands such as `sessions_spawn(acp)`.
-- **Why it breaks**: on IM platforms such as Feishu that do not support long-lived streaming, `sessions_spawn` typically becomes asynchronous. The Code Agent sends the wake-up command and immediately assumes its own work is finished, then reports back to the Leader with "task completed" before Codex has even finished reading the codebase. Once "task started" is treated as "task finished," the Leader can move into review or dispatch the next step far too early, and the multi-agent workflow collapses right at the start.
+- **Approach**: the Team Leader breaks work down and asks another Agent to start an external long-running session or asynchronous execution channel.
+- **Why it breaks**: on IM platforms such as Feishu that do not support long-lived streaming, external execution channels usually become asynchronous. The Agent sends the start command, immediately assumes its own work is finished, and reports "task completed" to the Leader. Once "task started" is treated as "task finished," the Leader can move into review or dispatch the next step far too early, and the multi-agent workflow collapses right at the start.
 
-### 2. Relying on a Coding-Agent Skill
+### 2. Using a Bridge Skill for a Second Handoff
 
-- **Approach**: attach a dedicated coding-agent skill to the Worker Agent and let it drive Codex directly through a long-running chat session.
-- **Why it breaks**: real engineering tasks often require tens of minutes of context retrieval, code generation, and iterative correction. A Code Agent built on top of an LLM chat loop can rarely track such a long lifecycle reliably within one session. If you depend on heartbeats or cron, the control loop is usually still too fragile. The worst-case outcome is brutal: Codex quietly finishes the work, but the Code Agent has already timed out or disappeared. No one verifies the result, no one writes back the terminal state, and no one notifies the Leader. The execution layer is done, while orchestration is permanently stalled.
+- **Approach**: attach a dedicated bridge skill to the Worker Agent and turn a task that should be owned directly by the worker into another long-running chat handoff.
+- **Why it breaks**: real engineering tasks often require tens of minutes of context retrieval, code generation, and iterative correction. If the worker only hands the task off instead of owning status write-back, the orchestration layer cannot reliably tell whether the task is not started, running, done, blocked, or failed. No one verifies the result, no one writes back the terminal state, and no one notifies the Leader. Execution may be done, while orchestration is permanently stalled.
 
 ---
 
@@ -65,7 +65,7 @@ The system introduces a specialized agent team that covers the full software-del
 
 - **Team Leader (Commander)**: focuses on requirement decomposition, overall coordination, and dispatching high-level Jobs in chat.
 - **Planning Agent (Architect)**: owns system design, technical choices, and detailed workflow/Task planning.
-- **Code Agent (Programmer)**: accepts work, reports status, and drives the lower-level engine (Codex / Claude Code) to make concrete code changes.
+- **Code Agent (Programmer)**: accepts work, reports status, and directly makes concrete code changes.
 - **Quality Agent (QA)**: handles code quality checks, test writing and execution, bug fixing, and regression validation.
 - **Release Agent (Release Manager)**: owns documentation, version control, packaging, and deployment orchestration.
 - **Task Bridge (Task Hub)**: the invisible backbone that persists state, dispatches serially, and sends terminal-state notifications.
@@ -86,7 +86,7 @@ User --> [Team Leader] --planning--> [Planning Agent]
         (dispatch wake-up)          (dispatch wake-up)
              v                           v
        [Code Agent] <---collab---> [Quality Agent] ---> [Release Agent]
-     (drive Codex coding)          (testing and review)   (docs and release)
+        (implementation)           (testing and review)   (docs and release)
              |                           |
              +------(write-backs and terminal notices)----+
 ```
@@ -99,7 +99,7 @@ As a human user, you do not need to manage tasks manually through a long list of
 
 ### 1. Configure and Install
 
-You need to load the Agent prompts and Skills from this repository into OpenClaw, and install `task-bridge` into the environment your agents can execute:
+You need to load the Agent prompts from this repository into OpenClaw and install `task-bridge` into the environment your agents can execute. Worker execution is provided by the external OpenClaw + Codex harness runtime; this project does not configure or validate that harness:
 
 ```bash
 # Run the minimum install from the repository root
@@ -107,6 +107,8 @@ python -m pip install -e .
 ```
 
 *(Note: if you change `pyproject.toml` or the console entry point, run this command again.)*
+
+The worker execution path assumes the external OpenClaw + Codex harness runtime is already available, so `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` operate as direct execution agents. Keep `gstack` skills available for the worker runtime to use when needed, but do not route workers through a repository-provided bridge skill for a second handoff.
 
 **Best practice: let AI configure it for you**
 

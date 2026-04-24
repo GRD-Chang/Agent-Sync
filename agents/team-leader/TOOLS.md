@@ -23,10 +23,10 @@
 ### team-leader 常用 task 操作
 
 - 创建任务：
-  - `task-bridge create-task --requirement "<self-contained requirement>" --assign planning-agent`
-  - `task-bridge create-task --requirement "<self-contained requirement>" --assign code-agent`
-  - `task-bridge create-task --requirement "<self-contained requirement>" --assign quality-agent`
-  - `task-bridge create-task --requirement "<self-contained requirement>" --assign release-agent`
+  - `task-bridge create-task --requirement "<objective/scope/acceptance/verification>" --assign planning-agent`
+  - `task-bridge create-task --requirement "<objective/scope/acceptance/verification>" --assign code-agent`
+  - `task-bridge create-task --requirement "<objective/scope/acceptance/verification>" --assign quality-agent`
+  - `task-bridge create-task --requirement "<objective/scope/acceptance/verification>" --assign release-agent`
 - 查看任务：
   - `task-bridge list-tasks [--job <job_id>] [--state queued|running|done|blocked|failed] [--agent <agent>] --json`
   - `task-bridge show-task <task_id> [--job <job_id>] --json`

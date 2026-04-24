@@ -4,7 +4,8 @@
 
 - 用 OpenClaw CLI 创建 `team-leader`、`planning-agent`、`code-agent`、`quality-agent`、`release-agent`
 - 把本仓库里的 agent 定义迁过去
-- 安装 `https://github.com/garrytan/gstack` 中的 skill，供 Codex 执行
+- 确认外部 OpenClaw + Codex harness 运行环境已由 operator 准备好（本项目不负责配置）
+- 安装 `https://github.com/garrytan/gstack` 中的 skill，供 worker runtime 按需使用
 - 安装并验证 `task-bridge`
 - 配置 `tools.exec.pathPrepend`，让 agent 可以直接执行 `task-bridge`
 
@@ -12,6 +13,7 @@
 
 - <https://docs.openclaw.ai/concepts/agent-workspace>
 - <https://docs.openclaw.ai/cli/agents>
+- <https://docs.openclaw.ai/plugins/codex-harness#codex-harness>（外部运行环境参考，不属于本项目配置步骤）
 - <https://docs.openclaw.ai/tools/exec>
 
 ## 1. 创建 5 个 agent
@@ -48,8 +50,6 @@ openclaw agents list --json
 - `agents/code-agent/*`
 - `agents/quality-agent/*`
 - `agents/release-agent/*`
-- `skills/local/team-leader-orchestrator/SKILL.md`
-- `skills/coding-agent/SKILL.md`
 
 把这些文件复制到各自 workspace：
 
@@ -63,6 +63,9 @@ for agent in team-leader planning-agent code-agent quality-agent release-agent; 
   cp "$REPO_ROOT/agents/$agent/USER.md" "$HOME/.openclaw/workspaces/$agent/"
   cp "$REPO_ROOT/agents/$agent/IDENTITY.md" "$HOME/.openclaw/workspaces/$agent/"
   cp "$REPO_ROOT/agents/$agent/TOOLS.md" "$HOME/.openclaw/workspaces/$agent/"
+  if [ "$agent" = "team-leader" ] && [ -f "$REPO_ROOT/agents/team-leader/TASK_ROUTING.md" ]; then
+    cp "$REPO_ROOT/agents/team-leader/TASK_ROUTING.md" "$HOME/.openclaw/workspaces/team-leader/"
+  fi
 done
 ```
 
@@ -74,40 +77,34 @@ for agent in team-leader planning-agent code-agent quality-agent release-agent; 
 done
 ```
 
-复制 skill：
+这里复制的是本仓库自己的 agent 定义，以及 `team-leader` 侧的 `TASK_ROUTING.md`。`team-leader` 直接通过 `AGENTS.md` 和 `TASK_ROUTING.md` 编排；worker 不再需要仓库内旧 bridge skill。
 
-```bash
-mkdir -p "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator"
-cp "$REPO_ROOT/skills/local/team-leader-orchestrator/SKILL.md" \
-  "$HOME/.openclaw/workspaces/team-leader/skills/team-leader-orchestrator/SKILL.md"
+`office-hours`、`investigate`、`review`、`ship` 等 gstack skill 需要能被 worker runtime 发现，见下一步。
 
-for agent in planning-agent code-agent quality-agent release-agent; do
-  mkdir -p "$HOME/.openclaw/workspaces/$agent/skills/coding-agent"
-  cp "$REPO_ROOT/skills/coding-agent/SKILL.md" \
-    "$HOME/.openclaw/workspaces/$agent/skills/coding-agent/SKILL.md"
-done
-```
+## 3. 外部执行 harness 前提
 
-这里复制的是本仓库自己的 agent 定义和 `coding-agent` 桥接 skill。
+本项目基于 OpenClaw + Codex harness 运行，但不负责安装、配置或验证 Codex harness。
 
-真正由 Codex 执行的 `office-hours`、`investigate`、`review`、`ship` 等 gstack skill，需要额外安装到 Codex 的 skill 目录，见下一步。
+在继续安装 `task-bridge` 前，operator 需要在本项目之外确认：
 
-## 3. 安装 `garrytan/gstack` skill（供 Codex 使用）
+- OpenClaw worker agent 已经可以在当前环境中直接执行任务。
+- 如使用 Codex harness，相关 OpenClaw / Codex 配置已按官方文档完成。
+- worker 不需要本仓库旧的 bridge skill，也不应该再启动第二层执行器。
 
-`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 的 `TOOLS.md` 会指导 worker 在给 Codex 的 prompt 里使用：
+本项目只负责 agent 定义、任务编排、状态流转、证据回收和收口；Codex harness 的 model、fallback、guardian、app-server transport 等配置不属于本仓库目标。
 
-```text
-$技能名 任务说明
-```
+## 4. 安装 `garrytan/gstack` skill（供 worker runtime 按需使用）
 
-这些 skill 的真正执行主体是 Codex，因此需要先把 gstack 安装到 `~/.codex/skills`。
+`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 的 `TOOLS.md` 只维护轻量 resolver：说明哪些 skill / 工具适合哪些任务场景；具体触发方式由当前 Codex harness runtime 负责。
 
-不要把 gstack skill 直接复制进 `team-leader` 工作区；`team-leader` 只负责分发任务，不直接调用 Codex。
+如果当前 worker runtime 使用 Codex harness，推荐安装到 `~/.codex/skills`，让 runtime 可以发现这些 skill。
+
+不要把 gstack skill 直接复制进 `team-leader` 工作区；`team-leader` 只负责分发任务，不直接执行 worker task。
 
 gstack 自带 `setup` 脚本，会自动：
 
 - 构建 `/browse` 等 skill 依赖的二进制和运行时资源
-- 在 `~/.codex/skills/` 下创建 Codex 可发现的 gstack skill
+- 当 Codex harness 是外部 runtime 时，在 `~/.codex/skills/` 下创建 runtime 可发现的 gstack skill
 - 准备 `~/.codex/skills/gstack` 供这些 skill 的共享脚本使用
 
 先准备 gstack 仓库：
@@ -131,7 +128,7 @@ cd ~/.codex/skills/gstack
 
 - 运行 `./setup --host codex` 前，机器上需要有 `bun`
 - Windows 额外需要 `node`
-- `./setup` 会把适配 Codex 的 skill 安装为 `gstack-*` 目录，但 skill 本身的名字仍然是 `office-hours`、`investigate`、`review`、`ship` 这类裸名称，因此 worker prompt 里继续使用 `$investigate ...`、`$review ...`、`$ship ...`
+- `./setup` 会把适配 Codex 的 skill 安装为 `gstack-*` 目录；worker 只需要能在当前 Codex harness 中发现这些 skill，具体触发方式由当前 runtime 负责
 
 验证：
 
@@ -147,7 +144,7 @@ find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack
 - `gstack-review`
 - `gstack-ship`
 
-## 4. 安装 `task-bridge`
+## 5. 安装 `task-bridge`
 
 本项目是 Python 包，通常不需要单独编译二进制。推荐直接安装：
 
@@ -175,7 +172,7 @@ python -m build
 
 构建完成后，请在发布前单独验证打包产物，尤其是 dashboard 的静态资源。当前仓库里已验证的运行路径仍然是上面的 editable install。
 
-## 5. 配置 `tools.exec.pathPrepend`
+## 6. 配置 `tools.exec.pathPrepend`
 
 先找到 `task-bridge` 所在目录：
 
@@ -202,7 +199,7 @@ openclaw config get tools.exec.pathPrepend
 systemctl --user restart openclaw-gateway.service
 ```
 
-## 6. 配置飞书权限并写入 `chat_id`
+## 7. 配置飞书权限并写入 `chat_id`
 
 参考飞书官方文章：
 

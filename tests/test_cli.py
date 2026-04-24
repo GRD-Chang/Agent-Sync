@@ -684,7 +684,7 @@ def test_daemon_sends_due_worker_and_team_leader_reminders_with_custom_intervals
     assert daemon_payload["worker_reminded"] == [task["id"]]
     assert daemon_payload["leader_pinged"] is True
     assert daemon_payload["leader_followed_up"] == []
-    assert any(msg["agent"] == "code-agent" and msg["message"].startswith("/coding-agent [TASK_REMINDER]\n") for msg in messages)
+    assert any(msg["agent"] == "code-agent" and msg["message"].startswith("[TASK_REMINDER]\n") for msg in messages)
     assert any(msg["agent"] == "team-leader" and "通过上面的飞书 chat_id 给我发送总结" in msg["message"] for msg in messages)
 
 

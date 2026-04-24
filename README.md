@@ -1,10 +1,10 @@
-# 大聪明军团：Openclaw 多 agent 指挥 codex
+# 大聪明军团：OpenClaw 多 Agent 任务编排
 
-> 构建真正能交付的 OpenClaw 多 Agent 开发团队，解决由 Agent 驱动 Codex 等工具协作时的状态丢失与流程断裂问题。
+> 构建真正能交付的 OpenClaw 多 Agent 开发团队，在外部 OpenClaw + Codex harness 已可用的前提下，解决长期任务编排中的状态丢失、证据断裂与收口困难。
 
 [中文](README.md) | [English](README.en.md)
 
-`task-bridge` 是一个本地优先、专为 OpenClaw 多 Agent 协作设计的轻量级任务协作系统。它的核心使命是：让 OpenClaw 构建的多 Agent 协作团队，能够稳定地指挥底层开发引擎（如 Codex 或 Claude Code）去完成实际的长流程开发工作。
+`task-bridge` 是一个本地优先、专为 OpenClaw 多 Agent 协作设计的轻量级任务协作系统。它的核心使命是：让 OpenClaw 构建的多 Agent 协作团队，能够稳定地拆解任务、派发任务，并让各执行 Agent 直接把长流程开发工作闭环做完。
 
 ---
 
@@ -16,7 +16,7 @@
 task-bridge dashboard
 ```
 
-作为“人类指挥官”或 Team Leader，你可以通过 Dashboard 实时监控团队运作。以下为总览页与 Job 详情页示例：
+作为人类协作者或 Team Leader，你可以通过 Dashboard 实时监控团队运作。以下为总览页与 Job 详情页示例：
 
 | Dashboard 总览 | Dashboard Job 详情 |
 |---|---|
@@ -34,15 +34,15 @@ task-bridge dashboard
 
 尝试使用 OpenClaw 组建 Agent 团队时，最核心的痛点往往不是缺少 Agent，而是 **Agent 极难稳定地把控长周期的开发任务**。
 
-在将 OpenClaw 接入 Codex 等底层引擎时，业界通常会尝试以下两种主流方案。但在真实的工程落地中，它们极易引发灾难性的工作流断裂：
+在构建 OpenClaw 多 Agent 工程团队时，业界通常会尝试以下两种主流方案。但在真实工程落地中，它们极易引发灾难性的工作流断裂：
 
-### 1. 直接通过 ACP 链路调用
-- **做法**：Team Leader 拆解任务并分发给 Code Agent，由后者直接通过 `sessions_spawn(acp)` 等命令唤醒 Codex。
-- **痛点分析**：在对接飞书等不支持长时间 Stream 的 IM 平台时，`sessions_spawn` 通常只能异步触发。这会引发严重的逻辑错位：Code Agent 刚发出唤醒指令，就立刻误以为自身工作结束，转头向 Leader 汇报“任务已完成”。此时 Codex 甚至才刚开始读代码。这种将“任务启动”直接等同于“任务完成”的机制，会导致 Leader 过早进入验收或派发下一步任务，让多 Agent 工作流在起步阶段就彻底崩溃。
+### 1. 把“启动执行”误当成“完成执行”
+- **做法**：Team Leader 拆解任务后，让某个 Agent 再去启动外部长会话或异步执行通道。
+- **痛点分析**：在对接飞书等不支持长时间 Stream 的 IM 平台时，外部执行通道通常只能异步触发。这会引发严重的逻辑错位：Agent 刚发出启动指令，就立刻误以为自身工作结束，转头向 Leader 汇报“任务已完成”。这种将“任务启动”直接等同于“任务完成”的机制，会导致 Leader 过早进入验收或派发下一步任务，让多 Agent 工作流在起步阶段就彻底崩溃。
 
-### 2. 依赖 coding-agent skill 驱动
-- **做法**：让 Worker Agent 挂载特定的 coding-agent skill，通过长会话直接驱动 Codex 编码。
-- **痛点分析**：真实工程中的需求开发，动辄需要几十分钟的深度上下文检索、代码生成与多轮纠错。Code Agent 作为依赖大模型对话流的节点，几乎无法在单次生命周期内稳定追踪如此漫长的过程。如果依赖heartbeat或cron，往往不够稳定。最致命的后果是：底层的 Codex 已经默默把活干完，而 Code Agent 却早已因超时或机制限制而“失联”。最终无人验证代码结果、无人回写终态、更无人通知 Leader，整个协作系统陷入“底层已完工，编排却永久停滞”的假死状态。
+### 2. 依赖 bridge skill 做二次转交
+- **做法**：让 Worker Agent 挂载特定的 bridge skill，把本该由 worker 直接拥有的 task 变成另一层长会话接力。
+- **痛点分析**：真实工程中的需求开发，动辄需要几十分钟的深度上下文检索、代码生成与多轮纠错。如果 worker 只是转交任务而不负责状态回写，编排层就无法可靠知道任务是未开始、执行中、已完成还是失败。最终无人验证代码结果、无人回写终态、更无人通知 Leader，整个协作系统陷入“执行已完工，编排却永久停滞”的假死状态。
 
 ---
 
@@ -61,12 +61,12 @@ task-bridge dashboard
 
 引入了覆盖软件工程全生命周期的专业 Agent 团队。在 `task-bridge` 的编排下，团队职责分明：
 
-- **Team Leader (指挥官)**：专注需求拆解，在聊天中统筹全局并派发宏观 Job。
+- **Team Leader (协调者)**：专注需求拆解，在聊天中统筹全局并派发宏观 Job。
 - **Planning Agent (架构师)**：负责系统架构设计、技术选型与详细工作流/Task 规划。
-- **Code Agent (程序员)**：专注接单、汇报状态，并驱动底层模型（Codex / Claude Code）执行具体代码变更。
+- **Code Agent (程序员)**：专注接单、汇报状态，并直接完成具体代码变更。
 - **Quality Agent (质检员)**：代码质量把控、测试用例编写与执行、Bug 修复及回归验证。
 - **Release Agent (发布员)**：负责文档生成、版本控制、项目打包及部署流程编排。
-- **Task Bridge (任务中枢)**：底层的无形推手，负责存储状态、串行派发、终态通知。
+- **Task Bridge (任务中枢)**：确定性的任务账本，负责存储状态、串行派发、终态通知。
 
 ### 运转机制
 
@@ -80,10 +80,10 @@ User ──> [Team Leader] ──规划──> [Planning Agent]
      | (核心中枢：在后台监督队列，将任务分发给空闲 Worker)  |
      ======================================================
              │                          │
-        (分发唤醒)                 (分发唤醒)
+        (派发任务)                 (派发任务)
              ▼                          ▼
        [Code Agent]  <──协同──>  [Quality Agent] ──> [Release Agent]
-     (驱动 Codex 编码)          (测试与代码审查)        (文档与发布)
+        (实现与修复)             (测试与代码审查)        (文档与发布)
              │                          │
              └──────(回写进度与终态通知) ──┘
 ```
@@ -96,13 +96,15 @@ User ──> [Team Leader] ──规划──> [Planning Agent]
 
 ### 1. 配置与安装
 
-你需要将本仓库提供的 Agent Prompt 和 Skill 配置到 OpenClaw，并安装 `task-bridge` 到 Agent 环境：
+你需要将本仓库提供的 Agent Prompt 配置到 OpenClaw，并安装 `task-bridge` 到 Agent 环境。worker 底层执行能力由外部 OpenClaw + Codex harness 环境提供，本项目不负责配置或验证该 harness：
 
 ```bash
 # 在仓库根目录执行最小安装
 python -m pip install -e .
 ```
 *(注：若修改了 `pyproject.toml` 或入口，请重新执行此命令。)*
+
+Worker 的实际执行基于外部 OpenClaw + Codex harness 环境，`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 都被视为可直接执行任务的 Agent；`gstack` skills 继续保留给 worker runtime 按需使用，但不再通过本仓库的 bridge skill 二次转交任务。
 
 **最佳实践：让 AI 帮你配置**
 将文档提供给 OpenClaw 的 `default-agent` 或 Claude Code 代劳：
@@ -153,7 +155,7 @@ task-bridge dashboard --host 127.0.0.1 --port 8000
 
 > "我们需要开发一个包含用户认证的 Python CLI 工具，覆盖率要求 80%，让 Planning Agent 先出方案，然后安排 Code Agent 动工。"
 
-接下来，Team Leader 会自动拆解任务，Daemon 会依次唤醒各路 Agent，完成最终交付。
+接下来，Team Leader 会自动拆解任务，Daemon 会按队列向各路 Agent 派发任务，完成最终交付。
 
 ---
 

@@ -21,6 +21,20 @@ from task_bridge.store import DEFAULT_WORKERS, TaskStore, infer_worker_status, q
 from task_bridge.worker_registry import canonical_worker_names, canonical_worker_registry
 
 
+FORBIDDEN_NESTED_EXECUTION_PHRASES = (
+    "/coding-agent",
+    "skill:coding-agent",
+    "codex exec",
+    "通过 Codex 持续推进",
+    "驱动 Codex",
+)
+
+
+def assert_no_nested_execution_language(message: str) -> None:
+    for phrase in FORBIDDEN_NESTED_EXECUTION_PHRASES:
+        assert phrase not in message
+
+
 @pytest.fixture()
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("TASK_BRIDGE_HOME", str(tmp_path))
@@ -333,12 +347,17 @@ def test_runtime_loads_repo_prompt_templates(home: Path) -> None:
     assert runtime.prompts.notify == prompt_template_path("notify").read_text(encoding="utf-8")
     assert runtime.prompts.worker_reminder == prompt_template_path("worker_reminder").read_text(encoding="utf-8")
     assert "读取 task.json 和 TOOLS.md" in runtime.prompts.dispatch
-    assert "分析当前任务是否需要调用相关 skill" in runtime.prompts.dispatch
-    assert "$技能名 任务说明" in runtime.prompts.dispatch
-    assert "skill:coding-agent" in runtime.prompts.worker_reminder
-    assert "阅读 TOOLS.md 与 skill:coding-agent" in runtime.prompts.worker_reminder
-    assert "$技能名 任务说明" in runtime.prompts.worker_reminder
-    assert "通过 Codex 持续推进当前任务" in runtime.prompts.worker_reminder
+    assert "直接自主推进该任务" in runtime.prompts.dispatch
+    assert "执行边界" in runtime.prompts.dispatch
+    assert "AGENTS.md" in runtime.prompts.dispatch
+    assert "补充工具、命令或额外方法" in runtime.prompts.dispatch
+    assert "确认当前任务的目标、范围、验收口径" in runtime.prompts.worker_reminder
+    assert "缺失的代码事实、文件位置或实现细节" in runtime.prompts.worker_reminder
+    assert "AGENTS.md" in runtime.prompts.worker_reminder
+    assert "补充工具、命令或额外方法" in runtime.prompts.worker_reminder
+    assert "直接持续推进当前任务直到完成" in runtime.prompts.worker_reminder
+    assert_no_nested_execution_language(runtime.prompts.dispatch)
+    assert_no_nested_execution_language(runtime.prompts.worker_reminder)
 
 
 def test_load_prompts_reads_template_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -705,16 +724,18 @@ def test_build_dispatch_message_includes_requirement_and_status_ordering(home: P
 
     message = runtime._build_dispatch_message(task, task_path)
 
-    assert message.startswith("/coding-agent [TASK_DISPATCH]\n")
+    assert message.startswith("[TASK_DISPATCH]\n")
     assert f"job_id={job['id']}" in message
     assert f"task_id={task['id']}" in message
     assert f"task_path={task_path}" in message
     assert "任务 requirement:" in message
     assert "实现并验证功能" in message
-    assert "完全自主推进" in message
+    assert "直接自主推进该任务" in message
     assert "读取 task.json 和 TOOLS.md" in message
-    assert "分析当前任务是否需要调用相关 skill" in message
-    assert "$技能名 任务说明" in message
+    assert "直接自主推进该任务" in message
+    assert "执行边界" in message
+    assert "AGENTS.md" in message
+    assert "补充工具、命令或额外方法" in message
     assert "必须先通过 task-bridge 将 task 标记为 running" in message
     assert "使用 task-bridge 持续写回 result" in message
     assert "必须对照 requirement 验收结果" in message
@@ -725,6 +746,7 @@ def test_build_dispatch_message_includes_requirement_and_status_ordering(home: P
     assert "是否已 commit" in message
     assert f"detail_path={task['detail_path']}" in message
     assert "detail.md" in message
+    assert_no_nested_execution_language(message)
 
 
 def test_dispatch_once_resets_worker_before_sending_task(home: Path) -> None:
@@ -748,7 +770,7 @@ def test_dispatch_once_resets_worker_before_sending_task(home: Path) -> None:
     assert outcome.dispatched == [task["id"]]
     assert calls[0] == ("code-agent", "/reset")
     assert calls[1][0] == "code-agent"
-    assert calls[1][1].startswith("/coding-agent [TASK_DISPATCH]\n")
+    assert calls[1][1].startswith("[TASK_DISPATCH]\n")
     assert f"task_id={task['id']}" in calls[1][1]
 
 
@@ -893,14 +915,18 @@ def test_send_due_reminders_respects_intervals_and_updates_state(
     assert due.worker_reminded == [task["id"]]
     assert due.leader_pinged is True
     assert calls[0][0] == "code-agent"
-    assert calls[0][1].startswith("/coding-agent [TASK_REMINDER]\n")
+    assert calls[0][1].startswith("[TASK_REMINDER]\n")
     assert task["id"] in calls[0][1]
     assert "task_path=" in calls[0][1]
-    assert "skill:coding-agent" in calls[0][1]
-    assert "通过 Codex 持续推进当前任务" in calls[0][1]
+    assert "确认当前任务的目标、范围、验收口径" in calls[0][1]
+    assert "缺失的代码事实、文件位置或实现细节" in calls[0][1]
+    assert "AGENTS.md" in calls[0][1]
+    assert "补充工具、命令或额外方法" in calls[0][1]
+    assert "请直接持续推进当前任务直到完成" in calls[0][1]
     assert "持续推进实现" not in calls[0][1]
     assert "不要等待" in calls[0][1]
     assert "不要暂停" in calls[0][1]
+    assert_no_nested_execution_language(calls[0][1])
     assert calls[1][0] == "team-leader"
     assert "user_chat_id=chat-id-123" in calls[1][1]
     assert "通过上面的飞书 chat_id 给我发送总结" in calls[1][1]

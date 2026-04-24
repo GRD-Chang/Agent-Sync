@@ -36,10 +36,10 @@ In this system, collaboration does not happen through direct "talk" between agen
 
 ### Worker Agents
 
-- **Role**: stage-specialized execution workers. They interact directly with the underlying model or engine, such as Codex or Claude Code.
+- **Role**: stage-specialized execution workers. They accept work and execute it directly inside their own workspace.
 - **Responsibilities**:
   - When awakened by the daemon, accept the task and immediately mark it as `running`.
-  - Assemble context and drive the lower-level engine to perform the actual engineering work.
+  - Assemble context and directly perform the actual engineering work.
   - **Continuously write back progress**: during execution, keep updating key progress and evidence through `task-bridge update-result`.
   - Verify the outcome, commit changes if needed, and finally mark the task as `done`, `blocked`, or `failed`.
 - **Specialization**:
@@ -72,7 +72,7 @@ jobs/<job_id>/
 **Core task state flow (`state`):**
 `queued` -> `running` -> `done` / `blocked` / `failed`
 
-- `requirement`: the instruction written by the leader for the worker. It must be self-contained and explain what to do and how to verify completion.
+- `requirement`: the task contract written by the leader for the worker. It must state intent, scope boundaries, acceptance criteria, and verification requirements; code facts, file locations, and implementation details are filled in by the worker from the repository and task materials.
 - `result`: the execution trace and final delivery note written back by the worker.
 
 ---
@@ -82,47 +82,44 @@ jobs/<job_id>/
 The following ASCII sequence diagram shows how a standard long-running task moves through the system:
 
 ```text
-+-------------+      +---------------+      +--------------+      +-----------------------+      +-------------+
-| User        |      | team-leader   |      | task-bridge  |      | planning / code / quality / release |      | Codex / CLI |
-|             |      |               |      |   (daemon)   |      |                       |      |             |
-+-------------+      +---------------+      +--------------+      +-----------------------+      +-------------+
-       |                     |                      |                           |                       |
-       | 1. Submit a goal    |                      |                           |                       |
-       |-------------------->|                      |                           |                       |
-       |                     | 2. Plan and split    |                           |                       |
-       |                     | 3. create-task       |                           |                       |
-       |                     |--------------------->|                           |                       |
-       |                     |                      | 4. Persist as queued task |                       |
-       |                     |                      |                           |                       |
-       |                     |                      | 5. Find idle worker       |                       |
-       |                     |                      | Send [TASK_DISPATCH]      |                       |
-       |                     |                      |-------------------------->|                       |
-       |                     |                      |                           |                       |
-       |                     |                      |                           | 6. start -> running   |
-       |                     |                      |<--------------------------|                       |
-       |                     |                      |                           | 7. Build prompt / run |
-       |                     |                      |                           |---------------------->|
-       |                     |                      |                           |                       |
-       |                     |                      | 8. Periodic anti-stall    |                       |
-       |                     |                      | reminders                 |                       |
-       |                     |                      |-------------------------->|                       |
-       |                     |                      |                           | 9. Execute / edit /   |
-       |                     |                      | 10. Continuous            | test                  |
-       |                     |                      | update-result             |<----------------------|
-       |                     |                      |<--------------------------|                       |
-       |                     |                      |                           |                       |
-       |                     |                      |                           | 11. Pass or fail      |
-       |                     |                      | 12. Mark terminal state   |                       |
-       |                     |                      |<--------------------------|                       |
-       |                     |                      |                           |                       |
-       |                     | 13. [Notify] task    |                           |                       |
-       |                     | finished             |                           |                       |
-       |                     |<---------------------|                           |                       |
-       |                     |                      |                           |                       |
-       |                     | 14. Update work plan |                           |                       |
-       |                     | 15. Dispatch next or |                           |                       |
-       |                     | deliver to user      |                           |                       |
-       |<--------------------|                      |                           |                       |
++-------------+      +---------------+      +--------------+      +--------------------------------------+
+| User        |      | team-leader   |      | task-bridge  |      | planning / code / quality / release  |
+|             |      |               |      |   (daemon)   |      | OpenClaw worker session              |
++-------------+      +---------------+      +--------------+      +--------------------------------------+
+       |                     |                      |                              |
+       | 1. Submit a goal    |                      |                              |
+       |-------------------->|                      |                              |
+       |                     | 2. Plan and split    |                              |
+       |                     | 3. create-task       |                              |
+       |                     |--------------------->|                              |
+       |                     |                      | 4. Persist as queued task    |
+       |                     |                      |                              |
+       |                     |                      | 5. Find idle worker          |
+       |                     |                      | Send [TASK_DISPATCH]         |
+       |                     |                      |----------------------------->|
+       |                     |                      |                              |
+       |                     |                      |      6. start -> running     |
+       |                     |                      |<-----------------------------|
+       |                     |                      |                              |
+       |                     |                      |      7. Execute / edit / test|
+       |                     |                      |      8. Continuous result    |
+       |                     |                      |         updates              |
+       |                     |                      |<-----------------------------|
+       |                     |                      |                              |
+       |                     |                      | 9. Periodic anti-stall       |
+       |                     |                      | reminders                    |
+       |                     |                      |----------------------------->|
+       |                     |                      |                              |
+       |                     |                      |      10. Pass or fail        |
+       |                     |                      |      11. Mark terminal state |
+       |                     |                      |<-----------------------------|
+       |                     |                      |                              |
+       |                     | 12. [Notify] task finished   |
+       |                     |<---------------------|                              |
+       |                     |                      |                              |
+       |                     | 13. Update work plan |                              |
+       |                     | 14. Continue or deliver      |
+       |<--------------------|                      |                              |
 ```
 
 ---
@@ -141,4 +138,4 @@ To keep the pipeline from collapsing, the system depends on the following rules:
 
 This system is not "the leader constantly watching workers." Instead:
 
-**`team-leader` defines a clear work-order contract through `task-bridge`, executors such as `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` drive the underlying engine (for example Codex) to complete the work, every state change and piece of evidence is persisted locally, and the daemon notifies `team-leader` exactly when the work item is concluded.**
+**`team-leader` defines a clear work-order contract through `task-bridge`, executors such as `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` accept work directly, execute it, verify it, and close the loop, every state change and piece of evidence is persisted locally, and the daemon notifies `team-leader` exactly when the work item is concluded.**
