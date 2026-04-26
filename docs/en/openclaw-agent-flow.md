@@ -39,13 +39,14 @@ In this system, collaboration does not happen through direct "talk" between agen
 - **Role**: stage-specialized execution workers. They accept work and execute it directly inside their own workspace.
 - **Responsibilities**:
   - When awakened by the daemon, accept the task and immediately mark it as `running`.
+  - First inspect the skills available in the current session. If a skill matches the task goal, scope, acceptance criteria, and verification requirements, use that skill first.
   - Assemble context and directly perform the actual engineering work.
   - **Continuously write back progress**: during execution, keep updating key progress and evidence through `task-bridge update-result`.
   - Verify the outcome, commit changes if needed, and finally mark the task as `done`, `blocked`, or `failed`.
 - **Specialization**:
-  - `planning-agent`: requirement clarification, plan review, design direction, and solution shaping.
-  - `code-agent`: solution design, implementation, bug fixing, and refactoring.
-  - `quality-agent`: test authoring, regression validation, code review, and documentation cleanup.
+  - `planning-agent`: requirement clarification, solution shaping, sprint contracts, acceptance criteria, and verification requirements.
+  - `code-agent`: implementation-level design, implementation, root-cause investigation, bug fixing, and refactoring.
+  - `quality-agent`: plan evaluation, implementation evaluation, independent review, QA, and risk grading.
   - `release-agent`: release preparation, deployment, post-deploy verification, and documentation sync.
 
 ### Task Bridge Daemon
@@ -101,24 +102,25 @@ The following ASCII sequence diagram shows how a standard long-running task move
        |                     |                      |      6. start -> running     |
        |                     |                      |<-----------------------------|
        |                     |                      |                              |
-       |                     |                      |      7. Execute / edit / test|
-       |                     |                      |      8. Continuous result    |
+       |                     |                      |      7. Check skills first   |
+       |                     |                      |      8. Execute / edit / test|
+       |                     |                      |      9. Continuous result    |
        |                     |                      |         updates              |
        |                     |                      |<-----------------------------|
        |                     |                      |                              |
-       |                     |                      | 9. Periodic anti-stall       |
+       |                     |                      | 10. Periodic anti-stall      |
        |                     |                      | reminders                    |
        |                     |                      |----------------------------->|
        |                     |                      |                              |
-       |                     |                      |      10. Pass or fail        |
-       |                     |                      |      11. Mark terminal state |
+       |                     |                      |      11. Pass or fail        |
+       |                     |                      |      12. Mark terminal state |
        |                     |                      |<-----------------------------|
        |                     |                      |                              |
-       |                     | 12. [Notify] task finished   |
+       |                     | 13. [Notify] task finished   |
        |                     |<---------------------|                              |
        |                     |                      |                              |
-       |                     | 13. Update work plan |                              |
-       |                     | 14. Continue or deliver      |
+       |                     | 14. Update work plan |                              |
+       |                     | 15. Continue or deliver      |
        |<--------------------|                      |                              |
 ```
 
@@ -132,7 +134,8 @@ To keep the pipeline from collapsing, the system depends on the following rules:
 2. **State lock**: only tasks in `queued` may have their `requirement` or `assigned_agent` changed.
 3. **Safe deletion**: only tasks in `queued` or `done` may be deleted. A failed task must be kept as evidence, and any recovery should happen in a newly created task.
 4. **Mandatory write-back**: workers must continuously update `result` through `task-bridge` during execution so progress stays visible.
-5. **Precise interruption policy**: before a task reaches a terminal state, Bridge must not disturb the leader with intermediate noise.
+5. **Skill-first execution**: workers inspect available skills when they receive a task. If a matching skill exists, they use it first. If no skill fits, they use commands and tools directly.
+6. **Precise interruption policy**: before a task reaches a terminal state, Bridge must not disturb the leader with intermediate noise.
 
 ## 6. One-Sentence Summary
 

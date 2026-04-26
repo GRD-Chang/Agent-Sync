@@ -363,7 +363,7 @@ Execution contract 应该表达：
 - 实质工作前标记 `running`。
 - 直接在当前环境执行。
 - 按需读取仓库、文档、测试和相关文件补齐事实上下文。
-- 按需使用可用工具和 skills。
+- 先查看当前会话可用 skills；有匹配 skill 时优先使用，没有匹配 skill 时再直接使用工具和命令。
 - 用 `update-result` 写回进展。
 - 对照 Acceptance 和 Verification 验证。
 - 有必要时写 `detail.md`。

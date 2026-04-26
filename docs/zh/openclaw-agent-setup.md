@@ -4,8 +4,8 @@
 
 - 用 OpenClaw CLI 创建 `team-leader`、`planning-agent`、`code-agent`、`quality-agent`、`release-agent`
 - 把本仓库里的 agent 定义迁过去
-- 确认外部 OpenClaw + Codex harness 运行环境已由 operator 准备好（本项目不负责配置）
-- 安装 `https://github.com/garrytan/gstack` 中的 skill，供 worker runtime 按需使用
+- 确认 worker 的底层执行环境已由 operator 准备好（本项目不负责配置）
+- 让 worker 当前会话能发现可用 skills；收到任务后有匹配 skill 时优先使用
 - 安装并验证 `task-bridge`
 - 配置 `tools.exec.pathPrepend`，让 agent 可以直接执行 `task-bridge`
 
@@ -77,34 +77,34 @@ for agent in team-leader planning-agent code-agent quality-agent release-agent; 
 done
 ```
 
-这里复制的是本仓库自己的 agent 定义，以及 `team-leader` 侧的 `TASK_ROUTING.md`。`team-leader` 直接通过 `AGENTS.md` 和 `TASK_ROUTING.md` 编排；worker 不再需要仓库内旧 bridge skill。
+这里复制的是本仓库自己的 agent 定义，以及 `team-leader` 侧的 `TASK_ROUTING.md`。`team-leader` 直接通过 `AGENTS.md` 和 `TASK_ROUTING.md` 编排；worker 收到 task 后直接成为任务 owner。
 
-`office-hours`、`investigate`、`review`、`ship` 等 gstack skill 需要能被 worker runtime 发现，见下一步。
+worker 的 `TOOLS.md` 不维护完整 skill 清单。它只说明本地环境约束、`task-bridge` 命令和执行边界。
 
-## 3. 外部执行 harness 前提
+## 3. 外部执行环境前提
 
-本项目基于 OpenClaw + Codex harness 运行，但不负责安装、配置或验证 Codex harness。
+本项目不负责安装、配置或验证底层执行环境。
 
 在继续安装 `task-bridge` 前，operator 需要在本项目之外确认：
 
 - OpenClaw worker agent 已经可以在当前环境中直接执行任务。
-- 如使用 Codex harness，相关 OpenClaw / Codex 配置已按官方文档完成。
-- worker 不需要本仓库旧的 bridge skill，也不应该再启动第二层执行器。
+- worker 当前会话可以查看可用 skills。
+- worker 不需要本仓库旧的转发层，也不应该再启动第二层执行器。
 
-本项目只负责 agent 定义、任务编排、状态流转、证据回收和收口；Codex harness 的 model、fallback、guardian、app-server transport 等配置不属于本仓库目标。
+本项目只负责 agent 定义、任务编排、状态流转、证据回收和收口；模型、fallback、权限策略、transport 等底层 runtime 配置不属于本仓库目标。
 
-## 4. 安装 `garrytan/gstack` skill（供 worker runtime 按需使用）
+## 4. 准备 worker 可发现的 skills
 
-`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 的 `TOOLS.md` 只维护轻量 resolver：说明哪些 skill / 工具适合哪些任务场景；具体触发方式由当前 Codex harness runtime 负责。
+`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 收到 task 后，应先查看当前会话可用 skills。如果存在匹配当前任务目标、范围、验收和验证要求的 skill，优先使用该 skill 组织执行；没有匹配 skill 时，再直接阅读仓库、运行命令并整理证据。
 
-如果当前 worker runtime 使用 Codex harness，推荐安装到 `~/.codex/skills`，让 runtime 可以发现这些 skill。
+如果你使用 `garrytan/gstack`，请把它安装到当前 worker runtime 可发现的 skill 目录。下面以 `~/.codex/skills` 作为本机默认示例；如果你的运行环境使用别的 skill 目录，请替换路径。
 
 不要把 gstack skill 直接复制进 `team-leader` 工作区；`team-leader` 只负责分发任务，不直接执行 worker task。
 
 gstack 自带 `setup` 脚本，会自动：
 
 - 构建 `/browse` 等 skill 依赖的二进制和运行时资源
-- 当 Codex harness 是外部 runtime 时，在 `~/.codex/skills/` 下创建 runtime 可发现的 gstack skill
+- 在目标 skills 目录下创建 runtime 可发现的 gstack skill
 - 准备 `~/.codex/skills/gstack` 供这些 skill 的共享脚本使用
 
 先准备 gstack 仓库：
@@ -128,21 +128,18 @@ cd ~/.codex/skills/gstack
 
 - 运行 `./setup --host codex` 前，机器上需要有 `bun`
 - Windows 额外需要 `node`
-- `./setup` 会把适配 Codex 的 skill 安装为 `gstack-*` 目录；worker 只需要能在当前 Codex harness 中发现这些 skill，具体触发方式由当前 runtime 负责
+- `./setup` 会把 skill 安装为 `gstack-*` 目录；worker 只需要能在当前会话中发现这些 skill，具体触发方式由当前 runtime 负责
 
-验证：
+验证安装目录可被发现：
 
 ```bash
-find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack-(office-hours|autoplan|plan-ceo-review|plan-design-review|plan-eng-review|design-consultation|retro|investigate|review|cso|browse|setup-browser-cookies|qa|qa-only|design-review|benchmark|setup-deploy|ship|land-and-deploy|canary|document-release|careful|freeze|guard|unfreeze)$'
+find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack'
 ```
 
-如果你只想快速确认安装成功，至少应该看到：
+如果你只想快速确认安装成功，至少应该看到 `gstack` 以及若干 `gstack-*` skill 目录，例如：
 
 - `gstack`
-- `gstack-office-hours`
-- `gstack-investigate`
-- `gstack-review`
-- `gstack-ship`
+- `gstack-...`
 
 ## 5. 安装 `task-bridge`
 

@@ -4,8 +4,8 @@ Goals:
 
 - Create `team-leader`, `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` with the OpenClaw CLI
 - Migrate the agent definitions from this repository
-- Confirm the external OpenClaw + Codex harness runtime is prepared by the operator; this project does not configure it
-- Install the skills from `https://github.com/garrytan/gstack` so the worker runtime can use them when needed
+- Confirm the worker execution environment is prepared by the operator; this project does not configure it
+- Make skills discoverable to worker sessions; when a task has a matching skill, workers should use that skill first
 - Install and verify `task-bridge`
 - Configure `tools.exec.pathPrepend` so agents can run `task-bridge` directly
 
@@ -77,34 +77,34 @@ for agent in team-leader planning-agent code-agent quality-agent release-agent; 
 done
 ```
 
-Those copied files are this repo's agent definitions plus the `team-leader` `TASK_ROUTING.md`. `team-leader` orchestrates directly through `AGENTS.md` and `TASK_ROUTING.md`, and worker agents no longer need the repository's old bridge skill.
+Those copied files are this repo's agent definitions plus the `team-leader` `TASK_ROUTING.md`. `team-leader` orchestrates directly through `AGENTS.md` and `TASK_ROUTING.md`; once a worker receives a task, it becomes the task owner.
 
-The actual `office-hours`, `investigate`, `review`, `ship`, and other gstack skills must still be discoverable by the worker runtime when workers need them.
+Worker `TOOLS.md` files do not maintain a full skill catalog. They only keep local environment constraints, `task-bridge` commands, and execution boundaries.
 
-## 3. External execution harness prerequisite
+## 3. External execution environment prerequisite
 
-This project runs on top of OpenClaw + Codex harness, but it does not install, configure, or validate Codex harness.
+This project does not install, configure, or validate the lower-level execution environment.
 
 Before continuing with `task-bridge`, the operator should confirm outside this repository that:
 
 - OpenClaw worker agents can execute tasks directly in the current environment.
-- If Codex harness is used, OpenClaw / Codex configuration is already handled according to official docs.
-- Workers do not need this repository's old bridge skill and should not launch a second execution layer.
+- Worker sessions can inspect available skills.
+- Workers do not need this repository's old relay layer and should not launch a second execution layer.
 
-This repository owns agent definitions, task orchestration, state transitions, evidence collection, and handoff. Codex harness model, fallback, guardian, app-server transport, and related runtime policy are outside this repository's scope.
+This repository owns agent definitions, task orchestration, state transitions, evidence collection, and handoff. Model selection, fallback policy, permissions, transport, and other lower-level runtime settings are outside this repository's scope.
 
-## 4. Install `garrytan/gstack` skills for the worker runtime
+## 4. Prepare discoverable worker skills
 
-The worker `TOOLS.md` files are lightweight resolvers: they describe which skills / tools fit which task scenarios, while the current Codex harness runtime owns the concrete triggering mechanism.
+When `planning-agent`, `code-agent`, `quality-agent`, or `release-agent` receives a task, it should first inspect the skills available in the current session. If a skill matches the task goal, scope, acceptance criteria, and verification requirements, the worker should use that skill first. If no skill fits, the worker reads the repository, runs commands, and records evidence directly.
 
-If the current worker runtime uses Codex harness, installing those skills into `~/.codex/skills` is recommended so the runtime can discover them.
+If you use `garrytan/gstack`, install it into the skill directory your worker runtime can discover. The commands below use `~/.codex/skills` as the local default example; replace the path if your runtime uses a different skill directory.
 
 Do not copy gstack skills into the `team-leader` workspace. `team-leader` only dispatches work and does not directly execute worker tasks.
 
 gstack ships with its own `setup` script. It will:
 
 - build the runtime assets and binaries needed by skills such as `/browse`
-- create worker-runtime-discoverable gstack skills inside `~/.codex/skills/` when Codex harness is the external runtime
+- create runtime-discoverable gstack skills inside the target skills directory
 - prepare `~/.codex/skills/gstack` for the shared helper scripts those skills call
 
 First prepare the gstack repository:
@@ -128,21 +128,18 @@ Notes:
 
 - `bun` must be installed before running `./setup --host codex`
 - Windows also needs `node`
-- the installed directories are named `gstack-*`; workers only need those skills to be discoverable in the current Codex harness, and the active runtime owns the concrete triggering mechanism
+- the installed directories are named `gstack-*`; workers only need those skills to be discoverable in the current session, and the active runtime owns the concrete triggering mechanism
 
-Verify:
+Verify that the install directories are discoverable:
 
 ```bash
-find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack-(office-hours|autoplan|plan-ceo-review|plan-design-review|plan-eng-review|design-consultation|retro|investigate|review|cso|browse|setup-browser-cookies|qa|qa-only|design-review|benchmark|setup-deploy|ship|land-and-deploy|canary|document-release|careful|freeze|guard|unfreeze)$'
+find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack'
 ```
 
-For a quick smoke check, you should at least see:
+For a quick smoke check, you should see `gstack` plus some `gstack-*` skill directories, for example:
 
 - `gstack`
-- `gstack-office-hours`
-- `gstack-investigate`
-- `gstack-review`
-- `gstack-ship`
+- `gstack-...`
 
 ## 5. Install `task-bridge`
 

@@ -41,9 +41,9 @@ When building an OpenClaw multi-agent engineering team, people usually try one o
 - **Approach**: the Team Leader breaks work down and asks another Agent to start an external long-running session or asynchronous execution channel.
 - **Why it breaks**: on IM platforms such as Feishu that do not support long-lived streaming, external execution channels usually become asynchronous. The Agent sends the start command, immediately assumes its own work is finished, and reports "task completed" to the Leader. Once "task started" is treated as "task finished," the Leader can move into review or dispatch the next step far too early, and the multi-agent workflow collapses right at the start.
 
-### 2. Using a Bridge Skill for a Second Handoff
+### 2. Making Workers Relay Instead of Own Tasks
 
-- **Approach**: attach a dedicated bridge skill to the Worker Agent and turn a task that should be owned directly by the worker into another long-running chat handoff.
+- **Approach**: the Worker receives a task, but instead of executing it directly, it hands the task to another execution layer.
 - **Why it breaks**: real engineering tasks often require tens of minutes of context retrieval, code generation, and iterative correction. If the worker only hands the task off instead of owning status write-back, the orchestration layer cannot reliably tell whether the task is not started, running, done, blocked, or failed. No one verifies the result, no one writes back the terminal state, and no one notifies the Leader. Execution may be done, while orchestration is permanently stalled.
 
 ---
@@ -54,6 +54,7 @@ When building an OpenClaw multi-agent engineering team, people usually try one o
 
 - **Local persisted source of truth**: instead of relying on fragile chat history, every Job, Task, and State is stored locally as JSON.
 - **Serial execution with controlled async behavior**: one Worker handles only one task at a time, and it must keep writing back execution records so asynchronous work becomes a stable, traceable task flow.
+- **Skill-first direct execution**: when a Worker receives a task, it first checks the skills available in the current session. If a matching skill exists, it uses that skill first. If not, it reads the repository, runs commands, and records evidence directly.
 - **Periodic anti-stall progress nudges**: the daemon periodically reminds Workers to keep moving, preventing silent hangs.
 - **Precise terminal notifications with automated follow-up**: the Leader is only woken when a task truly reaches `done`, `blocked`, or `failed`, and unattended terminal tasks can trigger an automatic follow-up reminder so the pipeline does not stall.
 
@@ -63,11 +64,11 @@ When building an OpenClaw multi-agent engineering team, people usually try one o
 
 The system introduces a specialized agent team that covers the full software-delivery lifecycle. Under `task-bridge`, responsibilities stay clear:
 
-- **Team Leader (Commander)**: focuses on requirement decomposition, overall coordination, and dispatching high-level Jobs in chat.
-- **Planning Agent (Architect)**: owns system design, technical choices, and detailed workflow/Task planning.
-- **Code Agent (Programmer)**: accepts work, reports status, and directly makes concrete code changes.
-- **Quality Agent (QA)**: handles code quality checks, test writing and execution, bug fixing, and regression validation.
-- **Release Agent (Release Manager)**: owns documentation, version control, packaging, and deployment orchestration.
+- **Team Leader (Coordinator)**: handles user-facing decisions, task creation, evidence recovery, and final handoff. It does not directly own design, implementation, testing, or release execution.
+- **Planning Agent (Planner)**: owns requirement clarification, solution shaping, sprint contracts, acceptance criteria, and verification requirements.
+- **Code Agent (Engineering Worker)**: owns implementation-level design, code reading, root-cause investigation, implementation, fixes, refactors, tests, and commits.
+- **Quality Agent (Evaluator)**: owns plan evaluation, implementation evaluation, independent review, QA, risk grading, and bounded local fixes when they fit the quality task.
+- **Release Agent (Delivery Worker)**: owns release preparation, PR/deploy/post-deploy checks, rollback criteria, and documentation sync.
 - **Task Bridge (Task Hub)**: the invisible backbone that persists state, dispatches serially, and sends terminal-state notifications.
 
 ### Operating Model
@@ -99,7 +100,7 @@ As a human user, you do not need to manage tasks manually through a long list of
 
 ### 1. Configure and Install
 
-You need to load the Agent prompts from this repository into OpenClaw and install `task-bridge` into the environment your agents can execute. Worker execution is provided by the external OpenClaw + Codex harness runtime; this project does not configure or validate that harness:
+You need to load the Agent prompts from this repository into OpenClaw and install `task-bridge` into the environment your agents can execute. This project owns agent definitions, task orchestration, state transitions, evidence collection, and handoff. It does not configure or validate the lower-level execution environment:
 
 ```bash
 # Run the minimum install from the repository root
@@ -108,7 +109,7 @@ python -m pip install -e .
 
 *(Note: if you change `pyproject.toml` or the console entry point, run this command again.)*
 
-The worker execution path assumes the external OpenClaw + Codex harness runtime is already available, so `planning-agent`, `code-agent`, `quality-agent`, and `release-agent` operate as direct execution agents. Keep `gstack` skills available for the worker runtime to use when needed, but do not route workers through a repository-provided bridge skill for a second handoff.
+`planning-agent`, `code-agent`, `quality-agent`, and `release-agent` are direct execution agents. When a Worker receives a task, it first checks the skills available in the current session. If a matching skill exists, it uses that skill first. If no skill fits, it reads the repository, runs commands, and records evidence directly.
 
 **Best practice: let AI configure it for you**
 
@@ -138,7 +139,7 @@ task-bridge daemon --poll-seconds 10 --worker-reminder-seconds 900 --leader-remi
 mkdir -p .task-bridge
 nohup task-bridge daemon \
   --poll-seconds 60 \
-  --worker-reminder-seconds 900 \
+  --worker-reminder-seconds 2700 \
   --leader-reminder-seconds 7200 \
   --leader-followup 1800 \
   > .task-bridge/daemon.log 2>&1 &

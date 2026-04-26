@@ -1,6 +1,6 @@
 # 大聪明军团：OpenClaw 多 Agent 任务编排
 
-> 构建真正能交付的 OpenClaw 多 Agent 开发团队，在外部 OpenClaw + Codex harness 已可用的前提下，解决长期任务编排中的状态丢失、证据断裂与收口困难。
+> 构建真正能交付的 OpenClaw 多 Agent 开发团队，解决长期任务编排中的状态丢失、证据断裂与收口困难。
 
 [中文](README.md) | [English](README.en.md)
 
@@ -40,8 +40,8 @@ task-bridge dashboard
 - **做法**：Team Leader 拆解任务后，让某个 Agent 再去启动外部长会话或异步执行通道。
 - **痛点分析**：在对接飞书等不支持长时间 Stream 的 IM 平台时，外部执行通道通常只能异步触发。这会引发严重的逻辑错位：Agent 刚发出启动指令，就立刻误以为自身工作结束，转头向 Leader 汇报“任务已完成”。这种将“任务启动”直接等同于“任务完成”的机制，会导致 Leader 过早进入验收或派发下一步任务，让多 Agent 工作流在起步阶段就彻底崩溃。
 
-### 2. 依赖 bridge skill 做二次转交
-- **做法**：让 Worker Agent 挂载特定的 bridge skill，把本该由 worker 直接拥有的 task 变成另一层长会话接力。
+### 2. 让 Worker 只做转发而不拥有任务
+- **做法**：Worker 收到任务后，不直接执行，而是把任务再交给另一层执行流程。
 - **痛点分析**：真实工程中的需求开发，动辄需要几十分钟的深度上下文检索、代码生成与多轮纠错。如果 worker 只是转交任务而不负责状态回写，编排层就无法可靠知道任务是未开始、执行中、已完成还是失败。最终无人验证代码结果、无人回写终态、更无人通知 Leader，整个协作系统陷入“执行已完工，编排却永久停滞”的假死状态。
 
 ---
@@ -52,6 +52,7 @@ task-bridge dashboard
 
 - **本地落盘的事实源**：抛弃脆弱的聊天记录，所有的 Job、Task、State 全部以 JSON 格式落盘本地。
 - **串行执行与异步转可控**：同一 Worker 同时只执行一个任务，强制持续回写执行记录，把异步动作转化为可追踪的稳定任务流。
+- **Skill-first 的直接执行**：Worker 收到任务后先查看当前会话可用 skills；有匹配 skill 时优先使用该 skill 组织执行，没有匹配 skill 时再直接读仓库、跑命令并整理证据。
 - **周期性防假死推进**：Daemon 守护进程会定期提醒 Worker 推进任务，防止执行挂起。
 - **精准的终态通知与自动化 Follow-up**：仅在任务真正达到终态（done/blocked/failed）时主动唤醒 Leader，并对无人处理的终态任务自动催办，防止流水线停转。
 
@@ -61,11 +62,11 @@ task-bridge dashboard
 
 引入了覆盖软件工程全生命周期的专业 Agent 团队。在 `task-bridge` 的编排下，团队职责分明：
 
-- **Team Leader (协调者)**：专注需求拆解，在聊天中统筹全局并派发宏观 Job。
-- **Planning Agent (架构师)**：负责系统架构设计、技术选型与详细工作流/Task 规划。
-- **Code Agent (程序员)**：专注接单、汇报状态，并直接完成具体代码变更。
-- **Quality Agent (质检员)**：代码质量把控、测试用例编写与执行、Bug 修复及回归验证。
-- **Release Agent (发布员)**：负责文档生成、版本控制、项目打包及部署流程编排。
+- **Team Leader (协调者)**：面向用户做高层决策、建单、证据回收和最终收口，不直接承担设计、实现、测试或发布执行。
+- **Planning Agent (规划者)**：负责需求澄清、方案收敛、sprint contract、验收口径与验证要求。
+- **Code Agent (工程执行者)**：负责实现级设计、代码阅读、根因调查、实现、修复、重构、测试与提交。
+- **Quality Agent (质量评估者)**：负责 plan evaluation、implementation evaluation、独立评审、QA、风险分级和必要的小范围修复。
+- **Release Agent (交付执行者)**：负责发布准备、PR/部署/上线验证、回滚口径和文档同步。
 - **Task Bridge (任务中枢)**：确定性的任务账本，负责存储状态、串行派发、终态通知。
 
 ### 运转机制
@@ -96,7 +97,7 @@ User ──> [Team Leader] ──规划──> [Planning Agent]
 
 ### 1. 配置与安装
 
-你需要将本仓库提供的 Agent Prompt 配置到 OpenClaw，并安装 `task-bridge` 到 Agent 环境。worker 底层执行能力由外部 OpenClaw + Codex harness 环境提供，本项目不负责配置或验证该 harness：
+你需要将本仓库提供的 Agent Prompt 配置到 OpenClaw，并安装 `task-bridge` 到 Agent 环境。本项目只负责 agent 定义、任务编排、状态流转、证据回收和收口，不负责配置或验证底层执行环境：
 
 ```bash
 # 在仓库根目录执行最小安装
@@ -104,7 +105,7 @@ python -m pip install -e .
 ```
 *(注：若修改了 `pyproject.toml` 或入口，请重新执行此命令。)*
 
-Worker 的实际执行基于外部 OpenClaw + Codex harness 环境，`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 都被视为可直接执行任务的 Agent；`gstack` skills 继续保留给 worker runtime 按需使用，但不再通过本仓库的 bridge skill 二次转交任务。
+`planning-agent`、`code-agent`、`quality-agent`、`release-agent` 都被视为可直接执行任务的 Agent。Worker 收到 task 后先查看当前会话可用 skills；有匹配 skill 时优先使用该 skill，没有匹配 skill 时再直接阅读仓库、运行命令并整理证据。
 
 **最佳实践：让 AI 帮你配置**
 将文档提供给 OpenClaw 的 `default-agent` 或 Claude Code 代劳：
@@ -130,7 +131,7 @@ task-bridge daemon --poll-seconds 10 --worker-reminder-seconds 900 --leader-remi
 mkdir -p .task-bridge
 nohup task-bridge daemon \
   --poll-seconds 60 \
-  --worker-reminder-seconds 900 \
+  --worker-reminder-seconds 2700 \
   --leader-reminder-seconds 7200 \
   --leader-followup 1800 \
   > .task-bridge/daemon.log 2>&1 &
