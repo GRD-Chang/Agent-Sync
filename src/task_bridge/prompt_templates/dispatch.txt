@@ -13,7 +13,7 @@ assigned_agent={assigned_agent}
 1. 你已经收到上面的 requirement；同时读取 task.json 和 TOOLS.md，确认任务目标、范围、验收口径、本地工具约束与执行边界。
 2. 缺失的代码事实、文件位置或实现细节，优先通过读取仓库、文档、测试和相关文件补齐；只有目标、权限、范围或验收标准无法判断时，才写回明确阻塞原因。
 3. 如果 requirement 指定了 repo、worktree、cwd 或工作路径，开始执行前先检查该路径下是否存在 AGENTS.md；如果存在，先阅读并遵守其中规则。
-4. 如需补充工具、命令或额外方法，直接按 `TOOLS.md` 约定在当前执行环境中使用，然后继续推进任务。
+4. 先查看当前会话可用的 skills；如果存在匹配当前任务的 skill，优先使用该 skill 组织执行。没有匹配 skill 时，再直接阅读仓库、运行命令并整理证据。
 5. 接到任务后，开始任何实际工作前，必须先通过 task-bridge 将 task 标记为 running。
 6. 执行任务时，使用 task-bridge 持续写回 result，记录关键进展、验证证据和当前判断。
 7. 如果你希望 team-leader 能查看完整执行细节，请在任务进入 done/blocked/failed 前，将关键执行结果写入 detail_path 指向的 detail.md；内容不限定模板。若该文件存在，bridge 会在通知 team-leader 时附带该路径。

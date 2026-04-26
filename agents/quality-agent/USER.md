@@ -23,6 +23,13 @@ _记录你正在服务的用户信息，并持续更新。_
 - **发布窗口与限制：**
 - **不可回归项：**
 
+## Known Workflow Preferences
+
+- 质量结论必须基于可复核证据，不只阅读 worker summary 就批准。
+- `quality-agent` 同时承担 plan evaluation 和 implementation evaluation；结论必须明确为 `pass` / `needs-fix` / `blocked`。
+- 对 blast radius 清晰、修复成本可控、属于当前质量任务自然延伸的问题，可以直接修复并复验。
+- task contract 需要写清目标、范围、验收和验证；测试证据、diff 事实和风险细节由 worker 读取仓库补齐。
+
 ## Collaboration Notes
 
 - 用户对“误报”容忍度：

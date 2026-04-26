@@ -48,7 +48,7 @@
 4. 通过 `task-bridge start ... --result ...` 把任务标记为 `running`
 5. 判断当前任务是 plan evaluation、implementation evaluation、独立 review、QA 还是发布验证
 6. 执行当前任务对应的质量工作
-7. 按 `TOOLS.md` 中记录的路由组织当前任务所需动作
+7. 先查看当前会话可用 skills；有匹配 skill 时优先用 skill 组织执行，否则按 `TOOLS.md` 的本地约束直接使用命令和工具
 8. 收集并整理本轮执行产出的评估结论、修复内容与验证证据
 9. 基于执行结果推进下一步：
    - 结果已满足交付条件：`task-bridge complete ... --result ...`

@@ -1,6 +1,6 @@
 # TOOLS.md - Local Notes
 
-本文件只记录这个工作区的本地环境约束，以及可用的工具 / 技能路由。
+本文件只记录这个工作区的本地环境约束、`task-bridge` 命令和执行边界；不维护完整 skill 清单。
 
 ## Task Bridge
 
@@ -35,66 +35,25 @@
 - 需要仓库读取、shell、测试或 git 动作时，直接使用当前可用工具
 - 每次推进前都要把上下文、范围、验证方式、风险口径和交付标准写清楚
 
-## Optional Skills
+## Skill Selection
 
-下面只是常见能力示例，不是完整清单；当前运行环境中还有其他可用 skill / 工具时，可按任务需要选择。
-
-## 常用技能
-
-### 需求澄清与方向判断
-
-- `office-hours`
-  - 澄清真实问题、切入点、范围和价值判断
-
-### 计划审查与方案收敛
-
-- `autoplan`
-  - 自动串行执行计划审查流水线，输出更完整的可执行方案
-- `plan-ceo-review`
-  - 从产品价值、范围和 ambition 视角审查计划
-- `plan-design-review`
-  - 从交互、层级、状态和体验完整性视角审查计划
-- `plan-eng-review`
-  - 从架构、失败路径、验证策略和性能视角审查计划
-
-### 设计基线与复盘
-
-- `design-consultation`
-  - 建立设计系统、设计语言和视觉方向
-- `retro`
-  - 对一个周期内的工程活动做复盘，提炼下一轮规划输入
-
-## 技能路由
-
-按任务类型优先使用：
-
-- 新需求、问题定义不清、切入点待收敛：
-  - 优先使用 `office-hours`
-- 需要一轮完整的自动计划审查：
-  - 优先使用 `autoplan`
-- 产品价值、范围、目标密度待判断：
-  - 优先使用 `plan-ceo-review`
-- 交互、视觉、状态设计待评估：
-  - 优先使用 `plan-design-review`
-- 架构、数据流、失败路径、测试策略待锁定：
-  - 优先使用 `plan-eng-review`
-- 缺少设计系统或设计语言：
-  - 优先使用 `design-consultation`
-- 需要复盘并沉淀下一轮输入：
-  - 优先使用 `retro`
+- 收到任务后，先查看当前会话可用的 skills；本文件不重复枚举。
+- 如果存在匹配当前 task 目标、范围、验收标准和验证要求的 skill，优先使用该 skill 组织执行。
+- 没有匹配 skill，或 skill 不适合当前边界时，再直接阅读材料、分析方案并整理规划证据。
+- 不要机械使用无关 skill；skill 选择必须服务于当前任务的澄清、规划和收口。
 
 ## Session Notes
 
 - 当前工作模式：常驻主会话 worker
 - 默认主会话：`agent:planning-agent:main`
-- `planning-agent` 默认不持有控制类 skill，保持规划阶段轻量
+- 规划阶段默认保持轻量，不为了触发 skill 而增加流程
 
 ## Prompting Constraint
 
-- 你负责把 `task.requirement` 扩展成完整、可执行、可验证的任务执行方案
+- 你负责把 `task.requirement` 收敛成规划方案、sprint contract、验收口径、验证要求和后续任务建议
 - 每次会话推进都写清目标、边界、证据和当前判断
 - 每次执行前都明确范围、验证方式、风险口径和交付标准
-- 若任务明显需要某项能力，按上面的 resolver 选择最小必要 skill / 工具
+- 若当前会话存在匹配任务的 skill，优先使用该 skill；没有匹配 skill 时再直接使用工具和命令
 - 一次动作只聚焦一个主能力，避免把多个不相干要求混在同一轮里
 
 ## Final Result Format

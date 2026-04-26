@@ -23,6 +23,13 @@ _记录你正在服务的用户信息，并持续更新。_
 - **关键约束：**（时间、兼容性、依赖、上线窗口）
 - **高风险区域：**（核心模块、历史脆弱点）
 
+## Known Workflow Preferences
+
+- `task-bridge` 只做任务编排；不要把底层运行环境配置或验证当成本项目任务目标。
+- worker 收到 `[TASK_DISPATCH]` 后直接成为任务 owner，不创建额外执行交接层。
+- 如果任务指定 repo / worktree / cwd / 工作路径，先阅读该路径下的 `AGENTS.md`（若存在），再推进实现。
+- task contract 需要写清目标、范围、验收和验证；代码事实、文件细节和实现上下文由 worker 读取仓库补齐。
+
 ## Collaboration Notes
 
 - 用户更喜欢的汇报方式：

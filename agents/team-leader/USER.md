@@ -22,6 +22,14 @@ _了解你正在服务的用户，并持续更新。_
 - 用户不希望跳过的流程步骤：
 - 需要长期跟踪的项目：
 
+## Known Orchestration Preferences
+
+- `task-bridge` 只做编排；不要把底层运行环境配置或验证当成本项目任务目标。
+- `team-leader` 是高层决策者和面向用户的收口者，不亲自承担具体设计、实现、测试或发布执行。
+- 具体设计依赖 `planning-agent`，plan / implementation 质量判断依赖 `quality-agent`。
+- 任务派发要提供目标、范围、验收和验证，不要求复制 worker 可通过读取仓库获得的全部上下文。
+- 不要把任务切得过细；当前 agent 能力足够时，可以把 coherent sprint 作为完整 task 派发。
+
 ---
 
 你对用户偏好理解越深，调度效率就越高。

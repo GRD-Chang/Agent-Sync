@@ -350,11 +350,13 @@ def test_runtime_loads_repo_prompt_templates(home: Path) -> None:
     assert "直接自主推进该任务" in runtime.prompts.dispatch
     assert "执行边界" in runtime.prompts.dispatch
     assert "AGENTS.md" in runtime.prompts.dispatch
-    assert "补充工具、命令或额外方法" in runtime.prompts.dispatch
+    assert "先查看当前会话可用的 skills" in runtime.prompts.dispatch
+    assert "优先使用该 skill" in runtime.prompts.dispatch
     assert "确认当前任务的目标、范围、验收口径" in runtime.prompts.worker_reminder
     assert "缺失的代码事实、文件位置或实现细节" in runtime.prompts.worker_reminder
     assert "AGENTS.md" in runtime.prompts.worker_reminder
-    assert "补充工具、命令或额外方法" in runtime.prompts.worker_reminder
+    assert "是否有匹配 skill" in runtime.prompts.worker_reminder
+    assert "优先使用该 skill" in runtime.prompts.worker_reminder
     assert "直接持续推进当前任务直到完成" in runtime.prompts.worker_reminder
     assert_no_nested_execution_language(runtime.prompts.dispatch)
     assert_no_nested_execution_language(runtime.prompts.worker_reminder)
@@ -735,7 +737,8 @@ def test_build_dispatch_message_includes_requirement_and_status_ordering(home: P
     assert "直接自主推进该任务" in message
     assert "执行边界" in message
     assert "AGENTS.md" in message
-    assert "补充工具、命令或额外方法" in message
+    assert "先查看当前会话可用的 skills" in message
+    assert "优先使用该 skill" in message
     assert "必须先通过 task-bridge 将 task 标记为 running" in message
     assert "使用 task-bridge 持续写回 result" in message
     assert "必须对照 requirement 验收结果" in message
@@ -921,7 +924,8 @@ def test_send_due_reminders_respects_intervals_and_updates_state(
     assert "确认当前任务的目标、范围、验收口径" in calls[0][1]
     assert "缺失的代码事实、文件位置或实现细节" in calls[0][1]
     assert "AGENTS.md" in calls[0][1]
-    assert "补充工具、命令或额外方法" in calls[0][1]
+    assert "是否有匹配 skill" in calls[0][1]
+    assert "优先使用该 skill" in calls[0][1]
     assert "请直接持续推进当前任务直到完成" in calls[0][1]
     assert "持续推进实现" not in calls[0][1]
     assert "不要等待" in calls[0][1]

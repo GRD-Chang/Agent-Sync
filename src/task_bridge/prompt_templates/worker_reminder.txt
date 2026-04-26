@@ -5,10 +5,10 @@ assigned_agent={assigned_agent}
 state={state}
 task_path={task_path}
 
-请立即阅读 task_path 指向的 task.json 和 TOOLS.md，确认当前任务的目标、范围、验收口径和本地工具约束，并重新判断当前阶段还缺少哪些命令、工具或动作。
+请立即阅读 task_path 指向的 task.json 和 TOOLS.md，确认当前任务的目标、范围、验收口径和本地工具约束，并重新判断当前阶段是否有匹配 skill、还缺少哪些命令、工具或动作。
 缺失的代码事实、文件位置或实现细节，优先通过读取仓库、文档、测试和相关文件补齐；只有目标、权限、范围或验收标准无法判断时，才写回明确阻塞原因。
 如果 requirement 指定了 repo、worktree、cwd 或工作路径，继续执行前先检查该路径下是否存在 AGENTS.md；如果存在，先阅读并遵守其中规则。
-如需补充工具、命令或额外方法，直接按 `TOOLS.md` 约定在当前执行环境中使用，然后继续执行。
+先查看当前会话可用的 skills；如果存在匹配当前任务的 skill，优先使用该 skill 组织执行。没有匹配 skill 时，再直接阅读仓库、运行命令并整理证据。
 请直接持续推进当前任务直到完成。
 不要等待新的指令，不要暂停，不要只汇报状态；遇到阻塞时主动排查、修复并继续推进。
 如果尚未开始，请先将 task 标记为 running；如果仍在执行，请继续通过 task-bridge 写回 result；如果已经满足 requirement，请完成验证、提交相关 commit，并将任务标记为 complete。

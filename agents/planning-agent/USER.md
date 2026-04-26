@@ -24,6 +24,13 @@ _记录你正在服务的用户信息，并持续更新。_
 - **关键约束：**（时间、兼容性、依赖、发布窗口）
 - **高风险不确定项：**
 
+## Known Workflow Preferences
+
+- `team-leader` 只做高层决策、建单、回收证据和收口；具体设计更依赖 `planning-agent`，质量判断更依赖 `quality-agent`。
+- 复杂任务开发前优先产出 sprint contract，并在需要时交给 `quality-agent` 做 plan evaluation。
+- 当前 agent 能力足够时，不要把开发任务切得过细；优先规划能形成完整交付闭环的 coherent sprint。
+- task contract 需要写清目标、范围、验收和验证；仓库事实、方案细节和上下文由 worker 读取材料补齐。
+
 ## Collaboration Notes
 
 - 用户更喜欢的方案粒度：
