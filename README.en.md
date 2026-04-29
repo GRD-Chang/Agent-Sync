@@ -126,12 +126,20 @@ Once setup is done, keep the task hub running in the background:
 task-bridge daemon --poll-seconds 10 --worker-reminder-seconds 900 --leader-reminder-seconds 3600
 ```
 
+The daemon writes `~/.openclaw/task-bridge/daemon.pid`, `daemon_heartbeat.json`, and `daemon_errors.jsonl` automatically. It also holds a local lock so one data directory cannot accidentally run multiple daemons.
+
 **Parameter notes:**
 
 - `--poll-seconds 10`: queue polling interval. Default: 10 seconds.
 - `--worker-reminder-seconds 900`: anti-stall reminder interval for Workers. Default: 15 minutes. If progress is not updated in time, the Worker is nudged to continue.
 - `--leader-reminder-seconds 3600`: reminder interval for the Leader on long-running work. Default: 60 minutes. This prevents the Leader from losing awareness of execution status.
 - `--leader-followup 300`: terminal-task follow-up window. Default: 5 minutes. Use `0` to disable it. If a terminal result arrives and no new task is created for too long, Bridge merges the situation into one reminder and nudges the Leader for a next-step decision.
+
+Inspect daemon status:
+
+```bash
+task-bridge daemon-status --json
+```
 
 **Persistent run (`nohup`)**:
 
@@ -143,10 +151,9 @@ nohup task-bridge daemon \
   --leader-reminder-seconds 7200 \
   --leader-followup 1800 \
   > .task-bridge/daemon.log 2>&1 &
-echo $! > .task-bridge/daemon.pid
 ```
 
-*(Stop it with `kill "$(cat .task-bridge/daemon.pid)"`)*
+*(To stop it, prefer `task-bridge daemon-status --json` to read the real pid, then run `kill <pid>`.)*
 
 ### 3. Launch the Dashboard (Read-only, Optional)
 
@@ -181,9 +188,13 @@ From there, the Team Leader will break the work down automatically, and the daem
 task-bridge list-tasks --json
 task-bridge worker-status --json
 task-bridge queue code-agent --json
+task-bridge daemon-status --json
 
 # Run one dispatch cycle without starting the daemon
 task-bridge dispatch-once --json
+
+# Mark historical terminal tasks without sending real agent messages
+task-bridge notify-backfill --mark-only --json
 ```
 
 ### Local Data Model
@@ -191,6 +202,11 @@ task-bridge dispatch-once --json
 The task structure is explicit and easy to inspect under `~/.openclaw/task-bridge/`:
 
 ```text
+current_job
+daemon.pid              # Current daemon process info; removed on clean daemon exit
+daemon_heartbeat.json   # Latest daemon heartbeat, pid, and phase_errors
+daemon_errors.jsonl     # Daemon phase errors and daemon_state corruption records
+daemon_state.json       # Persistent reminder / notify / heartbeat state
 jobs/<job_id>/
   |- job.json            # Full work topic
   |- tasks/
@@ -207,7 +223,16 @@ jobs/<job_id>/
 | **Task orchestration** | `create-job`, `list-jobs`, `show-job`, `use-job`, `current-job` | Manage high-level work topics (used by the Leader) |
 | **Task management** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | Manage concrete execution steps |
 | **Worker state** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Workers write back progress and terminal states (used by multiple agents) |
-| **Bridge scheduling** | `worker-status`, `queue`, `dispatch-once`, `notify`, `daemon` | Dispatching and system supervision |
+| **Bridge scheduling** | `worker-status`, `queue`, `dispatch-once`, `notify`, `notify-backfill`, `daemon`, `daemon-status` | Dispatching, notification backfill, supervision, and daemon health checks |
+
+### Dispatch Reliability
+
+- Before dispatch, Bridge checks whether the worker already has a `running` task, is still waiting for claim, is in cooldown, or has been blocked by real dispatch failures.
+- A real `/reset` or send failure no longer kills the daemon. Bridge records `last_dispatch_error`, increments `dispatch_failure_count`, and retries after the backoff window.
+- After repeated real failures, the task enters `dispatch_blocked` so the same worker session is not restarted forever. Editing a queued task's `requirement` or `assigned_agent` clears those failure fields.
+- When the OpenClaw process budget is full, Bridge returns `process_budget` and briefly defers dispatch. This is not a real failure, does not count toward `dispatch_blocked`, and avoids touching a worker session before `/reset`.
+- `notify_updates()` only processes the current job by default. Historical terminal tasks require an explicit `notify-backfill --mark-only` or `notify-backfill --summary`, so old completed tasks do not flood `team-leader`.
+- `TASK_BRIDGE_CAPTURE_FILE` mode bypasses real OpenClaw delivery and process-budget checks. It writes `/reset`, dispatch, and notify messages to JSONL for safe end-to-end tests.
 
 ---
 
@@ -221,6 +246,9 @@ The variables below must be injected explicitly through your shell or command pr
 
 - `TASK_BRIDGE_HOME`: custom data directory. Default: `~/.openclaw/task-bridge`.
 - `TASK_BRIDGE_CAPTURE_FILE`: intercept outbound sends and write them to a file. Useful for isolated end-to-end tests.
+- `TASK_BRIDGE_OPENCLAW_MAX_GLOBAL`: maximum global `openclaw agent` processes. Default: `2`; use `0` for unlimited.
+- `TASK_BRIDGE_OPENCLAW_MAX_PER_AGENT`: maximum `openclaw agent` processes for one agent. Default: `1`; use `0` for unlimited.
+- `TASK_BRIDGE_OPENCLAW_RESET_TIMEOUT_SECONDS`: maximum `/reset` command wait time in seconds. Default: `60`.
 - `TASK_BRIDGE_DASHBOARD_SSH_TARGET`: override the SSH target shown in dashboard launch guidance without changing the actual bind address.
 
 ---

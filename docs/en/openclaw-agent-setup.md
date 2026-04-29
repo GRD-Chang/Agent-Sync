@@ -155,6 +155,7 @@ Verify:
 ```bash
 command -v task-bridge
 task-bridge -h
+task-bridge daemon-status --json
 ```
 
 If you only changed `src/task_bridge/**`, editable install usually does not need to be re-run.
@@ -241,6 +242,7 @@ find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack
 openclaw config get tools.exec.pathPrepend
 command -v task-bridge
 task-bridge -h
+task-bridge daemon-status --json
 ```
 
 Once these pass, your OpenClaw agents should be able to run `task-bridge ...` directly.

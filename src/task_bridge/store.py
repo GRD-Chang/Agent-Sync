@@ -67,6 +67,18 @@ class TaskStore:
     def daemon_state_path(self) -> Path:
         return self.home / "daemon_state.json"
 
+    def daemon_errors_path(self) -> Path:
+        return self.home / "daemon_errors.jsonl"
+
+    def daemon_heartbeat_path(self) -> Path:
+        return self.home / "daemon_heartbeat.json"
+
+    def daemon_pid_path(self) -> Path:
+        return self.home / "daemon.pid"
+
+    def daemon_lock_path(self) -> Path:
+        return self.home / "daemon.lock"
+
     def job_exists(self, job_id: str) -> bool:
         return self.job_path(job_id).exists()
 
@@ -164,7 +176,14 @@ class TaskStore:
             "_scheduler": {
                 "awaiting_claim": False,
                 "last_dispatch_at": None,
+                "last_dispatch_error": None,
+                "dispatch_failure_count": 0,
+                "dispatch_cooldown_until": None,
+                "dispatch_blocked": False,
                 "final_notified_at": None,
+                "final_notify_error": None,
+                "final_notify_attempt_count": 0,
+                "final_notify_cooldown_until": None,
                 "leader_followup_due_at": None,
                 "leader_followup_sent_at": None,
             },
@@ -186,10 +205,37 @@ class TaskStore:
         path = self.daemon_state_path()
         if not path.exists():
             return _ensure_daemon_state({})
-        return _ensure_daemon_state(json.loads(path.read_text()))
+        try:
+            raw = json.loads(path.read_text())
+        except json.JSONDecodeError as exc:
+            self._append_daemon_state_corruption(exc)
+            return _ensure_daemon_state({"daemon_state_corrupt_at": now_iso()})
+        if not isinstance(raw, dict):
+            self._append_daemon_state_corruption(
+                ValueError(f"daemon_state must be a JSON object, got {type(raw).__name__}")
+            )
+            return _ensure_daemon_state({"daemon_state_corrupt_at": now_iso()})
+        return _ensure_daemon_state(raw)
 
     def save_daemon_state(self, state: dict[str, Any]) -> None:
         self._atomic_write_json(self.daemon_state_path(), _ensure_daemon_state(dict(state)))
+
+    def _append_daemon_state_corruption(self, exc: Exception) -> None:
+        payload = {
+            "phase": "daemon_state",
+            "error": {
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "at": now_iso(),
+            },
+        }
+        try:
+            path = self.daemon_errors_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     def load_task(self, task_id: str, job_id: str | None = None) -> dict[str, Any]:
         if job_id:
@@ -244,11 +290,13 @@ class TaskStore:
     ) -> dict[str, Any]:
         task = self.load_task(task_id, job_id=job_id)
         original_state = str(task.get("state") or "")
+        assigned_agent_changed = assigned_agent is not None and assigned_agent != task.get("assigned_agent")
+        requirement_changed = requirement is not None and requirement != task.get("requirement")
         if assigned_agent is not None:
-            if assigned_agent != task.get("assigned_agent") and original_state != "queued":
+            if assigned_agent_changed and original_state != "queued":
                 raise ValueError("assigned_agent can only be updated when task is queued")
         if requirement is not None:
-            if requirement != task.get("requirement") and original_state != "queued":
+            if requirement_changed and original_state != "queued":
                 raise ValueError("requirement can only be updated when task is queued")
         if state is not None:
             task["state"] = state
@@ -260,6 +308,8 @@ class TaskStore:
             task["requirement"] = requirement
         task["updatedAt"] = now_iso()
         scheduler = _ensure_scheduler(task)
+        if original_state == "queued" and (assigned_agent_changed or requirement_changed):
+            _clear_dispatch_failure_state(scheduler)
         if clear_awaiting_claim:
             scheduler["awaiting_claim"] = False
         self.save_task(task)
@@ -308,10 +358,25 @@ def _ensure_scheduler(task: dict[str, Any]) -> dict[str, Any]:
     scheduler = task.setdefault("_scheduler", {})
     scheduler.setdefault("awaiting_claim", False)
     scheduler.setdefault("last_dispatch_at", None)
+    scheduler.setdefault("last_dispatch_error", None)
+    scheduler.setdefault("dispatch_failure_count", 0)
+    scheduler.setdefault("dispatch_cooldown_until", None)
+    scheduler.setdefault("dispatch_blocked", False)
     scheduler.setdefault("final_notified_at", None)
+    scheduler.setdefault("final_notify_error", None)
+    scheduler.setdefault("final_notify_attempt_count", 0)
+    scheduler.setdefault("final_notify_cooldown_until", None)
     scheduler.setdefault("leader_followup_due_at", None)
     scheduler.setdefault("leader_followup_sent_at", None)
     return scheduler
+
+
+def _clear_dispatch_failure_state(scheduler: dict[str, Any]) -> None:
+    scheduler["awaiting_claim"] = False
+    scheduler["last_dispatch_error"] = None
+    scheduler["dispatch_failure_count"] = 0
+    scheduler["dispatch_cooldown_until"] = None
+    scheduler["dispatch_blocked"] = False
 
 
 def _ensure_daemon_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -319,6 +384,9 @@ def _ensure_daemon_state(state: dict[str, Any]) -> dict[str, Any]:
     worker_last_prompt_at = payload.get("worker_last_prompt_at")
     payload["worker_last_prompt_at"] = dict(worker_last_prompt_at) if isinstance(worker_last_prompt_at, dict) else {}
     payload.setdefault("leader_last_running_notice_at", None)
+    payload.setdefault("historical_notify_backfill_completed_at", None)
+    payload.setdefault("last_heartbeat_at", None)
+    payload.setdefault("last_phase_errors", {})
     return payload
 
 

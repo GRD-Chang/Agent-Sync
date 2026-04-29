@@ -120,11 +120,19 @@ python -m pip install -e .
 task-bridge daemon --poll-seconds 10 --worker-reminder-seconds 900 --leader-reminder-seconds 3600
 ```
 
+Daemon 会自动写入 `~/.openclaw/task-bridge/daemon.pid`、`daemon_heartbeat.json` 和 `daemon_errors.jsonl`。它还会持有本地 lock，避免同一个数据目录启动多个 daemon。
+
 **参数说明：**
 - `--poll-seconds 10`: 轮询队列间隔（默认 10 秒）。
 - `--worker-reminder-seconds 900`: Worker 防挂起提醒间隔（默认 15 分钟）。超时未更新则提醒 Worker 推进。
 - `--leader-reminder-seconds 3600`: Leader 长程任务关注提醒间隔（默认 60 分钟）。防止 Leader 失去对执行状态的感知。
 - `--leader-followup 300`: 终态任务催办窗口（默认 5 分钟，`0` 表示禁用）。若收到终态后迟迟未下发新任务，主动合并成一条提醒催促 Leader。
+
+查看后台状态：
+
+```bash
+task-bridge daemon-status --json
+```
 
 **持久化运行 (nohup)**:
 ```bash
@@ -135,9 +143,8 @@ nohup task-bridge daemon \
   --leader-reminder-seconds 7200 \
   --leader-followup 1800 \
   > .task-bridge/daemon.log 2>&1 &
-echo $! > .task-bridge/daemon.pid
 ```
-*(停止命令：`kill "$(cat .task-bridge/daemon.pid)"`)*
+*(停止时优先用 `task-bridge daemon-status --json` 查看真实 pid，再执行 `kill <pid>`。)*
 
 ### 3. 开启 Dashboard (只读，可选)
 
@@ -170,14 +177,23 @@ task-bridge dashboard --host 127.0.0.1 --port 8000
 task-bridge list-tasks --json
 task-bridge worker-status --json
 task-bridge queue code-agent --json
+task-bridge daemon-status --json
 
 # 单次派发测试 (不启动 Daemon 时)
 task-bridge dispatch-once --json
+
+# 历史终态任务补标，不向真实 agent 发送消息
+task-bridge notify-backfill --mark-only --json
 ```
 
 ### 本地数据模型
 任务结构清晰透明，方便人工随时审查 `~/.openclaw/task-bridge/`：
 ```text
+current_job
+daemon.pid              # 当前 daemon 进程信息；daemon 正常退出时自动清理
+daemon_heartbeat.json   # 最近一轮 daemon 心跳、pid 和 phase_errors
+daemon_errors.jsonl     # daemon phase 错误与 daemon_state 损坏记录
+daemon_state.json       # reminder / notify / heartbeat 的持久状态
 jobs/<job_id>/
   ├── job.json            # 完整工作主题
   ├── tasks/
@@ -193,7 +209,16 @@ jobs/<job_id>/
 | **任务编排** | `create-job`, `list-jobs`, `show-job`, `use-job`, `current-job` | 管理宏观工作主题 (Leader 使用) |
 | **任务管理** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | 管理具体执行步骤 |
 | **Worker 状态** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Worker 回写进度与终态 (各路 Agent 使用) |
-| **Bridge 调度** | `worker-status`, `queue`, `dispatch-once`, `notify`, `daemon` | 派发与系统守护机制 |
+| **Bridge 调度** | `worker-status`, `queue`, `dispatch-once`, `notify`, `notify-backfill`, `daemon`, `daemon-status` | 派发、通知补标、系统守护与后台健康检查 |
+
+### 调度可靠性机制
+
+- 派发前会检查 worker 是否已有 `running` task、是否还在等待 claim、是否处于 cooldown、是否已被真实派发失败阻断。
+- 真实 `/reset` 或发送失败不会杀掉 daemon；Bridge 会记录 `last_dispatch_error`、递增 `dispatch_failure_count`，并按退避窗口稍后重试。
+- 连续真实失败达到阈值后，task 会进入 `dispatch_blocked`，避免无限重启同一个 worker 会话。修改 queued task 的 `requirement` 或 `assigned_agent` 会清理这组失败字段。
+- OpenClaw 进程预算满时会返回 `process_budget` 并进入短暂 deferred，不算真实失败，不会触发 `dispatch_blocked`，也不会在 `/reset` 前打断活跃会话。
+- `notify_updates()` 默认只处理 current job，历史终态任务需要显式执行 `notify-backfill --mark-only` 或 `notify-backfill --summary`，避免旧任务批量打扰 `team-leader`。
+- `TASK_BRIDGE_CAPTURE_FILE` 模式会绕过真实 OpenClaw 投递和进程预算检查，只把 `/reset`、dispatch、notify 消息写入 JSONL，适合安全 E2E 测试。
 
 ---
 
@@ -205,6 +230,9 @@ jobs/<job_id>/
 以下变量需要通过 Shell 或前缀显式注入：
 - `TASK_BRIDGE_HOME`：自定义数据目录（默认 `~/.openclaw/task-bridge`）。
 - `TASK_BRIDGE_CAPTURE_FILE`：拦截发送动作并写入文件，适合做隔离的 E2E 测试。
+- `TASK_BRIDGE_OPENCLAW_MAX_GLOBAL`：允许同时存在的全局 `openclaw agent` 进程数（默认 `2`，`0` 表示不限制）。
+- `TASK_BRIDGE_OPENCLAW_MAX_PER_AGENT`：允许同一 agent 同时存在的 `openclaw agent` 进程数（默认 `1`，`0` 表示不限制）。
+- `TASK_BRIDGE_OPENCLAW_RESET_TIMEOUT_SECONDS`：`/reset` 命令最大等待秒数（默认 `60`）。
 - `TASK_BRIDGE_DASHBOARD_SSH_TARGET`：覆盖 dashboard 启动提示中的 SSH 目标地址，不影响实际监听。
 
 ---

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from task_bridge.cli import main
+from task_bridge.cli import main, _run_daemon
 from task_bridge.runtime import BridgeRuntime
 from task_bridge.store import TaskStore
 from task_bridge.worker_registry import canonical_worker_names
@@ -639,6 +639,144 @@ def test_dispatch_once_notify_force_and_daemon_single_round(
     assert daemon_payload["worker_reminded"] == []
     assert daemon_payload["leader_pinged"] is False
     assert daemon_payload["leader_followed_up"] == []
+    assert daemon_payload["phase_errors"] == {}
+
+
+def test_daemon_continues_when_dispatch_phase_fails(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="phase failure")
+    task = store.create_task(job_id=job["id"], requirement="done", assigned_agent="code-agent")
+    store.update_task(task["id"], job_id=job["id"], state="done", result="done")
+
+    class RuntimeWithDispatchFailure(BridgeRuntime):
+        def dispatch_once(self):  # type: ignore[no-untyped-def]
+            raise RuntimeError("dispatch boom")
+
+    runtime = RuntimeWithDispatchFailure(home=home, sender=lambda *_: None, reset_sender=lambda *_: None)
+
+    assert _run_daemon(
+        runtime,
+        poll_seconds=0,
+        iterations=1,
+        worker_reminder_seconds=900,
+        leader_reminder_seconds=3600,
+    ) == 0
+    payload = parse_last_json(capsys)
+
+    assert payload["phase_errors"]["dispatch"]["type"] == "RuntimeError"
+    assert payload["notified"] == [task["id"]]
+    assert (home / "daemon_errors.jsonl").exists()
+
+
+def test_daemon_survives_corrupt_daemon_state_file(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="corrupt daemon state")
+    task = store.create_task(job_id=job["id"], requirement="done", assigned_agent="code-agent")
+    store.update_task(task["id"], job_id=job["id"], state="done", result="done")
+    (home / "daemon_state.json").write_text("{not valid json", encoding="utf-8")
+
+    runtime = BridgeRuntime(home=home, sender=lambda *_: None, reset_sender=lambda *_: None)
+
+    assert _run_daemon(
+        runtime,
+        poll_seconds=0,
+        iterations=1,
+        worker_reminder_seconds=900,
+        leader_reminder_seconds=3600,
+    ) == 0
+    payload = parse_last_json(capsys)
+
+    assert payload["notified"] == [task["id"]]
+    assert payload["phase_errors"] == {}
+    assert (home / "daemon_state.json").exists()
+    assert (home / "daemon_errors.jsonl").exists()
+
+
+def test_notify_backfill_cli_mark_only_and_summary(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_file = home / "messages.jsonl"
+    monkeypatch.setenv("TASK_BRIDGE_CAPTURE_FILE", str(capture_file))
+
+    main(["create-job", "--title", "old"])
+    old_job = parse_last_json(capsys)
+    main(["create-task", "--requirement", "old done", "--assign", "code-agent"])
+    old_task = parse_last_json(capsys)
+    main(["complete", old_task["id"], "--job", old_job["id"], "--result", "done"])
+    parse_last_json(capsys)
+    main(["create-job", "--title", "current"])
+    parse_last_json(capsys)
+    capture_file.write_text("", encoding="utf-8")
+
+    assert main(["notify-backfill", "--mark-only", "--json"]) == 0
+    marked = parse_last_json(capsys)
+    assert marked["notified"] == [old_task["id"]]
+    assert capture_file.read_text(encoding="utf-8") == ""
+
+    store = TaskStore(home)
+    old_payload = store.load_task(old_task["id"], job_id=old_job["id"])
+    old_payload["_scheduler"]["final_notified_at"] = None
+    store.save_task(old_payload)
+
+    assert main(["notify-backfill", "--summary", "--json"]) == 0
+    summarized = parse_last_json(capsys)
+    messages = [json.loads(line) for line in capture_file.read_text().splitlines() if line.strip()]
+    assert summarized["notified"] == [old_task["id"]]
+    assert len(messages) == 1
+    assert messages[0]["agent"] == "team-leader"
+    assert old_task["id"] in messages[0]["message"]
+
+
+def test_daemon_status_reports_stale_pid_file(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (home / "daemon.pid").write_text(json.dumps({"pid": 99999999, "started_at": "old"}) + "\n", encoding="utf-8")
+
+    assert main(["daemon-status", "--json"]) == 0
+    payload = parse_last_json(capsys)
+
+    assert payload["running"] is False
+    assert payload["pid"] == 99999999
+    assert payload["pid_file_stale"] is True
+
+
+def test_daemon_status_parses_legacy_numeric_pid_file(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (home / "daemon.pid").write_text("2649911\n", encoding="utf-8")
+
+    assert main(["daemon-status", "--json"]) == 0
+    payload = parse_last_json(capsys)
+
+    assert payload["running"] is False
+    assert payload["pid"] == 2649911
+    assert payload["pid_file_stale"] is True
+    assert payload["pid_payload"] == {"pid": 2649911}
+
+
+def test_daemon_status_tolerates_malformed_json_pid_file(
+    home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (home / "daemon.pid").write_text(json.dumps({"pid": []}) + "\n", encoding="utf-8")
+
+    assert main(["daemon-status", "--json"]) == 0
+    payload = parse_last_json(capsys)
+
+    assert payload["running"] is False
+    assert payload["pid"] is None
+    assert payload["pid_file_stale"] is True
+    assert payload["pid_payload"] == {"pid": []}
 
 
 def test_daemon_sends_due_worker_and_team_leader_reminders_with_custom_intervals(

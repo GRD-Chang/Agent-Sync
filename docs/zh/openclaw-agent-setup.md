@@ -155,6 +155,7 @@ python -m pip install -e .
 ```bash
 command -v task-bridge
 task-bridge -h
+task-bridge daemon-status --json
 ```
 
 如果只是改了 `src/task_bridge/**`，editable install 一般不需要重装。
@@ -241,6 +242,7 @@ find ~/.codex/skills -maxdepth 1 -mindepth 1 -printf '%f\n' | sort | rg '^gstack
 openclaw config get tools.exec.pathPrepend
 command -v task-bridge
 task-bridge -h
+task-bridge daemon-status --json
 ```
 
 通过后，OpenClaw agent 就可以直接执行裸命令 `task-bridge ...`。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import runpy
+import json
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from task_bridge.prompts import PROMPT_TEMPLATE_FILES, load_prompts, prompt_temp
 from task_bridge.runtime import (
     BridgeRuntime,
     LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
+    SendResult,
     collect_pending_leader_followup_jobs,
     default_openclaw_reset_sender,
     default_openclaw_sender,
@@ -169,6 +171,98 @@ def test_notify_updates_only_for_terminal_tasks_and_only_once(
     assert persisted["_scheduler"]["leader_followup_sent_at"] is None
 
 
+def test_notify_updates_defaults_to_current_job_and_ignores_historical_terminal_tasks(home: Path) -> None:
+    store = TaskStore(home)
+    old_job = store.create_job(title="old")
+    old_task = store.create_task(job_id=old_job["id"], requirement="old done", assigned_agent="code-agent")
+    store.update_task(old_task["id"], job_id=old_job["id"], state="done", result="old result")
+
+    current_job = store.create_job(title="current")
+    current_task = store.create_task(
+        job_id=current_job["id"],
+        requirement="current done",
+        assigned_agent="quality-agent",
+    )
+    store.update_task(current_task["id"], job_id=current_job["id"], state="done", result="current result")
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(home=home, sender=lambda agent, message: calls.append((agent, message)))
+
+    outcome = runtime.notify_updates()
+    old_persisted = store.load_task(old_task["id"], job_id=old_job["id"])
+    current_persisted = store.load_task(current_task["id"], job_id=current_job["id"])
+
+    assert outcome.notified == [current_task["id"]]
+    assert len(calls) == 1
+    assert current_task["id"] in calls[0][1]
+    assert old_task["id"] not in calls[0][1]
+    assert old_persisted["_scheduler"]["final_notified_at"] is None
+    assert current_persisted["_scheduler"]["final_notified_at"] is not None
+
+
+def test_notify_backfill_mark_only_marks_historical_tasks_without_sending(home: Path) -> None:
+    store = TaskStore(home)
+    old_job = store.create_job(title="old")
+    old_task = store.create_task(job_id=old_job["id"], requirement="old done", assigned_agent="code-agent")
+    store.update_task(old_task["id"], job_id=old_job["id"], state="done", result="old result")
+    current_job = store.create_job(title="current")
+    current_task = store.create_task(job_id=current_job["id"], requirement="current done", assigned_agent="code-agent")
+    store.update_task(current_task["id"], job_id=current_job["id"], state="done", result="current result")
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(home=home, sender=lambda agent, message: calls.append((agent, message)))
+
+    outcome = runtime.notify_backfill(mode="mark-only")
+
+    assert outcome.notified == [old_task["id"]]
+    assert calls == []
+    assert store.load_task(old_task["id"], job_id=old_job["id"])["_scheduler"]["final_notified_at"] is not None
+    assert store.load_task(current_task["id"], job_id=current_job["id"])["_scheduler"]["final_notified_at"] is None
+
+
+def test_notify_backfill_summary_sends_one_aggregate_message(home: Path) -> None:
+    store = TaskStore(home)
+    old_job = store.create_job(title="old")
+    first = store.create_task(job_id=old_job["id"], requirement="first", assigned_agent="code-agent")
+    second = store.create_task(job_id=old_job["id"], requirement="second", assigned_agent="quality-agent")
+    store.update_task(first["id"], job_id=old_job["id"], state="done", result="first result")
+    store.update_task(second["id"], job_id=old_job["id"], state="blocked", result="second result")
+    store.create_job(title="current")
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(home=home, sender=lambda agent, message: calls.append((agent, message)))
+
+    outcome = runtime.notify_backfill(mode="summary")
+
+    assert outcome.notified == [first["id"], second["id"]]
+    assert len(calls) == 1
+    assert calls[0][0] == "team-leader"
+    assert first["id"] in calls[0][1]
+    assert second["id"] in calls[0][1]
+    assert store.load_task(first["id"], job_id=old_job["id"])["_scheduler"]["final_notified_at"] is not None
+    assert store.load_task(second["id"], job_id=old_job["id"])["_scheduler"]["final_notified_at"] is not None
+
+
+def test_notify_updates_aggregates_multiple_current_terminal_tasks_per_target(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="aggregate")
+    first = store.create_task(job_id=job["id"], requirement="first", assigned_agent="code-agent")
+    second = store.create_task(job_id=job["id"], requirement="second", assigned_agent="quality-agent")
+    store.update_task(first["id"], job_id=job["id"], state="done", result="first result")
+    store.update_task(second["id"], job_id=job["id"], state="blocked", result="second result")
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(home=home, sender=lambda agent, message: calls.append((agent, message)))
+
+    outcome = runtime.notify_updates()
+
+    assert outcome.notified == [first["id"], second["id"]]
+    assert len(calls) == 1
+    assert calls[0][0] == "team-leader"
+    assert first["id"] in calls[0][1]
+    assert second["id"] in calls[0][1]
+
+
 def test_notify_updates_schedules_default_leader_followup_delay(home: Path) -> None:
     store = TaskStore(home)
     job = store.create_job(title="default-followup-delay")
@@ -284,6 +378,8 @@ def test_default_openclaw_sender_spawns_openclaw_detached_with_no_timeout(
         return object()
 
     monkeypatch.delenv("TASK_BRIDGE_CAPTURE_FILE", raising=False)
+    monkeypatch.setenv("TASK_BRIDGE_OPENCLAW_MAX_GLOBAL", "0")
+    monkeypatch.setenv("TASK_BRIDGE_OPENCLAW_MAX_PER_AGENT", "0")
     monkeypatch.setattr("task_bridge.runtime.subprocess.Popen", fake_popen)
 
     default_openclaw_sender("code-agent", "hello")
@@ -311,12 +407,19 @@ def test_default_openclaw_reset_sender_runs_blocking_until_reset_finishes(
 ) -> None:
     captured: dict[str, object] = {}
 
+    class Completed:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
     def fake_run(args: list[str], **kwargs: object) -> object:
         captured["args"] = args
         captured["kwargs"] = kwargs
-        return object()
+        return Completed()
 
     monkeypatch.delenv("TASK_BRIDGE_CAPTURE_FILE", raising=False)
+    monkeypatch.setenv("TASK_BRIDGE_OPENCLAW_MAX_GLOBAL", "0")
+    monkeypatch.setenv("TASK_BRIDGE_OPENCLAW_MAX_PER_AGENT", "0")
     monkeypatch.setattr("task_bridge.runtime.subprocess.run", fake_run)
 
     default_openclaw_reset_sender("code-agent", "/reset")
@@ -331,10 +434,28 @@ def test_default_openclaw_reset_sender_runs_blocking_until_reset_finishes(
     ]
     assert captured["kwargs"] == {
         "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "check": True,
+        "capture_output": True,
+        "text": True,
+        "timeout": 60.0,
+        "check": False,
     }
+
+
+def test_default_openclaw_reset_sender_respects_process_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_run(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("reset must not touch openclaw when process budget is full")
+
+    monkeypatch.delenv("TASK_BRIDGE_CAPTURE_FILE", raising=False)
+    monkeypatch.setattr("task_bridge.runtime._openclaw_budget_reason", lambda _agent: "process_budget")
+    monkeypatch.setattr("task_bridge.runtime.subprocess.run", fail_run)
+
+    result = default_openclaw_reset_sender("code-agent", "/reset")
+
+    assert isinstance(result, SendResult)
+    assert result.sent is False
+    assert result.reason == "process_budget"
 
 
 def test_runtime_loads_repo_prompt_templates(home: Path) -> None:
@@ -815,6 +936,37 @@ def test_dispatch_once_does_not_overwrite_worker_updates_during_send(home: Path)
     assert daemon_state["worker_last_prompt_at"][task_key] is not None
 
 
+def test_dispatch_once_recovers_non_object_daemon_state_after_send(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="non-object-daemon-state")
+    task = store.create_task(
+        job_id=job["id"],
+        requirement="dispatch with malformed daemon state",
+        assigned_agent="code-agent",
+    )
+    (home / "daemon_state.json").write_text("null\n", encoding="utf-8")
+    calls: list[tuple[str, str]] = []
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda agent, message: calls.append((agent, message)),
+        reset_sender=lambda agent, message: calls.append((agent, message)),
+    )
+
+    outcome = runtime.dispatch_once()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+    daemon_state = store.load_daemon_state()
+    task_key = f"{job['id']}:{task['id']}"
+
+    assert outcome.dispatched == [task["id"]]
+    assert calls[0] == ("code-agent", "/reset")
+    assert calls[1][0] == "code-agent"
+    assert persisted["_scheduler"]["awaiting_claim"] is True
+    assert daemon_state["worker_last_prompt_at"][task_key] is not None
+    assert daemon_state["daemon_state_corrupt_at"] is not None
+    assert (home / "daemon_errors.jsonl").exists()
+
+
 def test_dispatch_once_rolls_back_pending_claim_when_send_fails(home: Path) -> None:
     store = TaskStore(home)
     job = store.create_job(title="dispatch-failure")
@@ -830,12 +982,13 @@ def test_dispatch_once_rolls_back_pending_claim_when_send_fails(home: Path) -> N
         reset_sender=lambda *_: None,
     )
 
-    with pytest.raises(RuntimeError, match="send failed"):
-        runtime.dispatch_once()
+    outcome = runtime.dispatch_once()
 
     persisted = store.load_task(task["id"], job_id=job["id"])
     daemon_state = store.load_daemon_state()
     task_key = f"{job['id']}:{task['id']}"
+    assert outcome.dispatched == []
+    assert outcome.dispatch_failed["code-agent"]["phase"] == "send"
     assert persisted["state"] == "queued"
     assert persisted["result"] == ""
     assert persisted["_scheduler"]["awaiting_claim"] is False
@@ -858,17 +1011,258 @@ def test_dispatch_once_rolls_back_pending_claim_when_reset_fails(home: Path) -> 
         reset_sender=lambda _agent, _message: (_ for _ in ()).throw(RuntimeError("reset failed")),
     )
 
-    with pytest.raises(RuntimeError, match="reset failed"):
-        runtime.dispatch_once()
+    outcome = runtime.dispatch_once()
 
     persisted = store.load_task(task["id"], job_id=job["id"])
     daemon_state = store.load_daemon_state()
     task_key = f"{job['id']}:{task['id']}"
+    assert outcome.dispatched == []
+    assert outcome.dispatch_failed["code-agent"]["task_id"] == task["id"]
+    assert outcome.dispatch_failed["code-agent"]["phase"] == "reset"
     assert persisted["state"] == "queued"
     assert persisted["result"] == ""
     assert persisted["_scheduler"]["awaiting_claim"] is False
     assert persisted["_scheduler"]["last_dispatch_at"] is None
+    assert persisted["_scheduler"]["last_dispatch_error"]["message"] == "reset failed"
+    assert persisted["_scheduler"]["dispatch_failure_count"] == 1
+    assert persisted["_scheduler"]["dispatch_cooldown_until"] is not None
     assert task_key not in daemon_state["worker_last_prompt_at"]
+
+
+def test_dispatch_once_skips_task_during_dispatch_cooldown(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="dispatch-cooldown")
+    task = store.create_task(job_id=job["id"], requirement="cooldown", assigned_agent="code-agent")
+    payload = store.load_task(task["id"], job_id=job["id"])
+    payload["_scheduler"]["dispatch_cooldown_until"] = "2999-01-01T00:00:00Z"
+    store.save_task(payload)
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda agent, message: calls.append((agent, message)),
+        reset_sender=lambda agent, message: calls.append((agent, message)),
+    )
+
+    outcome = runtime.dispatch_once()
+
+    assert outcome.dispatched == []
+    assert outcome.skipped_cooldown == {"code-agent": task["id"]}
+    assert calls == []
+
+
+def test_dispatch_once_skips_dispatch_blocked_task(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="dispatch-blocked")
+    task = store.create_task(job_id=job["id"], requirement="blocked", assigned_agent="code-agent")
+    payload = store.load_task(task["id"], job_id=job["id"])
+    payload["_scheduler"]["dispatch_blocked"] = True
+    payload["_scheduler"]["dispatch_failure_count"] = 5
+    store.save_task(payload)
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda agent, message: calls.append((agent, message)),
+        reset_sender=lambda agent, message: calls.append((agent, message)),
+    )
+
+    outcome = runtime.dispatch_once()
+
+    assert outcome.dispatched == []
+    assert outcome.skipped_blocked == {"code-agent": task["id"]}
+    assert calls == []
+
+
+def test_dispatch_once_does_not_mark_dispatched_when_send_budget_skips(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="dispatch-budget")
+    task = store.create_task(job_id=job["id"], requirement="budget", assigned_agent="code-agent")
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda _agent, _message: SendResult(sent=False, reason="process_budget", retry_after_seconds=60),
+        reset_sender=lambda *_: None,
+    )
+
+    outcome = runtime.dispatch_once()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+
+    assert outcome.dispatched == []
+    assert outcome.dispatch_deferred["code-agent"]["reason"] == "process_budget"
+    assert outcome.dispatch_failed == {}
+    assert persisted["state"] == "queued"
+    assert persisted["_scheduler"]["awaiting_claim"] is False
+    assert persisted["_scheduler"]["last_dispatch_at"] is None
+    assert persisted["_scheduler"]["dispatch_failure_count"] == 0
+    assert persisted["_scheduler"]["dispatch_blocked"] is False
+    assert persisted["_scheduler"]["dispatch_cooldown_until"] is not None
+
+
+def test_dispatch_once_process_budget_defers_before_default_reset(
+    home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="dispatch-budget-before-reset")
+    task = store.create_task(job_id=job["id"], requirement="budget", assigned_agent="code-agent")
+    monkeypatch.setattr("task_bridge.runtime._openclaw_budget_reason", lambda _agent: "process_budget")
+
+    def fail_run(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("reset must not run while process budget is full")
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda *_: None,
+        reset_sender=default_openclaw_reset_sender,
+    )
+    monkeypatch.setattr("task_bridge.runtime.subprocess.run", fail_run)
+
+    outcome = runtime.dispatch_once()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+
+    assert outcome.dispatched == []
+    assert outcome.dispatch_deferred["code-agent"]["reason"] == "process_budget"
+    assert persisted["_scheduler"]["awaiting_claim"] is False
+    assert persisted["_scheduler"]["last_dispatch_at"] is None
+
+
+def test_dispatch_once_custom_senders_bypass_openclaw_budget_precheck(
+    home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="custom-sender-budget")
+    task = store.create_task(job_id=job["id"], requirement="custom", assigned_agent="code-agent")
+    monkeypatch.setattr("task_bridge.runtime._openclaw_budget_reason", lambda _agent: "process_budget")
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda agent, message: calls.append((agent, message)),
+        reset_sender=lambda agent, message: calls.append((agent, message)),
+    )
+
+    outcome = runtime.dispatch_once()
+
+    assert outcome.dispatched == [task["id"]]
+    assert outcome.dispatch_deferred == {}
+    assert calls[0] == ("code-agent", "/reset")
+    assert calls[1][0] == "code-agent"
+
+
+def test_dispatch_once_reset_budget_result_defers_without_failure(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="reset-budget-result")
+    task = store.create_task(job_id=job["id"], requirement="budget", assigned_agent="code-agent")
+
+    calls: list[tuple[str, str]] = []
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda agent, message: calls.append((agent, message)),
+        reset_sender=lambda _agent, _message: SendResult(
+            sent=False,
+            reason="process_budget",
+            retry_after_seconds=60,
+        ),
+    )
+
+    outcome = runtime.dispatch_once()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+
+    assert outcome.dispatched == []
+    assert outcome.dispatch_deferred["code-agent"]["reason"] == "process_budget"
+    assert outcome.dispatch_failed == {}
+    assert calls == []
+    assert persisted["_scheduler"]["awaiting_claim"] is False
+    assert persisted["_scheduler"]["last_dispatch_at"] is None
+    assert persisted["_scheduler"]["dispatch_failure_count"] == 0
+    assert persisted["_scheduler"]["dispatch_blocked"] is False
+
+
+def test_dispatch_once_capture_mode_bypasses_budget_precheck(
+    home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="capture-budget")
+    task = store.create_task(job_id=job["id"], requirement="capture", assigned_agent="code-agent")
+    capture_file = home / "messages.jsonl"
+    monkeypatch.setenv("TASK_BRIDGE_CAPTURE_FILE", str(capture_file))
+    monkeypatch.setattr("task_bridge.runtime._openclaw_budget_reason", lambda _agent: "process_budget")
+
+    runtime = BridgeRuntime(home=home)
+
+    outcome = runtime.dispatch_once()
+    messages = [json.loads(line) for line in capture_file.read_text().splitlines() if line.strip()]
+
+    assert outcome.dispatched == [task["id"]]
+    assert outcome.dispatch_deferred == {}
+    assert messages[0]["agent"] == "code-agent"
+    assert messages[0]["message"] == "/reset"
+    assert messages[1]["agent"] == "code-agent"
+    assert f"task_id={task['id']}" in messages[1]["message"]
+
+
+def test_dispatch_once_process_budget_never_blocks_task(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="dispatch-budget-repeat")
+    task = store.create_task(job_id=job["id"], requirement="budget", assigned_agent="code-agent")
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda _agent, _message: SendResult(sent=False, reason="process_budget", retry_after_seconds=0),
+        reset_sender=lambda *_: None,
+    )
+
+    for _ in range(6):
+        outcome = runtime.dispatch_once()
+        persisted = store.load_task(task["id"], job_id=job["id"])
+        persisted["_scheduler"]["dispatch_cooldown_until"] = None
+        store.save_task(persisted)
+
+    persisted = store.load_task(task["id"], job_id=job["id"])
+    assert outcome.dispatch_deferred["code-agent"]["reason"] == "process_budget"
+    assert persisted["_scheduler"]["dispatch_failure_count"] == 0
+    assert persisted["_scheduler"]["dispatch_blocked"] is False
+
+
+def test_update_task_clears_dispatch_failure_fields_for_queued_task_changes(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="clear-dispatch-failure")
+    task = store.create_task(job_id=job["id"], requirement="old", assigned_agent="code-agent")
+    payload = store.load_task(task["id"], job_id=job["id"])
+    payload["_scheduler"]["last_dispatch_error"] = {"message": "reset failed"}
+    payload["_scheduler"]["dispatch_failure_count"] = 5
+    payload["_scheduler"]["dispatch_cooldown_until"] = "2999-01-01T00:00:00Z"
+    payload["_scheduler"]["dispatch_blocked"] = True
+    store.save_task(payload)
+
+    updated = store.update_task(task["id"], job_id=job["id"], requirement="new")
+
+    assert updated["_scheduler"]["last_dispatch_error"] is None
+    assert updated["_scheduler"]["dispatch_failure_count"] == 0
+    assert updated["_scheduler"]["dispatch_cooldown_until"] is None
+    assert updated["_scheduler"]["dispatch_blocked"] is False
+
+
+def test_notify_updates_does_not_mark_notified_when_budget_skips(home: Path) -> None:
+    store = TaskStore(home)
+    job = store.create_job(title="notify-budget")
+    task = store.create_task(job_id=job["id"], requirement="done", assigned_agent="code-agent")
+    store.update_task(task["id"], job_id=job["id"], state="done", result="done")
+
+    runtime = BridgeRuntime(
+        home=home,
+        sender=lambda _agent, _message: SendResult(sent=False, reason="process_budget", retry_after_seconds=60),
+    )
+
+    outcome = runtime.notify_updates()
+    persisted = store.load_task(task["id"], job_id=job["id"])
+
+    assert outcome.notified == []
+    assert outcome.notify_failed["team-leader"]["task_ids"] == [task["id"]]
+    assert persisted["_scheduler"]["final_notified_at"] is None
 
 
 def test_send_due_reminders_respects_intervals_and_updates_state(

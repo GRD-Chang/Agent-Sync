@@ -53,6 +53,8 @@ In this system, collaboration does not happen through direct "talk" between agen
 
 - **Role**: background supervisor.
 - **Responsibilities**: scan the local task pool, dispatch tasks under serial-execution rules, monitor agents that have gone quiet for too long, send reminder nudges, and trigger the exact upward notification when a task is finished.
+- **Self-observation**: each loop writes `daemon_heartbeat.json` with pid, timestamp, and `phase_errors`. `daemon-status` can tell whether the daemon is still running and whether the pid file is stale.
+- **Failure isolation**: dispatch, reminders, notify, follow-up, and heartbeat run as separate phases. A phase failure is written to `daemon_errors.jsonl`, but it does not kill the whole daemon loop.
 
 ---
 
@@ -75,6 +77,7 @@ jobs/<job_id>/
 
 - `requirement`: the task contract written by the leader for the worker. It must state intent, scope boundaries, acceptance criteria, and verification requirements; code facts, file locations, and implementation details are filled in by the worker from the repository and task materials.
 - `result`: the execution trace and final delivery note written back by the worker.
+- `_scheduler`: Bridge-owned scheduling fields, including `awaiting_claim`, `last_dispatch_at`, `last_dispatch_error`, `dispatch_failure_count`, `dispatch_cooldown_until`, `dispatch_blocked`, `final_notified_at`, notification errors, and leader follow-up timestamps.
 
 ---
 
@@ -96,7 +99,9 @@ The following ASCII sequence diagram shows how a standard long-running task move
        |                     |                      | 4. Persist as queued task    |
        |                     |                      |                              |
        |                     |                      | 5. Find idle worker          |
-       |                     |                      | Send [TASK_DISPATCH]         |
+       |                     |                      | Check budget and cooldown    |
+       |                     |                      | Send /reset, then            |
+       |                     |                      | [TASK_DISPATCH]              |
        |                     |                      |----------------------------->|
        |                     |                      |                              |
        |                     |                      |      6. start -> running     |
@@ -136,6 +141,10 @@ To keep the pipeline from collapsing, the system depends on the following rules:
 4. **Mandatory write-back**: workers must continuously update `result` through `task-bridge` during execution so progress stays visible.
 5. **Skill-first execution**: workers inspect available skills when they receive a task. If a matching skill exists, they use it first. If no skill fits, they use commands and tools directly.
 6. **Precise interruption policy**: before a task reaches a terminal state, Bridge must not disturb the leader with intermediate noise.
+7. **Budget backoff**: if the OpenClaw process budget is full, dispatch is briefly deferred. This is not a task failure, does not count toward `dispatch_blocked`, and avoids touching a live worker session before `/reset`.
+8. **Failure blocking**: only real reset/send failures increment `dispatch_failure_count`. After repeated failures, Bridge sets `dispatch_blocked` so the same task cannot restart the worker forever.
+9. **Notification boundary**: `notify_updates()` only handles the current job by default. Historical terminal tasks require explicit `notify-backfill --mark-only` or `notify-backfill --summary`.
+10. **Safe tests**: with `TASK_BRIDGE_CAPTURE_FILE` set, Bridge writes messages to JSONL instead of calling OpenClaw, and live OpenClaw process counts do not affect the test.
 
 ## 6. One-Sentence Summary
 

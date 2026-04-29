@@ -6,16 +6,72 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 from .config import resolve_user_chat_id
 from .prompts import load_prompts
 from .store import TaskStore, now_iso, queue_for_agent
 
-Sender = Callable[[str, str], None]
-ResetSender = Callable[[str, str], None]
+Sender = Callable[[str, str], object]
+ResetSender = Callable[[str, str], object]
 TERMINAL_TASK_STATES = {"done", "blocked", "failed"}
 LEADER_UNRESOLVED_FOLLOWUP_SECONDS = 300.0
+DISPATCH_BACKOFF_SECONDS = (300, 900, 1800, 3600)
+MAX_DISPATCH_FAILURES_BEFORE_BLOCKED = 5
+SEND_RETRY_AFTER_SECONDS = 60
+
+
+@dataclass(frozen=True)
+class SendResult:
+    sent: bool
+    pid: int | None = None
+    reason: str | None = None
+    error: dict[str, object] | None = None
+    retry_after_seconds: int | None = None
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    ok: bool
+    returncode: int = 0
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+    duration_ms: int = 0
+
+
+class OpenClawCommandError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        argv: list[str],
+        returncode: int | None = None,
+        stdout_tail: str = "",
+        stderr_tail: str = "",
+        duration_ms: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.argv = argv
+        self.returncode = returncode
+        self.stdout_tail = stdout_tail
+        self.stderr_tail = stderr_tail
+        self.duration_ms = duration_ms
+
+    def to_error_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "type": type(self).__name__,
+            "message": str(self),
+            "argv": self.argv,
+        }
+        if self.returncode is not None:
+            payload["returncode"] = self.returncode
+        if self.stdout_tail:
+            payload["stdout_tail"] = self.stdout_tail
+        if self.stderr_tail:
+            payload["stderr_tail"] = self.stderr_tail
+        if self.duration_ms is not None:
+            payload["duration_ms"] = self.duration_ms
+        return payload
 
 
 @dataclass
@@ -23,11 +79,16 @@ class DispatchOutcome:
     dispatched: list[str] = field(default_factory=list)
     skipped_busy: dict[str, str] = field(default_factory=dict)
     skipped_pending_claim: dict[str, str] = field(default_factory=dict)
+    skipped_cooldown: dict[str, str] = field(default_factory=dict)
+    skipped_blocked: dict[str, str] = field(default_factory=dict)
+    dispatch_deferred: dict[str, dict[str, object]] = field(default_factory=dict)
+    dispatch_failed: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass
 class NotifyOutcome:
     notified: list[str] = field(default_factory=list)
+    notify_failed: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,6 +138,7 @@ class BridgeRuntime:
     def dispatch_once(self) -> DispatchOutcome:
         tasks = self.store.list_tasks(all_jobs=True)
         outcome = DispatchOutcome()
+        now_at = _coerce_utc(None)
 
         by_agent: dict[str, dict[str, object]] = {}
         for task in tasks:
@@ -105,6 +167,26 @@ class BridgeRuntime:
             if scheduler.get("awaiting_claim"):
                 outcome.skipped_pending_claim[agent] = str(candidate["id"])
                 continue
+            if scheduler.get("dispatch_blocked"):
+                outcome.skipped_blocked[agent] = str(candidate["id"])
+                continue
+            if self._dispatch_in_cooldown(scheduler, now_at):
+                outcome.skipped_cooldown[agent] = str(candidate["id"])
+                continue
+            budget_reason = (
+                _openclaw_budget_reason(agent)
+                if _should_precheck_openclaw_budget(self.sender, self.reset_sender)
+                else None
+            )
+            if budget_reason:
+                deferred = self._record_dispatch_deferred(
+                    candidate,
+                    agent=agent,
+                    reason=budget_reason,
+                    retry_after_seconds=SEND_RETRY_AFTER_SECONDS,
+                )
+                outcome.dispatch_deferred[agent] = deferred
+                continue
 
             scheduler["awaiting_claim"] = True
             candidate["updatedAt"] = now_iso()
@@ -112,7 +194,25 @@ class BridgeRuntime:
 
             dispatch_at: str | None = None
             try:
-                self.reset_sender(agent, "/reset")
+                reset_result = self.reset_sender(agent, "/reset")
+                if not _result_was_sent(reset_result):
+                    if _send_result_reason(reset_result) == "process_budget":
+                        deferred = self._record_dispatch_deferred(
+                            candidate,
+                            agent=agent,
+                            reason="process_budget",
+                            retry_after_seconds=_send_result_retry_after(reset_result),
+                        )
+                        outcome.dispatch_deferred[agent] = deferred
+                        continue
+                    failure = self._record_dispatch_failure(
+                        candidate,
+                        agent=agent,
+                        phase="reset",
+                        error=_send_result_error(reset_result),
+                    )
+                    outcome.dispatch_failed[agent] = failure
+                    continue
                 latest = self.store.load_task(str(candidate["id"]), job_id=str(candidate["job_id"]))
                 latest_scheduler = latest.setdefault("_scheduler", {})
                 if latest.get("state") != "queued" or latest_scheduler.get("awaiting_claim") is not True:
@@ -129,14 +229,44 @@ class BridgeRuntime:
                 latest_scheduler["last_dispatch_at"] = dispatch_at
                 latest["updatedAt"] = dispatch_at
                 self.store.save_task(latest)
-                self.sender(agent, message)
-            except Exception:
-                self._rollback_dispatch_claim(
-                    job_id=str(candidate["job_id"]),
-                    task_id=str(candidate["id"]),
+                send_result = self.sender(agent, message)
+                if not _result_was_sent(send_result):
+                    if _send_result_reason(send_result) == "process_budget":
+                        deferred = self._record_dispatch_deferred(
+                            latest,
+                            agent=agent,
+                            reason="process_budget",
+                            dispatch_at=dispatch_at,
+                            retry_after_seconds=_send_result_retry_after(send_result),
+                        )
+                        outcome.dispatch_deferred[agent] = deferred
+                        continue
+                    failure = self._record_dispatch_failure(
+                        latest,
+                        agent=agent,
+                        phase="send",
+                        dispatch_at=dispatch_at,
+                        error=_send_result_error(send_result),
+                    )
+                    outcome.dispatch_failed[agent] = failure
+                    continue
+                latest = self.store.load_task(str(candidate["id"]), job_id=str(candidate["job_id"]))
+                latest_scheduler = latest.setdefault("_scheduler", {})
+                latest_scheduler["last_dispatch_error"] = None
+                latest_scheduler["dispatch_failure_count"] = 0
+                latest_scheduler["dispatch_cooldown_until"] = None
+                latest_scheduler["dispatch_blocked"] = False
+                self.store.save_task(latest)
+            except Exception as exc:
+                failure = self._record_dispatch_failure(
+                    candidate,
+                    agent=agent,
+                    phase="reset" if dispatch_at is None else "send",
                     dispatch_at=dispatch_at,
+                    error=_exception_error(exc),
                 )
-                raise
+                outcome.dispatch_failed[agent] = failure
+                continue
             self._record_worker_prompt(latest, dispatch_at)
             outcome.dispatched.append(str(latest["id"]))
 
@@ -179,7 +309,9 @@ class BridgeRuntime:
                 continue
 
             task_path = self.store.task_path(str(task["job_id"]), str(task["id"]))
-            self.sender(agent, self._build_worker_reminder_message(task, task_path))
+            send_result = self.sender(agent, self._build_worker_reminder_message(task, task_path))
+            if not _result_was_sent(send_result):
+                continue
             worker_last_prompt_at[key] = now_value
             self.store.save_daemon_state(daemon_state)
             outcome.worker_reminded.append(str(task["id"]))
@@ -193,11 +325,12 @@ class BridgeRuntime:
         last_leader_notice_at = daemon_state.get("leader_last_running_notice_at")
         if running_tasks:
             if self._is_due(last_leader_notice_at, leader_interval_seconds, now_at):
-                self.sender("team-leader", self._build_team_leader_reminder_message(running_tasks))
-                daemon_state["leader_last_running_notice_at"] = now_value
-                self.store.save_daemon_state(daemon_state)
-                outcome.leader_pinged = True
-                dirty = False
+                send_result = self.sender("team-leader", self._build_team_leader_reminder_message(running_tasks))
+                if _result_was_sent(send_result):
+                    daemon_state["leader_last_running_notice_at"] = now_value
+                    self.store.save_daemon_state(daemon_state)
+                    outcome.leader_pinged = True
+                    dirty = False
             elif last_leader_notice_at is None:
                 daemon_state["leader_last_running_notice_at"] = now_value
                 dirty = True
@@ -209,21 +342,76 @@ class BridgeRuntime:
             self.store.save_daemon_state(daemon_state)
         return outcome
 
-    def notify_updates(self) -> NotifyOutcome:
-        tasks = self.store.list_tasks(all_jobs=True)
+    def notify_updates(self, *, scope: Literal["current", "all"] = "current") -> NotifyOutcome:
+        tasks = self._notification_scope_tasks(scope)
         outcome = NotifyOutcome()
+        pending_by_target: dict[str, list[dict[str, object]]] = {}
         for task in tasks:
             if not self._should_notify(task):
                 continue
             target = str(task.get("notify_target") or "team-leader")
-            self.sender(target, self._build_notify_message(task, target))
+            pending_by_target.setdefault(target, []).append(task)
+
+        for target, target_tasks in pending_by_target.items():
+            message = self._build_notify_batch_message(target_tasks, target)
+            send_result = self.sender(target, message)
+            if not _result_was_sent(send_result):
+                outcome.notify_failed[target] = {
+                    "task_ids": [str(task["id"]) for task in target_tasks],
+                    "reason": _send_result_reason(send_result),
+                }
+                self._record_notify_failure(target_tasks, send_result)
+                continue
+
+            for task in target_tasks:
+                scheduler = task.setdefault("_scheduler", {})
+                notified_at = now_iso()
+                scheduler["final_notified_at"] = notified_at
+                scheduler["final_notify_error"] = None
+                self._schedule_leader_followup(task, target=target, notified_at=notified_at)
+                task["updatedAt"] = notified_at
+                self.store.save_task(task)
+                outcome.notified.append(str(task["id"]))
+        return outcome
+
+    def notify_backfill(self, *, mode: Literal["mark-only", "summary"] = "mark-only") -> NotifyOutcome:
+        if mode not in {"mark-only", "summary"}:
+            raise ValueError("notify backfill mode must be mark-only or summary")
+        current_job_id = self.store.get_current_job_id()
+        tasks = [
+            task
+            for task in self.store.list_tasks(all_jobs=True)
+            if str(task.get("job_id") or "") != str(current_job_id or "") and self._should_notify(task)
+        ]
+        outcome = NotifyOutcome()
+        if not tasks:
+            return outcome
+
+        if mode == "summary":
+            message = self._build_notify_backfill_summary_message(tasks)
+            send_result = self.sender("team-leader", message)
+            if not _result_was_sent(send_result):
+                outcome.notify_failed["team-leader"] = {
+                    "task_ids": [str(task["id"]) for task in tasks],
+                    "reason": _send_result_reason(send_result),
+                }
+                self._record_notify_failure(tasks, send_result)
+                return outcome
+
+        marked_at = now_iso()
+        for task in tasks:
             scheduler = task.setdefault("_scheduler", {})
-            notified_at = now_iso()
-            scheduler["final_notified_at"] = notified_at
-            self._schedule_leader_followup(task, target=target, notified_at=notified_at)
-            task["updatedAt"] = notified_at
+            scheduler["final_notified_at"] = marked_at
+            scheduler["leader_followup_due_at"] = None
+            scheduler["leader_followup_sent_at"] = None
+            scheduler["final_notify_error"] = None
+            task["updatedAt"] = marked_at
             self.store.save_task(task)
             outcome.notified.append(str(task["id"]))
+
+        daemon_state = self.store.load_daemon_state()
+        daemon_state["historical_notify_backfill_completed_at"] = marked_at
+        self.store.save_daemon_state(daemon_state)
         return outcome
 
     def notify_task(self, task_id: str, *, job_id: str | None = None, force: bool = False) -> bool:
@@ -231,11 +419,15 @@ class BridgeRuntime:
         if not force and not self._should_notify(task):
             return False
         target = str(task.get("notify_target") or "team-leader")
-        self.sender(target, self._build_notify_message(task, target))
+        send_result = self.sender(target, self._build_notify_message(task, target))
+        if not _result_was_sent(send_result):
+            self._record_notify_failure([task], send_result)
+            return False
         scheduler = task.setdefault("_scheduler", {})
         if str(task.get("state") or "") in TERMINAL_TASK_STATES:
             notified_at = now_iso()
             scheduler["final_notified_at"] = notified_at
+            scheduler["final_notify_error"] = None
             self._schedule_leader_followup(task, target=target, notified_at=notified_at)
             task["updatedAt"] = notified_at
         self.store.save_task(task)
@@ -271,10 +463,12 @@ class BridgeRuntime:
             if not group.is_due:
                 continue
 
-            self.sender(
+            send_result = self.sender(
                 "team-leader",
                 self._build_leader_unresolved_followup_message(group.job_id, list(group.tasks)),
             )
+            if not _result_was_sent(send_result):
+                continue
             self._mark_leader_followup_sent(group.tasks, sent_at=now_value)
             outcome.followed_up.append(str(group.latest_task["id"]))
 
@@ -324,6 +518,27 @@ class BridgeRuntime:
                 "follow_up": follow_up,
             },
         )
+
+    def _build_notify_batch_message(self, tasks: list[dict[str, object]], target: str) -> str:
+        ordered = sorted(tasks, key=lambda item: (item.get("updatedAt", ""), item.get("createdAt", ""), item["id"]))
+        if len(ordered) == 1:
+            return self._build_notify_message(ordered[0], target)
+        return "\n\n---\n\n".join(self._build_notify_message(task, target) for task in ordered)
+
+    def _build_notify_backfill_summary_message(self, tasks: list[dict[str, object]]) -> str:
+        ordered = sorted(tasks, key=lambda item: (item.get("updatedAt", ""), item.get("createdAt", ""), item["id"]))
+        lines = [
+            "[TASK_NOTIFY_BACKFILL]",
+            f"historical_terminal_tasks={len(ordered)}",
+            "以下历史终态任务缺少 final_notified_at，已按 summary backfill 聚合处理：",
+        ]
+        for task in ordered:
+            lines.append(
+                f"- job_id={task['job_id']} task_id={task['id']} "
+                f"worker_agent={task.get('assigned_agent')} state={task.get('state')}"
+            )
+        lines.append("本消息是历史补标汇总，不代表这些任务刚刚完成。")
+        return "\n".join(lines)
 
     def _build_worker_reminder_message(self, task: dict[str, object], task_path: Path) -> str:
         prompts = self._reload_prompts()
@@ -393,6 +608,13 @@ class BridgeRuntime:
         if state not in TERMINAL_TASK_STATES:
             return False
         scheduler = task.setdefault("_scheduler", {})
+        cooldown_until = str(scheduler.get("final_notify_cooldown_until") or "")
+        if cooldown_until:
+            try:
+                if _parse_iso(cooldown_until) > _coerce_utc(None):
+                    return False
+            except ValueError:
+                pass
         return scheduler.get("final_notified_at") is None
 
     def _schedule_leader_followup(self, task: dict[str, object], *, target: str, notified_at: str) -> None:
@@ -484,6 +706,120 @@ class BridgeRuntime:
         daemon_state = self.store.load_daemon_state()
         daemon_state["worker_last_prompt_at"][self._task_key(task)] = timestamp
         self.store.save_daemon_state(daemon_state)
+
+    def _record_dispatch_failure(
+        self,
+        task: dict[str, object],
+        *,
+        agent: str,
+        phase: str,
+        error: dict[str, object],
+        dispatch_at: str | None = None,
+    ) -> dict[str, object]:
+        latest = self.store.load_task(str(task["id"]), job_id=str(task["job_id"]))
+        scheduler = latest.setdefault("_scheduler", {})
+        if latest.get("state") == "queued":
+            scheduler["awaiting_claim"] = False
+        if dispatch_at is not None:
+            scheduler["last_dispatch_at"] = dispatch_at
+        failure_count = int(scheduler.get("dispatch_failure_count") or 0) + 1
+        cooldown_until = self._dispatch_cooldown_until(failure_count)
+        error_payload = {
+            "at": now_iso(),
+            "phase": phase,
+            **error,
+        }
+        scheduler["last_dispatch_error"] = error_payload
+        scheduler["dispatch_failure_count"] = failure_count
+        scheduler["dispatch_cooldown_until"] = cooldown_until
+        scheduler["dispatch_blocked"] = failure_count >= MAX_DISPATCH_FAILURES_BEFORE_BLOCKED
+        latest["updatedAt"] = now_iso()
+        self.store.save_task(latest)
+        return {
+            "task_id": str(latest["id"]),
+            "phase": phase,
+            "cooldown_until": cooldown_until,
+            "failure_count": failure_count,
+            "error": error_payload,
+        }
+
+    def _record_dispatch_deferred(
+        self,
+        task: dict[str, object],
+        *,
+        agent: str,
+        reason: str,
+        dispatch_at: str | None = None,
+        retry_after_seconds: int | None = None,
+    ) -> dict[str, object]:
+        latest = self.store.load_task(str(task["id"]), job_id=str(task["job_id"]))
+        scheduler = latest.setdefault("_scheduler", {})
+        if latest.get("state") == "queued":
+            scheduler["awaiting_claim"] = False
+        if dispatch_at is not None:
+            if scheduler.get("last_dispatch_at") == dispatch_at:
+                scheduler["last_dispatch_at"] = None
+        cooldown_until = self._send_cooldown_until(retry_after_seconds)
+        scheduler["dispatch_cooldown_until"] = cooldown_until
+        scheduler["last_dispatch_error"] = {
+            "at": now_iso(),
+            "phase": "send",
+            "message": reason,
+            "transient": True,
+        }
+        latest["updatedAt"] = now_iso()
+        self.store.save_task(latest)
+        return {
+            "task_id": str(latest["id"]),
+            "reason": reason,
+            "cooldown_until": cooldown_until,
+        }
+
+    def _record_notify_failure(self, tasks: list[dict[str, object]], send_result: object) -> None:
+        retry_after = _send_result_retry_after(send_result)
+        cooldown_until = self._send_cooldown_until(retry_after)
+        for task in tasks:
+            latest = self.store.load_task(str(task["id"]), job_id=str(task["job_id"]))
+            scheduler = latest.setdefault("_scheduler", {})
+            attempt_count = int(scheduler.get("final_notify_attempt_count") or 0) + 1
+            scheduler["final_notify_attempt_count"] = attempt_count
+            scheduler["final_notify_error"] = {
+                "at": now_iso(),
+                "reason": _send_result_reason(send_result),
+            }
+            scheduler["final_notify_cooldown_until"] = cooldown_until
+            latest["updatedAt"] = now_iso()
+            self.store.save_task(latest)
+
+    def _notification_scope_tasks(self, scope: Literal["current", "all"]) -> list[dict[str, object]]:
+        if scope == "all":
+            return self.store.list_tasks(all_jobs=True)
+        if scope != "current":
+            raise ValueError("notify scope must be current or all")
+        current_job_id = self.store.get_current_job_id()
+        if not current_job_id:
+            return []
+        return self.store.list_tasks(job_id=current_job_id)
+
+    @staticmethod
+    def _dispatch_in_cooldown(scheduler: dict[str, object], current_time: datetime) -> bool:
+        until = str(scheduler.get("dispatch_cooldown_until") or "")
+        if not until:
+            return False
+        try:
+            return _parse_iso(until) > current_time
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _dispatch_cooldown_until(failure_count: int) -> str:
+        index = max(0, min(failure_count - 1, len(DISPATCH_BACKOFF_SECONDS) - 1))
+        return _format_iso(_coerce_utc(None) + timedelta(seconds=DISPATCH_BACKOFF_SECONDS[index]))
+
+    @staticmethod
+    def _send_cooldown_until(retry_after_seconds: int | None = None) -> str:
+        retry_after = retry_after_seconds if retry_after_seconds is not None else SEND_RETRY_AFTER_SECONDS
+        return _format_iso(_coerce_utc(None) + timedelta(seconds=retry_after))
 
     def _reload_prompts(self):
         self.prompts = load_prompts()
@@ -664,11 +1000,15 @@ def _parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def default_openclaw_sender(agent: str, message: str) -> None:
+def default_openclaw_sender(agent: str, message: str) -> SendResult:
     if _capture_message(agent, message):
-        return
+        return SendResult(sent=True)
 
-    subprocess.Popen(
+    budget_reason = _openclaw_budget_reason(agent)
+    if budget_reason:
+        return SendResult(sent=False, reason=budget_reason, retry_after_seconds=SEND_RETRY_AFTER_SECONDS)
+
+    process = subprocess.Popen(
         [
             "openclaw",
             "agent",
@@ -684,27 +1024,171 @@ def default_openclaw_sender(agent: str, message: str) -> None:
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    return SendResult(sent=True, pid=getattr(process, "pid", None))
 
 
-def default_openclaw_reset_sender(agent: str, message: str) -> None:
+def default_openclaw_reset_sender(agent: str, message: str) -> CommandResult | SendResult:
     if _capture_message(agent, message):
-        return
+        return CommandResult(ok=True)
 
-    subprocess.run(
-        [
-            "openclaw",
-            "agent",
-            "--agent",
-            agent,
-            "-m",
-            message,
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=True,
+    budget_reason = _openclaw_budget_reason(agent)
+    if budget_reason:
+        return SendResult(sent=False, reason=budget_reason, retry_after_seconds=SEND_RETRY_AFTER_SECONDS)
+
+    argv = [
+        "openclaw",
+        "agent",
+        "--agent",
+        agent,
+        "-m",
+        message,
+    ]
+    started_at = datetime.now(timezone.utc)
+    try:
+        completed = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=float(os.environ.get("TASK_BRIDGE_OPENCLAW_RESET_TIMEOUT_SECONDS", "60")),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        duration_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+        raise OpenClawCommandError(
+            "openclaw reset timed out",
+            argv=argv,
+            stdout_tail=_tail_text(exc.stdout),
+            stderr_tail=_tail_text(exc.stderr),
+            duration_ms=duration_ms,
+        ) from exc
+    duration_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+    if completed.returncode != 0:
+        raise OpenClawCommandError(
+            "openclaw reset failed",
+            argv=argv,
+            returncode=completed.returncode,
+            stdout_tail=_tail_text(completed.stdout),
+            stderr_tail=_tail_text(completed.stderr),
+            duration_ms=duration_ms,
+        )
+    return CommandResult(
+        ok=True,
+        returncode=completed.returncode,
+        stdout_tail=_tail_text(completed.stdout),
+        stderr_tail=_tail_text(completed.stderr),
+        duration_ms=duration_ms,
     )
 
+
+def _result_was_sent(result: object) -> bool:
+    if result is None:
+        return True
+    if isinstance(result, SendResult):
+        return result.sent
+    if isinstance(result, CommandResult):
+        return result.ok
+    return True
+
+
+def _send_result_reason(result: object) -> str:
+    if isinstance(result, SendResult):
+        return result.reason or "send_failed"
+    if isinstance(result, CommandResult):
+        return "command_failed" if not result.ok else "ok"
+    return "send_failed"
+
+
+def _send_result_retry_after(result: object) -> int | None:
+    if isinstance(result, SendResult):
+        return result.retry_after_seconds
+    return None
+
+
+def _send_result_error(result: object) -> dict[str, object]:
+    if isinstance(result, SendResult):
+        payload: dict[str, object] = {"message": result.reason or "send failed"}
+        if result.error:
+            payload.update(result.error)
+        return payload
+    if isinstance(result, CommandResult):
+        return {
+            "message": "command failed",
+            "returncode": result.returncode,
+            "stdout_tail": result.stdout_tail,
+            "stderr_tail": result.stderr_tail,
+            "duration_ms": result.duration_ms,
+        }
+    return {"message": "send failed"}
+
+
+def _exception_error(exc: Exception) -> dict[str, object]:
+    if isinstance(exc, OpenClawCommandError):
+        return exc.to_error_dict()
+    return {
+        "type": type(exc).__name__,
+        "message": str(exc),
+    }
+
+
+def _openclaw_budget_reason(agent: str) -> str | None:
+    max_global = int(os.environ.get("TASK_BRIDGE_OPENCLAW_MAX_GLOBAL", "2"))
+    max_per_agent = int(os.environ.get("TASK_BRIDGE_OPENCLAW_MAX_PER_AGENT", "1"))
+    if max_global <= 0 and max_per_agent <= 0:
+        return None
+    counts = _openclaw_process_counts()
+    if max_global > 0 and counts["global"] >= max_global:
+        return "process_budget"
+    if max_per_agent > 0 and counts["by_agent"].get(agent, 0) >= max_per_agent:
+        return "process_budget"
+    return None
+
+
+def _should_precheck_openclaw_budget(sender: Sender | None = None, reset_sender: ResetSender | None = None) -> bool:
+    if os.environ.get("TASK_BRIDGE_CAPTURE_FILE"):
+        return False
+    if sender is None and reset_sender is None:
+        return True
+    return sender is default_openclaw_sender or reset_sender is default_openclaw_reset_sender
+
+
+def _openclaw_process_counts() -> dict[str, object]:
+    by_agent: dict[str, int] = {}
+    try:
+        completed = subprocess.run(
+            ["ps", "-eo", "args"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return {"global": 0, "by_agent": by_agent}
+
+    total = 0
+    for line in completed.stdout.splitlines():
+        if "openclaw" not in line or "agent" not in line or "--agent" not in line:
+            continue
+        if "ps -eo args" in line:
+            continue
+        parts = line.split()
+        try:
+            agent = parts[parts.index("--agent") + 1]
+        except (ValueError, IndexError):
+            agent = ""
+        total += 1
+        if agent:
+            by_agent[agent] = by_agent.get(agent, 0) + 1
+    return {"global": total, "by_agent": by_agent}
+
+
+def _tail_text(value: object, limit: int = 2000) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        text = value.decode(errors="replace")
+    else:
+        text = str(value)
+    return text[-limit:]
 
 def _capture_message(agent: str, message: str) -> bool:
     capture_file = os.environ.get("TASK_BRIDGE_CAPTURE_FILE")

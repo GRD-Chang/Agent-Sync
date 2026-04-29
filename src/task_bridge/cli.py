@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import getpass
 import json
 import os
 import socket
 import sys
 import time
+import traceback
 from typing import Any
 
 from .runtime import BridgeRuntime, LEADER_UNRESOLVED_FOLLOWUP_SECONDS
@@ -204,6 +206,21 @@ def build_parser() -> argparse.ArgumentParser:
     notify.add_argument("--job", help="task 所属 job_id；存在歧义时建议指定")
     notify.add_argument("--force", action="store_true", help="即使未进入终态，也强制发送一次通知")
 
+    notify_backfill = subparsers.add_parser(
+        "notify-backfill",
+        help="处理历史终态任务通知标记",
+        description=(
+            "显式处理非 current job 的历史 terminal tasks。"
+            "--mark-only 只补 final_notified_at，不发送 OpenClaw 消息；"
+            "--summary 聚合成 1 条 team-leader 消息后补标。"
+        ),
+        formatter_class=HelpFormatter,
+    )
+    backfill_mode = notify_backfill.add_mutually_exclusive_group(required=True)
+    backfill_mode.add_argument("--mark-only", action="store_true", help="只补标历史任务，不发送消息")
+    backfill_mode.add_argument("--summary", action="store_true", help="聚合发送一条历史 summary 后补标")
+    notify_backfill.add_argument("--json", action="store_true", dest="as_json", help="以 JSON 输出")
+
     daemon = subparsers.add_parser(
         "daemon",
         help="循环执行派发与通知",
@@ -231,6 +248,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=LEADER_UNRESOLVED_FOLLOWUP_SECONDS,
         help="仅对 current job 的 terminal tasks 按 job 聚合生效：若最新终态通知后窗口内仍无新 task，则向 team-leader 发送 1 条 unresolved follow-up；0 表示禁用",
     )
+
+    daemon_status = subparsers.add_parser(
+        "daemon-status",
+        help="查看 daemon pid、lock 与 heartbeat 状态",
+        description="查看 task-bridge daemon 是否仍在运行，并识别 stale pid 文件。",
+        formatter_class=HelpFormatter,
+    )
+    daemon_status.add_argument("--json", action="store_true", dest="as_json", help="以 JSON 输出")
 
     dashboard = subparsers.add_parser(
         "dashboard",
@@ -349,6 +374,10 @@ def main(argv: list[str] | None = None) -> int:
                         "dispatched": payload.dispatched,
                         "skipped_busy": payload.skipped_busy,
                         "skipped_pending_claim": payload.skipped_pending_claim,
+                        "skipped_cooldown": payload.skipped_cooldown,
+                        "skipped_blocked": payload.skipped_blocked,
+                        "dispatch_deferred": payload.dispatch_deferred,
+                        "dispatch_failed": payload.dispatch_failed,
                     },
                     as_json=args.as_json,
                 )
@@ -356,6 +385,17 @@ def main(argv: list[str] | None = None) -> int:
                 runtime = BridgeRuntime(home=store.home)
                 notified = runtime.notify_task(args.task_id, job_id=args.job, force=args.force)
                 return _print_payload({"task_id": args.task_id, "notified": notified}, as_json=True)
+            case "notify-backfill":
+                runtime = BridgeRuntime(home=store.home)
+                mode = "summary" if args.summary else "mark-only"
+                payload = runtime.notify_backfill(mode=mode)
+                return _print_payload(
+                    {
+                        "notified": payload.notified,
+                        "notify_failed": payload.notify_failed,
+                    },
+                    as_json=args.as_json,
+                )
             case "daemon":
                 runtime = BridgeRuntime(
                     home=store.home,
@@ -368,6 +408,8 @@ def main(argv: list[str] | None = None) -> int:
                     worker_reminder_seconds=args.worker_reminder_seconds,
                     leader_reminder_seconds=args.leader_reminder_seconds,
                 )
+            case "daemon-status":
+                return _print_payload(_daemon_status(store), as_json=args.as_json)
             case "dashboard":
                 _run_dashboard_command(home=store.home, host=args.host, port=args.port)
                 return 0
@@ -389,29 +431,200 @@ def _run_daemon(
     worker_reminder_seconds: float,
     leader_reminder_seconds: float,
 ) -> int:
-    rounds = 0
-    while True:
-        dispatch = runtime.dispatch_once()
-        reminders = runtime.send_due_reminders(
-            worker_interval_seconds=worker_reminder_seconds,
-            leader_interval_seconds=leader_reminder_seconds,
-        )
-        notify = runtime.notify_updates()
-        followups = runtime.send_due_leader_unresolved_followups()
-        payload = {
-            "dispatched": dispatch.dispatched,
-            "worker_reminded": reminders.worker_reminded,
-            "leader_pinged": reminders.leader_pinged,
-            "notified": notify.notified,
-            "leader_followed_up": followups.followed_up,
-            "skipped_busy": dispatch.skipped_busy,
-            "skipped_pending_claim": dispatch.skipped_pending_claim,
+    runtime.store.ensure_dirs()
+    lock_path = runtime.store.daemon_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("task-bridge daemon is already running", file=sys.stderr)
+            return 4
+
+        pid_payload = {
+            "pid": os.getpid(),
+            "started_at": _now_iso(),
+            "cmd": " ".join(sys.argv),
+            "home": str(runtime.home),
         }
-        print(json.dumps(payload, ensure_ascii=False))
-        rounds += 1
-        if iterations and rounds >= iterations:
-            return 0
-        time.sleep(poll_seconds)
+        runtime.store.daemon_pid_path().write_text(json.dumps(pid_payload, ensure_ascii=False, indent=2) + "\n")
+        try:
+            rounds = 0
+            while True:
+                phase_errors: dict[str, dict[str, object]] = {}
+                dispatch = _run_phase(runtime, "dispatch", runtime.dispatch_once, phase_errors)
+                reminders = _run_phase(
+                    runtime,
+                    "reminders",
+                    lambda: runtime.send_due_reminders(
+                        worker_interval_seconds=worker_reminder_seconds,
+                        leader_interval_seconds=leader_reminder_seconds,
+                    ),
+                    phase_errors,
+                )
+                notify = _run_phase(runtime, "notify", runtime.notify_updates, phase_errors)
+                followups = _run_phase(
+                    runtime,
+                    "followups",
+                    runtime.send_due_leader_unresolved_followups,
+                    phase_errors,
+                )
+                try:
+                    _write_daemon_heartbeat(runtime, phase_errors=phase_errors)
+                except Exception as exc:  # noqa: BLE001 - heartbeat failure must not stop daemon.
+                    phase_errors["heartbeat"] = {
+                        "type": type(exc).__name__,
+                        "message": str(exc),
+                        "at": _now_iso(),
+                    }
+                    _safe_append_daemon_error(runtime, phase="heartbeat", error=phase_errors["heartbeat"])
+                payload = {
+                    "dispatched": getattr(dispatch, "dispatched", []),
+                    "worker_reminded": getattr(reminders, "worker_reminded", []),
+                    "leader_pinged": getattr(reminders, "leader_pinged", False),
+                    "notified": getattr(notify, "notified", []),
+                    "leader_followed_up": getattr(followups, "followed_up", []),
+                    "skipped_busy": getattr(dispatch, "skipped_busy", {}),
+                    "skipped_pending_claim": getattr(dispatch, "skipped_pending_claim", {}),
+                    "skipped_cooldown": getattr(dispatch, "skipped_cooldown", {}),
+                    "skipped_blocked": getattr(dispatch, "skipped_blocked", {}),
+                    "dispatch_deferred": getattr(dispatch, "dispatch_deferred", {}),
+                    "dispatch_failed": getattr(dispatch, "dispatch_failed", {}),
+                    "notify_failed": getattr(notify, "notify_failed", {}),
+                    "phase_errors": phase_errors,
+                }
+                print(json.dumps(payload, ensure_ascii=False))
+                rounds += 1
+                if iterations and rounds >= iterations:
+                    return 0
+                time.sleep(poll_seconds)
+        finally:
+            try:
+                runtime.store.daemon_pid_path().unlink()
+            except FileNotFoundError:
+                pass
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _run_phase(
+    runtime: BridgeRuntime,
+    name: str,
+    func: Any,
+    phase_errors: dict[str, dict[str, object]],
+) -> Any | None:
+    try:
+        return func()
+    except Exception as exc:  # noqa: BLE001 - daemon must isolate phase failures.
+        error = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "at": _now_iso(),
+        }
+        phase_errors[name] = error
+        _safe_append_daemon_error(runtime, phase=name, error=error)
+        return None
+
+
+def _safe_append_daemon_error(runtime: BridgeRuntime, *, phase: str, error: dict[str, object]) -> None:
+    try:
+        _append_daemon_error(runtime, phase=phase, error=error)
+    except Exception:
+        pass
+
+
+def _append_daemon_error(runtime: BridgeRuntime, *, phase: str, error: dict[str, object]) -> None:
+    payload = {
+        "phase": phase,
+        "error": error,
+        "traceback": traceback.format_exc(),
+    }
+    path = runtime.store.daemon_errors_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _write_daemon_heartbeat(runtime: BridgeRuntime, *, phase_errors: dict[str, dict[str, object]]) -> None:
+    now_value = _now_iso()
+    runtime.store.daemon_heartbeat_path().write_text(
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "at": now_value,
+                "phase_errors": phase_errors,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n"
+    )
+    daemon_state = runtime.store.load_daemon_state()
+    daemon_state["last_heartbeat_at"] = now_value
+    daemon_state["last_phase_errors"] = phase_errors
+    runtime.store.save_daemon_state(daemon_state)
+
+
+def _daemon_status(store: TaskStore) -> dict[str, object]:
+    pid_path = store.daemon_pid_path()
+    heartbeat_path = store.daemon_heartbeat_path()
+    pid_payload: dict[str, object] | None = None
+    pid: int | None = None
+    if pid_path.exists():
+        text = pid_path.read_text().strip()
+        try:
+            raw = json.loads(text)
+            if isinstance(raw, dict):
+                pid_payload = raw
+                pid = _coerce_pid(raw.get("pid"))
+            elif isinstance(raw, int):
+                pid = _coerce_pid(raw)
+                pid_payload = {"pid": pid}
+            elif isinstance(raw, str) and raw.strip().isdigit():
+                pid = _coerce_pid(raw)
+                pid_payload = {"pid": pid}
+        except (ValueError, json.JSONDecodeError):
+            pid = _coerce_pid(text)
+            pid_payload = {"pid": pid}
+    running = _pid_is_running(pid)
+    heartbeat = None
+    if heartbeat_path.exists():
+        try:
+            heartbeat = json.loads(heartbeat_path.read_text())
+        except json.JSONDecodeError:
+            heartbeat = None
+    return {
+        "running": running,
+        "pid": pid,
+        "pid_file_stale": pid_path.exists() and not running,
+        "pid_file": str(pid_path),
+        "pid_payload": pid_payload,
+        "heartbeat": heartbeat,
+    }
+
+
+def _pid_is_running(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _coerce_pid(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        pid = int(value.strip())
+        return pid if pid > 0 else None
+    return None
+
+
+def _now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _run_dashboard_command(*, home: Any, host: str, port: int) -> None:

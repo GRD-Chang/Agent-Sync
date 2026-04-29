@@ -89,4 +89,3 @@ Worker 收到 `[TASK_DISPATCH]` 后，按以下顺序推进：
 - 不让 `team-leader` 替代 planner、coder、evaluator 或 release worker。
 - 不让 worker 超出 task contract 做无关重构。
 - 不在缺少证据时把结果标记为完成。
-

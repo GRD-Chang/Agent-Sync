@@ -49,6 +49,8 @@
 ### 🤖 Task Bridge Daemon (任务中枢)
 - **定位**：后台监督者。
 - **职责**：扫描本地工单池，按串行规则调度任务；监控长时间无响应的 Agent 并发送督促提醒；在工单了结时精准触发向上级的汇报。
+- **自我观测**：每轮写入 `daemon_heartbeat.json`，记录 pid、时间和本轮 `phase_errors`；`daemon-status` 可用来判断 daemon 是否仍在运行，以及 pid 文件是否已经陈旧。
+- **失败隔离**：dispatch、reminder、notify、follow-up 和 heartbeat 分阶段执行；单个阶段失败会写入 `daemon_errors.jsonl`，但不会直接杀掉整个 daemon。
 
 ---
 
@@ -71,6 +73,7 @@ jobs/<job_id>/
 
 - `requirement`：Leader 派给 Worker 的任务契约，必须说明任务意图、范围边界、验收标准和验证要求；代码事实、文件位置和实现细节由 Worker 读取仓库与材料补齐。
 - `result`：Worker 回写的执行痕迹和最终交付说明。
+- `_scheduler`：Bridge 自己维护的调度字段，包括 `awaiting_claim`、`last_dispatch_at`、`last_dispatch_error`、`dispatch_failure_count`、`dispatch_cooldown_until`、`dispatch_blocked`、`final_notified_at`、通知错误和 leader follow-up 时间。
 
 ---
 
@@ -92,7 +95,8 @@ jobs/<job_id>/
        |                     |                      | 4. 任务落盘入队 (queued)     |
        |                     |                      |                              |
        |                     |                      | 5. 发现空闲 Worker           |
-       |                     |                      | 发送 [TASK_DISPATCH] 派发任务 |
+       |                     |                      | 检查预算与 cooldown           |
+       |                     |                      | /reset 后发送 [TASK_DISPATCH] |
        |                     |                      |----------------------------->|
        |                     |                      |                              |
        |                     |                      |      6. start -> running     |
@@ -130,6 +134,10 @@ jobs/<job_id>/
 4. **强制回写**：Worker 必须在执行期间不间断地向 `task-bridge` 回写 `result`，保持进度透明。
 5. **Skill-first**：Worker 收到任务后先查看当前会话可用 skills；有匹配 skill 时优先使用，没有匹配 skill 时再直接使用命令和工具。
 6. **精准打扰**：在任务达到终态前，Bridge 绝不会打扰 Leader，防止中间过程噪音干扰协调者的决策。
+7. **预算退避**：如果 OpenClaw 进程预算已满，派发会进入短暂 deferred；这不是任务失败，不会累计到 `dispatch_blocked`，也不会在 `/reset` 前打断活跃会话。
+8. **失败阻断**：只有真实 reset/send 失败才递增 `dispatch_failure_count`；连续失败达到阈值后才设置 `dispatch_blocked`，防止同一任务无限重启 worker。
+9. **通知边界**：`notify_updates()` 默认只处理 current job；历史终态任务必须显式使用 `notify-backfill --mark-only` 或 `notify-backfill --summary`。
+10. **安全测试**：设置 `TASK_BRIDGE_CAPTURE_FILE` 后，Bridge 只把消息写入 JSONL，不调用真实 OpenClaw，也不受 live OpenClaw 进程预算影响。
 
 ## 6. 一句话总结
 

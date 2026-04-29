@@ -66,6 +66,7 @@
 
 - CLI 可用性验证：
   - `task-bridge -h`
+  - `task-bridge daemon-status --json`
 - 若改动涉及 dashboard，除 dashboard 自身验证外，还必须先确认原始 CLI 未被破坏：
   - `TASK_BRIDGE_HOME=/tmp/task-bridge-smoke-<marker> task-bridge create-job --title "smoke test"`
 - 测试建议在仓库根目录执行：
@@ -78,6 +79,8 @@
   - 设置独立 `TASK_BRIDGE_HOME`，例如 `/tmp/task-bridge-test-<marker>`
   - 使用 `TASK_BRIDGE_CAPTURE_FILE` 或自定义 `sender` stub
   - 这样可以验证 `notify` / `follow-up` 逻辑，且不会给真实 agent 发消息
+  - `TASK_BRIDGE_CAPTURE_FILE` 模式不会调用真实 OpenClaw，也不会受当前机器上 live `openclaw agent` 进程预算影响，适合验证 `/reset`、dispatch、notify 的消息内容
+  - 如果要检查后台状态，优先读隔离 home 里的 `daemon_heartbeat.json`，或运行 `TASK_BRIDGE_HOME=<isolated-home> task-bridge daemon-status --json`
 
 - 如果必须验证真实投递链路，但又不能影响现有 `team-leader` 工作，必须遵守以下规则：
   - 绝对不要使用默认数据目录 `~/.openclaw/task-bridge`
