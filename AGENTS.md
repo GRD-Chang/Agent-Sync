@@ -67,6 +67,9 @@
 - CLI 可用性验证：
   - `task-bridge -h`
   - `task-bridge daemon-status --json`
+  - 若改动涉及 Codex Team harness，再执行 `task-bridge codex-team -h`
+- Codex Team CLI 隔离 smoke：
+  - `TASK_BRIDGE_HOME=/tmp/task-bridge-codex-smoke-<marker> task-bridge codex-team start --repo-root "$PWD" --input "smoke test" --no-run --json`
 - 若改动涉及 dashboard，除 dashboard 自身验证外，还必须先确认原始 CLI 未被破坏：
   - `TASK_BRIDGE_HOME=/tmp/task-bridge-smoke-<marker> task-bridge create-job --title "smoke test"`
 - 测试建议在仓库根目录执行：

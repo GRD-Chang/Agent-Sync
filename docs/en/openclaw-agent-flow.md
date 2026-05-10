@@ -63,6 +63,11 @@ In this system, collaboration does not happen through direct "talk" between agen
 All collaboration facts live in a simple file layout:
 
 ```text
+current_job
+daemon.pid
+daemon_heartbeat.json
+daemon_errors.jsonl
+daemon_state.json
 jobs/<job_id>/
   ├── job.json            # One broader work topic (for example: build a Todo CLI)
   ├── tasks/
@@ -70,6 +75,19 @@ jobs/<job_id>/
   └── artifacts/
       └── <task_id>/
           └── detail.md   # Execution details / logs / evidence
+codex-team/
+  └── runs/
+      └── <run_id>/
+          ├── metadata.json
+          ├── events.jsonl
+          ├── next_action.json
+          ├── input.md
+          ├── plan.md
+          ├── plan_evaluation.md
+          └── attempts/
+              └── 001/
+                  ├── implementation.md
+                  └── evaluation.md
 ```
 
 **Core task state flow (`state`):**
@@ -78,6 +96,8 @@ jobs/<job_id>/
 - `requirement`: the task contract written by the leader for the worker. It must state intent, scope boundaries, acceptance criteria, and verification requirements; code facts, file locations, and implementation details are filled in by the worker from the repository and task materials.
 - `result`: the execution trace and final delivery note written back by the worker.
 - `_scheduler`: Bridge-owned scheduling fields, including `awaiting_claim`, `last_dispatch_at`, `last_dispatch_error`, `dispatch_failure_count`, `dispatch_cooldown_until`, `dispatch_blocked`, `final_notified_at`, notification errors, and leader follow-up timestamps.
+
+`codex-team/runs/<run_id>/` is the isolated run store for the Codex Team harness. It reuses `TASK_BRIDGE_HOME`, but it does not map Generator candidate completion onto existing task terminal states such as `done`, `blocked`, or `failed`.
 
 ---
 

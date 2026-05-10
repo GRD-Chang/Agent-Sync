@@ -195,6 +195,9 @@ task-bridge dispatch-once --json
 
 # Mark historical terminal tasks without sending real agent messages
 task-bridge notify-backfill --mark-only --json
+
+# Inspect Codex Team harness commands
+task-bridge codex-team -h
 ```
 
 ### Local Data Model
@@ -214,6 +217,19 @@ jobs/<job_id>/
   \- artifacts/
      \- <task_id>/
         \- detail.md     # Optional full execution details; included automatically in terminal notifications
+codex-team/
+  \- runs/
+     \- <run_id>/
+        |- metadata.json
+        |- events.jsonl
+        |- next_action.json
+        |- input.md
+        |- plan.md
+        |- plan_evaluation.md
+        \- attempts/
+           \- 001/
+              |- implementation.md
+              \- evaluation.md
 ```
 
 ### Core Commands
@@ -224,6 +240,29 @@ jobs/<job_id>/
 | **Task management** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | Manage concrete execution steps |
 | **Worker state** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Workers write back progress and terminal states (used by multiple agents) |
 | **Bridge scheduling** | `worker-status`, `queue`, `dispatch-once`, `notify`, `notify-backfill`, `daemon`, `daemon-status` | Dispatching, notification backfill, supervision, and daemon health checks |
+| **Codex Team harness** | `codex-team start/status/show/logs/answer/cancel` | Create, inspect, resume, and cancel isolated Codex Team runs |
+
+### Codex Team Harness (Experimental)
+
+`codex-team` is a harness subsystem separate from the existing job/task terminal-notification flow. It reuses `TASK_BRIDGE_HOME`, the CLI, atomic JSON writes, and the test infrastructure, but run states do not directly map to existing `task-bridge` task states such as `done`, `blocked`, or `failed`.
+
+Common commands:
+
+```bash
+task-bridge codex-team start --repo-root /path/to/repo --input "Implement a small feature" --json
+task-bridge codex-team status <run_id> --json
+task-bridge codex-team show <run_id> --json
+task-bridge codex-team logs <run_id> --tail 20 --json
+task-bridge codex-team answer <run_id> --text "Limit scope to the CLI path" --json
+task-bridge codex-team cancel <run_id> --reason "User cancelled" --json
+```
+
+To verify the run store and CLI without starting real Codex, use:
+
+```bash
+TASK_BRIDGE_HOME=/tmp/task-bridge-codex-smoke \
+  task-bridge codex-team start --repo-root "$PWD" --input "smoke test" --no-run --json
+```
 
 ### Dispatch Reliability
 
@@ -261,6 +300,16 @@ To fit this workflow cleanly into your environment, see:
 - [OpenClaw Agent Workflow Guide (Chinese)](docs/zh/openclaw-agent-flow.md)
 - [OpenClaw Agent Setup (English)](docs/en/openclaw-agent-setup.md)
 - [OpenClaw Agent Workflow Guide (English)](docs/en/openclaw-agent-flow.md)
+
+Design and implementation references:
+
+- [Agent runtime design](specs/agent-runtime-design.md)
+- [Codex Team collaboration design](specs/codex-team-agent-collaboration-design.zh-CN.md)
+- [Codex Team milestone development plan](specs/codex-team-milestone-development-plan.zh-CN.md)
+- [Dashboard MVP read-only spec](specs/dashboard-mvp-read-only-spec.md)
+- [Worker skill usage principles](specs/gstack-agent-skill-allocation.zh-CN.md)
+- [OpenClaw agent definition notes](specs/openclaw-agent-definition.zh-CN.md)
+- [Agent definition directory](agents/)
 
 ---
 

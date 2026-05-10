@@ -59,6 +59,11 @@
 所有的协作事实都以最简单的文件目录形式存在：
 
 ```text
+current_job
+daemon.pid
+daemon_heartbeat.json
+daemon_errors.jsonl
+daemon_state.json
 jobs/<job_id>/
   ├── job.json            # 一轮较完整的工作主题（如：开发 Todo CLI）
   ├── tasks/
@@ -66,6 +71,19 @@ jobs/<job_id>/
   └── artifacts/
       └── <task_id>/
           └── detail.md   # 执行细节/日志证据
+codex-team/
+  └── runs/
+      └── <run_id>/
+          ├── metadata.json
+          ├── events.jsonl
+          ├── next_action.json
+          ├── input.md
+          ├── plan.md
+          ├── plan_evaluation.md
+          └── attempts/
+              └── 001/
+                  ├── implementation.md
+                  └── evaluation.md
 ```
 
 **Task 核心状态流转 (`state`)：**
@@ -74,6 +92,8 @@ jobs/<job_id>/
 - `requirement`：Leader 派给 Worker 的任务契约，必须说明任务意图、范围边界、验收标准和验证要求；代码事实、文件位置和实现细节由 Worker 读取仓库与材料补齐。
 - `result`：Worker 回写的执行痕迹和最终交付说明。
 - `_scheduler`：Bridge 自己维护的调度字段，包括 `awaiting_claim`、`last_dispatch_at`、`last_dispatch_error`、`dispatch_failure_count`、`dispatch_cooldown_until`、`dispatch_blocked`、`final_notified_at`、通知错误和 leader follow-up 时间。
+
+`codex-team/runs/<run_id>/` 是 Codex Team harness 的独立 run store。它复用 `TASK_BRIDGE_HOME`，但不把 Generator candidate completion 映射成现有 task 的 `done/blocked/failed` 终态。
 
 ---
 

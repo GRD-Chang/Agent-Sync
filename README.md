@@ -184,6 +184,9 @@ task-bridge dispatch-once --json
 
 # 历史终态任务补标，不向真实 agent 发送消息
 task-bridge notify-backfill --mark-only --json
+
+# 查看 Codex Team harness 命令
+task-bridge codex-team -h
 ```
 
 ### 本地数据模型
@@ -201,6 +204,19 @@ jobs/<job_id>/
   └── artifacts/
       └── <task_id>/
           └── detail.md   # (可选) 完整的执行细节。终态通知时将自动附带。
+codex-team/
+  └── runs/
+      └── <run_id>/
+          ├── metadata.json
+          ├── events.jsonl
+          ├── next_action.json
+          ├── input.md
+          ├── plan.md
+          ├── plan_evaluation.md
+          └── attempts/
+              └── 001/
+                  ├── implementation.md
+                  └── evaluation.md
 ```
 
 ### 核心命令清单
@@ -210,6 +226,29 @@ jobs/<job_id>/
 | **任务管理** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | 管理具体执行步骤 |
 | **Worker 状态** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Worker 回写进度与终态 (各路 Agent 使用) |
 | **Bridge 调度** | `worker-status`, `queue`, `dispatch-once`, `notify`, `notify-backfill`, `daemon`, `daemon-status` | 派发、通知补标、系统守护与后台健康检查 |
+| **Codex Team harness** | `codex-team start/status/show/logs/answer/cancel` | 创建、查看、恢复与取消独立的 Codex Team run |
+
+### Codex Team harness（实验性）
+
+`codex-team` 是独立于现有 job/task 终态通知的 harness 子系统。它复用 `TASK_BRIDGE_HOME`、CLI、原子 JSON 写入和测试基建，但 run 状态不会直接映射为 `task-bridge` 的 `done/blocked/failed` 任务状态。
+
+常用命令：
+
+```bash
+task-bridge codex-team start --repo-root /path/to/repo --input "实现一个小功能" --json
+task-bridge codex-team status <run_id> --json
+task-bridge codex-team show <run_id> --json
+task-bridge codex-team logs <run_id> --tail 20 --json
+task-bridge codex-team answer <run_id> --text "缩小到 CLI 路径" --json
+task-bridge codex-team cancel <run_id> --reason "用户取消" --json
+```
+
+如果只想验证 run store 和 CLI，不启动真实 Codex，可使用：
+
+```bash
+TASK_BRIDGE_HOME=/tmp/task-bridge-codex-smoke \
+  task-bridge codex-team start --repo-root "$PWD" --input "smoke test" --no-run --json
+```
 
 ### 调度可靠性机制
 
@@ -244,6 +283,16 @@ jobs/<job_id>/
 - [OpenClaw Agent 工作流说明 (中文)](docs/zh/openclaw-agent-flow.md)
 - [OpenClaw Agent Setup (English)](docs/en/openclaw-agent-setup.md)
 - [OpenClaw Agent Workflow Guide (English)](docs/en/openclaw-agent-flow.md)
+
+设计与实现参考：
+
+- [Agent runtime 设计](specs/agent-runtime-design.md)
+- [Codex Team 协作设计](specs/codex-team-agent-collaboration-design.zh-CN.md)
+- [Codex Team milestone 开发计划](specs/codex-team-milestone-development-plan.zh-CN.md)
+- [Dashboard MVP 只读规格](specs/dashboard-mvp-read-only-spec.md)
+- [Worker skill 使用原则](specs/gstack-agent-skill-allocation.zh-CN.md)
+- [OpenClaw agent 定义说明](specs/openclaw-agent-definition.zh-CN.md)
+- [Agent 定义目录](agents/)
 
 ---
 
