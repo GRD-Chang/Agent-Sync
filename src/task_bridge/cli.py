@@ -13,6 +13,7 @@ from typing import Any
 
 from .runtime import BridgeRuntime, LEADER_UNRESOLVED_FOLLOWUP_SECONDS
 from .store import TaskStore, infer_worker_status
+from .codex_team.cli import add_codex_team_parser, handle_codex_team_command
 
 
 class HelpFormatter(argparse.RawTextHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
@@ -270,6 +271,8 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard.add_argument("--host", default="127.0.0.1", help="dashboard 监听地址")
     dashboard.add_argument("--port", type=int, default=8000, help="dashboard 监听端口")
 
+    add_codex_team_parser(subparsers, HelpFormatter)
+
     return parser
 
 
@@ -413,6 +416,10 @@ def main(argv: list[str] | None = None) -> int:
             case "dashboard":
                 _run_dashboard_command(home=store.home, host=args.host, port=args.port)
                 return 0
+            case "codex-team":
+                payload = handle_codex_team_command(args, home=store.home)
+                _print_payload(payload, as_json=getattr(args, "as_json", False))
+                return _codex_team_exit_code(args, payload)
             case _:
                 raise ValueError(f"unsupported command: {args.command}")
     except FileNotFoundError as exc:
@@ -822,6 +829,22 @@ def _print_payload(payload: Any, *, as_json: bool) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _codex_team_exit_code(args: argparse.Namespace, payload: Any) -> int:
+    if getattr(args, "codex_team_command", None) not in {"start", "answer"}:
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    outcome = payload.get("outcome") if isinstance(payload.get("outcome"), dict) else payload
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    error = metadata.get("last_error") if isinstance(metadata.get("last_error"), dict) else outcome.get("error")
+    if isinstance(error, dict) and error.get("code") in {"RunnerLockBusy", "RunLockBusy"}:
+        return 4
+    failed = outcome.get("state") == "failed" or outcome.get("status") == "failed" or metadata.get("status") == "failed"
+    if failed:
+        return 5
     return 0
 
 
