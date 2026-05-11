@@ -44,7 +44,7 @@ In this system, collaboration does not happen through direct "talk" between agen
   - **Continuously write back progress**: during execution, keep updating key progress and evidence through `task-bridge update-result`.
   - Verify the outcome, commit changes if needed, and finally mark the task as `done`, `blocked`, or `failed`.
 - **Specialization**:
-  - `planning-agent`: requirement clarification, solution shaping, sprint contracts, acceptance criteria, and verification requirements.
+  - `planning-agent`: requirement clarification, high-level spec shaping, acceptance criteria, and verification requirements.
   - `code-agent`: implementation-level design, implementation, root-cause investigation, bug fixing, and refactoring.
   - `quality-agent`: plan evaluation, implementation evaluation, independent review, QA, and risk grading.
   - `release-agent`: release preparation, deployment, post-deploy verification, and documentation sync.
@@ -97,7 +97,7 @@ codex-team/
 - `result`: the execution trace and final delivery note written back by the worker.
 - `_scheduler`: Bridge-owned scheduling fields, including `awaiting_claim`, `last_dispatch_at`, `last_dispatch_error`, `dispatch_failure_count`, `dispatch_cooldown_until`, `dispatch_blocked`, `final_notified_at`, notification errors, and leader follow-up timestamps.
 
-`codex-team/runs/<run_id>/` is the isolated run store for the Codex Team harness. It reuses `TASK_BRIDGE_HOME`, but it does not map Generator candidate completion onto existing task terminal states such as `done`, `blocked`, or `failed`. If a run enters `failed` because of a retryable runner-level error, such as Codex auth interruption, timeout, runner lock, or a missing final envelope, `task-bridge codex-team resume <run_id>` can continue it. Resume first uses the failed stdout `thread_id` with `codex exec resume`.
+`codex-team/runs/<run_id>/` is the isolated run store for the Codex Team harness. It reuses `TASK_BRIDGE_HOME`, but it does not map Generator `ready_for_review` onto existing task terminal states such as `done`, `blocked`, or `failed`. Codex Team now uses a round harness: Planner writes a complete high-level spec, Generator continuously completes the full build round before handing off to Evaluator, and Evaluator performs round-level review with aggregated fixes or final pass. If a run enters `failed` because of a retryable runner-level error, such as Codex auth interruption, timeout, runner lock, or a missing final envelope, `task-bridge codex-team resume <run_id>` can continue it. Resume first uses the failed stdout `thread_id` with `codex exec resume`.
 
 ---
 

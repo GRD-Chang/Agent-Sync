@@ -41,7 +41,7 @@
   - **持续回写**：在执行过程中，通过 `task-bridge update-result` 不断更新关键进展和证据。
   - 验证成果，必要时提交代码 (commit)，最后将任务标记为 `done`、`blocked` 或 `failed`。
 - **分工侧重**：
-  - `planning-agent`：偏向需求澄清、方案收敛、sprint contract、验收口径与验证要求。
+  - `planning-agent`：偏向需求澄清、高层 spec 收敛、验收口径与验证要求。
   - `code-agent`：偏向实现级设计、代码实现、根因调查、缺陷修复与重构。
   - `quality-agent`：偏向 plan evaluation、implementation evaluation、独立评审、QA 与风险分级。
   - `release-agent`：偏向发布准备、部署、上线验证与文档同步。
@@ -93,7 +93,7 @@ codex-team/
 - `result`：Worker 回写的执行痕迹和最终交付说明。
 - `_scheduler`：Bridge 自己维护的调度字段，包括 `awaiting_claim`、`last_dispatch_at`、`last_dispatch_error`、`dispatch_failure_count`、`dispatch_cooldown_until`、`dispatch_blocked`、`final_notified_at`、通知错误和 leader follow-up 时间。
 
-`codex-team/runs/<run_id>/` 是 Codex Team harness 的独立 run store。它复用 `TASK_BRIDGE_HOME`，但不把 Generator candidate completion 映射成现有 task 的 `done/blocked/failed` 终态。若 run 因可重试的 runner 级错误进入 `failed`，例如 Codex 认证中断、超时、runner lock 或缺失最终 envelope，可用 `task-bridge codex-team resume <run_id>` 恢复；恢复会优先使用失败 stdout 中的 `thread_id` 调用 `codex exec resume`。
+`codex-team/runs/<run_id>/` 是 Codex Team harness 的独立 run store。它复用 `TASK_BRIDGE_HOME`，但不把 Generator 的 `ready_for_review` 映射成现有 task 的 `done/blocked/failed` 终态。Codex Team 当前采用 round harness：Planner 产出完整高层 spec，Generator 连续完成完整 build round 后交给 Evaluator，Evaluator 做 round-level review 并给出聚合修复意见或 final pass。若 run 因可重试的 runner 级错误进入 `failed`，例如 Codex 认证中断、超时、runner lock 或缺失最终 envelope，可用 `task-bridge codex-team resume <run_id>` 恢复；恢复会优先使用失败 stdout 中的 `thread_id` 调用 `codex exec resume`。
 
 ---
 

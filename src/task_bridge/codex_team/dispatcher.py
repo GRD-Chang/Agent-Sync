@@ -206,7 +206,7 @@ class CodexTeamDispatcher:
         error = metadata.get("last_error") if isinstance(metadata.get("last_error"), dict) else {}
         details = error.get("details") if isinstance(error.get("details"), dict) else {}
         failed_state = details.get("failed_state")
-        if failed_state in {"planning", "generating", "evaluating_plan", "evaluating_milestone"}:
+        if failed_state in {"planning", "generating", "evaluating_plan", "evaluating_final"}:
             return str(failed_state)
         owner = str(metadata.get("current_owner") or "")
         if owner == "planner":
@@ -214,7 +214,7 @@ class CodexTeamDispatcher:
         if owner == "generator":
             return "generating"
         if owner == "evaluator":
-            return "evaluating_milestone" if metadata.get("latest_implementation") or metadata.get("current_attempt") else "evaluating_plan"
+            return "evaluating_final" if metadata.get("latest_implementation") or metadata.get("current_attempt") else "evaluating_plan"
         raise ValueError(f"codex team run cannot resume owner {owner!r}")
 
     def _consume_envelope(
@@ -268,7 +268,6 @@ class CodexTeamDispatcher:
         prompt = build_envelope_repair_prompt(
             validator_errors=issues_to_payload(issues),
             invalid_output=invalid_output,
-            preserve_checkpoint_semantics=_has_checkpoint_semantics(result.envelope),
         )
         repair_output = run_home / "artifacts" / "logs" / f"{role}-repair-{repair_attempts:03d}.last-message.json"
         self.store.append_event(run_id, {"type": "repair_started", "role": role, "attempt": repair_attempts})
@@ -283,18 +282,6 @@ class CodexTeamDispatcher:
         )
         if repaired.error:
             return self._record_runner_error(run_id, repaired)
-        if _has_checkpoint_semantics(result.envelope) and _upgrades_to_final_completion(repaired.envelope):
-            return self._invalid(
-                run_id,
-                [
-                    ValidationIssue(
-                        "InvalidCompletionScope",
-                        "repair cannot upgrade a checkpoint envelope to final completion; choose a checkpoint route instead",
-                        "completion_scope",
-                        repairable=False,
-                    )
-                ],
-            )
         return self._consume_envelope(run_id, role, repaired.envelope, result=repaired, repair_attempts=repair_attempts)
 
     def _validate_fixed_artifact(self, run_id: str, role: str, envelope: dict[str, Any]) -> list[ValidationIssue]:
@@ -367,16 +354,16 @@ class CodexTeamDispatcher:
             )
             return self._outcome(run_id, metadata, "completed")
 
-        if role == "generator" and action == "candidate_ready" and target == "evaluator":
+        if role == "generator" and action == "ready_for_review" and target == "evaluator":
             attempt = int(self.store.load_metadata(run_id).get("current_attempt") or 0) + 1
             metadata = self.store.update_metadata(
                 run_id,
-                state="evaluating_milestone",
+                state="evaluating_final",
                 current_owner="evaluator",
                 current_attempt=attempt,
                 latest_implementation=str(self.store.attempt_dir(run_id, attempt) / "implementation.md"),
             )
-            return self._outcome(run_id, metadata, "candidate_marked")
+            return self._outcome(run_id, metadata, "review_requested")
 
         if role == "evaluator":
             return self._route_evaluator_result(run_id, action, target)
@@ -490,13 +477,5 @@ def _state_for_owner(owner: str) -> str:
     return {
         "planner": "planning",
         "generator": "generating",
-        "evaluator": "evaluating_milestone",
+        "evaluator": "evaluating_final",
     }[owner]
-
-
-def _has_checkpoint_semantics(envelope: dict[str, Any] | None) -> bool:
-    return isinstance(envelope, dict) and envelope.get("completion_scope") == "checkpoint"
-
-
-def _upgrades_to_final_completion(envelope: dict[str, Any] | None) -> bool:
-    return isinstance(envelope, dict) and envelope.get("completion_scope") == "final"

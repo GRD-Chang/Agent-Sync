@@ -174,7 +174,7 @@ def test_codex_team_resume_failed_run(
     run_home = store.run_home("run-1")
     evaluation = run_home / "attempts" / "001" / "evaluation.md"
     evaluation.parent.mkdir(parents=True)
-    evaluation.write_text("checkpoint ok")
+    evaluation.write_text("review ok")
     stdout_log = run_home / "artifacts" / "logs" / "evaluator-001.stdout.log"
     stdout_log.write_text('{"type":"thread.started","thread_id":"thread-1"}\n')
     store.update_metadata(
@@ -205,7 +205,6 @@ def test_codex_team_resume_failed_run(
                         "status": "completed",
                         "action": "continue",
                         "target": "generator",
-                        "completion_scope": "checkpoint",
                         "reason": "ok",
                         "artifacts": [],
                     },
@@ -220,11 +219,10 @@ def test_codex_team_resume_failed_run(
                     duration_seconds=0.0,
                     envelope={
                         "schema_version": 1,
-                        "summary": "candidate",
+                        "summary": "ready for review",
                         "status": "completed",
-                        "action": "candidate_ready",
+                        "action": "ready_for_review",
                         "target": "evaluator",
-                        "completion_scope": "checkpoint",
                         "reason": "ok",
                         "artifacts": [],
                     },
@@ -241,7 +239,6 @@ def test_codex_team_resume_failed_run(
                     "status": "completed",
                     "action": "pass",
                     "target": "system",
-                    "completion_scope": "final",
                     "reason": "ok",
                     "artifacts": [],
                 },
@@ -310,7 +307,7 @@ def test_codex_team_resume_max_steps_one_runs_one_agent(
     run_home = store.run_home("run-1")
     evaluation = run_home / "attempts" / "001" / "evaluation.md"
     evaluation.parent.mkdir(parents=True)
-    evaluation.write_text("checkpoint ok")
+    evaluation.write_text("review ok")
     stdout_log = run_home / "artifacts" / "logs" / "evaluator-001.stdout.log"
     stdout_log.parent.mkdir(parents=True, exist_ok=True)
     stdout_log.write_text('{"type":"thread.started","thread_id":"thread-1"}\n')
@@ -341,7 +338,6 @@ def test_codex_team_resume_max_steps_one_runs_one_agent(
                     "status": "completed",
                     "action": "continue",
                     "target": "generator",
-                    "completion_scope": "checkpoint",
                     "reason": "ok",
                     "artifacts": [],
                 },
