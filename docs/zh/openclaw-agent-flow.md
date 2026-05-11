@@ -93,7 +93,7 @@ codex-team/
 - `result`：Worker 回写的执行痕迹和最终交付说明。
 - `_scheduler`：Bridge 自己维护的调度字段，包括 `awaiting_claim`、`last_dispatch_at`、`last_dispatch_error`、`dispatch_failure_count`、`dispatch_cooldown_until`、`dispatch_blocked`、`final_notified_at`、通知错误和 leader follow-up 时间。
 
-`codex-team/runs/<run_id>/` 是 Codex Team harness 的独立 run store。它复用 `TASK_BRIDGE_HOME`，但不把 Generator candidate completion 映射成现有 task 的 `done/blocked/failed` 终态。
+`codex-team/runs/<run_id>/` 是 Codex Team harness 的独立 run store。它复用 `TASK_BRIDGE_HOME`，但不把 Generator candidate completion 映射成现有 task 的 `done/blocked/failed` 终态。若 run 因可重试的 runner 级错误进入 `failed`，例如 Codex 认证中断、超时、runner lock 或缺失最终 envelope，可用 `task-bridge codex-team resume <run_id>` 恢复；恢复会优先使用失败 stdout 中的 `thread_id` 调用 `codex exec resume`。
 
 ---
 

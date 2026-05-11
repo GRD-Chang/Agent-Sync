@@ -833,13 +833,13 @@ def _print_payload(payload: Any, *, as_json: bool) -> int:
 
 
 def _codex_team_exit_code(args: argparse.Namespace, payload: Any) -> int:
-    if getattr(args, "codex_team_command", None) not in {"start", "answer"}:
+    if getattr(args, "codex_team_command", None) not in {"start", "answer", "resume"}:
         return 0
     if not isinstance(payload, dict):
         return 0
     outcome = payload.get("outcome") if isinstance(payload.get("outcome"), dict) else payload
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
-    error = metadata.get("last_error") if isinstance(metadata.get("last_error"), dict) else outcome.get("error")
+    error = outcome.get("error") if isinstance(outcome.get("error"), dict) else metadata.get("last_error")
     if isinstance(error, dict) and error.get("code") in {"RunnerLockBusy", "RunLockBusy"}:
         return 4
     failed = outcome.get("state") == "failed" or outcome.get("status") == "failed" or metadata.get("status") == "failed"

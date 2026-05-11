@@ -209,6 +209,90 @@ def test_evaluator_invalid_completion_scope_is_repaired_when_session_available(t
     assert runner.calls[1]["resume"] is True
 
 
+def test_resume_failed_runner_error_uses_thread_id(tmp_path: Path) -> None:
+    store = CodexTeamStore(home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    metadata = store.create_run(repo_root=repo, input_text="x", run_id="run-1")
+    run_home = store.run_home("run-1")
+    evaluation = run_home / "attempts" / "001" / "evaluation.md"
+    evaluation.parent.mkdir(parents=True)
+    evaluation.write_text("checkpoint ok")
+    stdout_log = run_home / "artifacts" / "logs" / "evaluator-001.stdout.log"
+    stdout_log.write_text('{"type":"thread.started","thread_id":"thread-1"}\n')
+    store.update_metadata(
+        metadata["run_id"],
+        state="failed",
+        status="failed",
+        current_owner="evaluator",
+        current_attempt=1,
+        last_error={
+            "code": "RunnerAuthFailed",
+            "message": "auth failed",
+            "details": {"stdout_log": str(stdout_log)},
+        },
+    )
+    runner = FakeCodexRunner([_envelope("continue", action="continue", target="generator")])
+
+    outcome = CodexTeamDispatcher(store=store, runner=runner).resume("run-1")
+
+    metadata = store.load_metadata("run-1")
+    assert outcome.state == "generating"
+    assert metadata["status"] == "running"
+    assert metadata["last_error"] is None
+    assert metadata["latest_evaluation"].endswith("attempts/001/evaluation.md")
+    assert runner.calls[0]["resume"] is True
+    assert runner.calls[0]["session_id"] == "thread-1"
+    assert "继续刚才中断的 Codex Team 工作" in runner.calls[0]["prompt"]
+    assert store.read_events("run-1")[-2]["type"] == "resume_started"
+
+
+def test_resume_failed_runner_error_without_thread_reruns_current_owner(tmp_path: Path) -> None:
+    store = CodexTeamStore(home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    metadata = store.create_run(repo_root=repo, input_text="x", run_id="run-1")
+    store.update_metadata(
+        metadata["run_id"],
+        state="failed",
+        status="failed",
+        current_owner="planner",
+        last_error={"code": "RunnerTimeout", "message": "timed out", "details": {}},
+    )
+    plan = store.run_home("run-1") / "plan.md"
+    plan.write_text("plan")
+    runner = FakeCodexRunner([_envelope("planned", action="continue", target="generator")])
+
+    outcome = CodexTeamDispatcher(store=store, runner=runner).resume("run-1")
+
+    metadata = store.load_metadata("run-1")
+    assert outcome.state == "generating"
+    assert metadata["status"] == "running"
+    assert runner.calls[0]["resume"] is False
+    assert store.read_events("run-1")[-2]["type"] == "resume_started"
+
+
+def test_resume_rejects_non_runner_failures(tmp_path: Path) -> None:
+    store = CodexTeamStore(home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    metadata = store.create_run(repo_root=repo, input_text="x", run_id="run-1")
+    store.update_metadata(
+        metadata["run_id"],
+        state="failed",
+        status="failed",
+        current_owner="evaluator",
+        last_error={"code": "InvalidFixedArtifact", "message": "bad artifact"},
+    )
+
+    try:
+        CodexTeamDispatcher(store=store, runner=FakeCodexRunner([])).resume("run-1")
+    except ValueError as exc:
+        assert "not resumable" in str(exc)
+    else:
+        raise AssertionError("resume should reject non-runner failures")
+
+
 def test_checkpoint_repair_cannot_upgrade_to_final_completion(tmp_path: Path) -> None:
     store = CodexTeamStore(home=tmp_path)
     repo = tmp_path / "repo"

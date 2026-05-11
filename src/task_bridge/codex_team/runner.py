@@ -284,6 +284,7 @@ class RealCodexRunner:
                 duration_seconds=time.monotonic() - started,
                 stdout_tail=stdout_tail,
                 stderr_tail=stderr_tail,
+                session_id=_extract_session_id(stdout_text),
                 error={
                     "code": "RunnerTimeout",
                     "message": "codex runner timed out",
@@ -411,7 +412,7 @@ def _extract_session_id(stdout: str) -> str | None:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        for key in ("session_id", "conversation_id", "id"):
+        for key in ("thread_id", "session_id", "conversation_id", "id"):
             value = event.get(key) if isinstance(event, dict) else None
             if isinstance(value, str) and value:
                 return value

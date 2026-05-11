@@ -226,7 +226,7 @@ codex-team/
 | **任务管理** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | 管理具体执行步骤 |
 | **Worker 状态** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Worker 回写进度与终态 (各路 Agent 使用) |
 | **Bridge 调度** | `worker-status`, `queue`, `dispatch-once`, `notify`, `notify-backfill`, `daemon`, `daemon-status` | 派发、通知补标、系统守护与后台健康检查 |
-| **Codex Team harness** | `codex-team start/status/show/logs/answer/cancel` | 创建、查看、恢复与取消独立的 Codex Team run |
+| **Codex Team harness** | `codex-team start/status/show/logs/answer/resume/cancel` | 创建、查看、恢复与取消独立的 Codex Team run |
 
 ### Codex Team harness（实验性）
 
@@ -240,8 +240,11 @@ task-bridge codex-team status <run_id> --json
 task-bridge codex-team show <run_id> --json
 task-bridge codex-team logs <run_id> --tail 20 --json
 task-bridge codex-team answer <run_id> --text "缩小到 CLI 路径" --json
+task-bridge codex-team resume <run_id> --json
 task-bridge codex-team cancel <run_id> --reason "用户取消" --json
 ```
+
+`resume` 仅用于恢复 failed run 中可重试的 runner 级失败，例如 Codex 认证中断、runner 超时、runner lock 或缺失最终 envelope。它会优先从失败 stdout 日志中的 `thread_id` 执行 `codex exec resume <thread_id>`；没有可用 thread 时，回退为重跑当前 owner。`paused` run 仍使用 `answer`，协议或固定 artifact 错误默认不会 resume。
 
 如果只想验证 run store 和 CLI，不启动真实 Codex，可使用：
 

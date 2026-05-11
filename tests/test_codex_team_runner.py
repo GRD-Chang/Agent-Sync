@@ -10,6 +10,7 @@ from task_bridge.codex_team.runner import (
     FakeCodexRunner,
     RealCodexRunner,
     RunnerResult,
+    _extract_session_id,
     _looks_like_auth_failure,
 )
 from task_bridge.codex_team.schemas import schema_for_role
@@ -95,6 +96,15 @@ def test_real_runner_resume_command_does_not_use_output_schema_or_cd(tmp_path: P
     assert "--cd" not in cmd
     assert "--disable" not in cmd
     assert cmd[:4] == ["codex", "exec", "resume", "session-1"]
+
+
+def test_extract_session_id_reads_thread_id_first() -> None:
+    stdout = (
+        '{"type":"thread.started","thread_id":"019e16f7-c505-7b80-ba90-5991e6d68e02"}\n'
+        '{"session_id":"older-session"}\n'
+    )
+
+    assert _extract_session_id(stdout) == "019e16f7-c505-7b80-ba90-5991e6d68e02"
 
 
 def test_real_runner_can_disable_features_when_explicitly_requested(tmp_path: Path) -> None:

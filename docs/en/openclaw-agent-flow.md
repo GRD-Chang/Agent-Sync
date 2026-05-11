@@ -97,7 +97,7 @@ codex-team/
 - `result`: the execution trace and final delivery note written back by the worker.
 - `_scheduler`: Bridge-owned scheduling fields, including `awaiting_claim`, `last_dispatch_at`, `last_dispatch_error`, `dispatch_failure_count`, `dispatch_cooldown_until`, `dispatch_blocked`, `final_notified_at`, notification errors, and leader follow-up timestamps.
 
-`codex-team/runs/<run_id>/` is the isolated run store for the Codex Team harness. It reuses `TASK_BRIDGE_HOME`, but it does not map Generator candidate completion onto existing task terminal states such as `done`, `blocked`, or `failed`.
+`codex-team/runs/<run_id>/` is the isolated run store for the Codex Team harness. It reuses `TASK_BRIDGE_HOME`, but it does not map Generator candidate completion onto existing task terminal states such as `done`, `blocked`, or `failed`. If a run enters `failed` because of a retryable runner-level error, such as Codex auth interruption, timeout, runner lock, or a missing final envelope, `task-bridge codex-team resume <run_id>` can continue it. Resume first uses the failed stdout `thread_id` with `codex exec resume`.
 
 ---
 

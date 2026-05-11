@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .prompts import build_envelope_repair_prompt, build_role_prompt
-from .runner import FakeCodexRunner, RunnerResult
+from .prompts import build_envelope_repair_prompt, build_resume_prompt, build_role_prompt
+from .runner import FakeCodexRunner, RunnerResult, _extract_session_id
 from .schemas import schema_for_role
 from .store import CodexTeamStore
 from .validation import (
@@ -42,6 +42,15 @@ class CodexTeamDispatcher:
         self.runner = runner or FakeCodexRunner([])
         self.max_fix_loops = max_fix_loops
         self.resume_repair_attempts = resume_repair_attempts
+
+    RESUMABLE_ERROR_CODES = {
+        "RunnerAuthFailed",
+        "RunnerLockBusy",
+        "RunnerTimeout",
+        "RunnerFailed",
+        "MissingNextAction",
+        "MaxStepsExceeded",
+    }
 
     def start_run(self, *, repo_root: Path, input_text: str) -> DispatchOutcome:
         metadata = self.store.create_run(repo_root=repo_root, input_text=input_text)
@@ -114,10 +123,99 @@ class CodexTeamDispatcher:
         self.store.update_metadata(run_id, state="planning", current_owner="planner")
         return DispatchOutcome(run_id, "planning", "running", "planner", "user_answered")
 
+    def resume(self, run_id: str) -> DispatchOutcome:
+        metadata = self.store.load_metadata(run_id)
+        if metadata.get("state") != "failed":
+            raise ValueError("resume is only allowed for failed codex team runs")
+        error = metadata.get("last_error") if isinstance(metadata.get("last_error"), dict) else {}
+        error_code = str(error.get("code") or "")
+        if error_code not in self.RESUMABLE_ERROR_CODES:
+            raise ValueError(f"codex team run is not resumable after {error_code or 'unknown error'}")
+        owner = str(metadata.get("current_owner") or "")
+        if owner not in {"planner", "generator", "evaluator"}:
+            raise ValueError(f"codex team run cannot resume owner {owner!r}")
+
+        thread_id = self._thread_id_from_error(error)
+        restored_state = self._resume_state_for(metadata)
+        self.store.update_metadata(run_id, state=restored_state, status="running", last_error=None)
+        self.store.append_event(
+            run_id,
+            {
+                "type": "resume_started",
+                "owner": owner,
+                "state": restored_state,
+                "strategy": "thread" if thread_id else "rerun_owner",
+                "thread_id": thread_id,
+                "previous_error_code": error_code,
+            },
+        )
+        if thread_id:
+            return self._resume_thread(run_id, owner, thread_id)
+        return self.step(run_id)
+
     def cancel(self, run_id: str, reason: str) -> DispatchOutcome:
         self.store.append_event(run_id, {"type": "cancelled", "reason": reason})
         self.store.update_metadata(run_id, state="cancelled", status="cancelled", current_owner=None)
         return DispatchOutcome(run_id, "cancelled", "cancelled", None, "cancelled")
+
+    def _resume_thread(self, run_id: str, role: str, thread_id: str) -> DispatchOutcome:
+        metadata = self.store.load_metadata(run_id)
+        run_home = self.store.run_home(run_id)
+        repo_root = Path(str(metadata["repo_root"]))
+        logs_dir = run_home / "artifacts" / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        sequence = len(list(logs_dir.glob(f"{role}-resume-*.last-message.json"))) + 1
+        output_path = logs_dir / f"{role}-resume-{sequence:03d}.last-message.json"
+        result = self.runner.run(
+            role=role,
+            prompt=build_resume_prompt(role=role, repo_root=repo_root, run_home=run_home),
+            repo_root=repo_root,
+            run_home=run_home,
+            output_last_message_path=output_path,
+            session_id=thread_id,
+            resume=True,
+        )
+        if result.error:
+            return self._record_runner_error(run_id, result)
+        envelope = result.envelope
+        if envelope is None and result.last_message_path and result.last_message_path.exists():
+            try:
+                envelope = json.loads(result.last_message_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                envelope = None
+        return self._consume_envelope(run_id, role, envelope, result=result, repair_attempts=0)
+
+    def _thread_id_from_error(self, error: dict[str, Any]) -> str | None:
+        details = error.get("details") if isinstance(error.get("details"), dict) else {}
+        for key in ("thread_id", "session_id"):
+            value = details.get(key)
+            if isinstance(value, str) and value:
+                return value
+        stdout_log = details.get("stdout_log")
+        if isinstance(stdout_log, str):
+            try:
+                return _extract_session_id(Path(stdout_log).read_text(encoding="utf-8"))
+            except OSError:
+                pass
+        stdout_tail = details.get("stdout_tail")
+        if isinstance(stdout_tail, str):
+            return _extract_session_id(stdout_tail)
+        return None
+
+    def _resume_state_for(self, metadata: dict[str, Any]) -> str:
+        error = metadata.get("last_error") if isinstance(metadata.get("last_error"), dict) else {}
+        details = error.get("details") if isinstance(error.get("details"), dict) else {}
+        failed_state = details.get("failed_state")
+        if failed_state in {"planning", "generating", "evaluating_plan", "evaluating_milestone"}:
+            return str(failed_state)
+        owner = str(metadata.get("current_owner") or "")
+        if owner == "planner":
+            return "planning"
+        if owner == "generator":
+            return "generating"
+        if owner == "evaluator":
+            return "evaluating_milestone" if metadata.get("latest_implementation") or metadata.get("current_attempt") else "evaluating_plan"
+        raise ValueError(f"codex team run cannot resume owner {owner!r}")
 
     def _consume_envelope(
         self,
@@ -338,8 +436,14 @@ class CodexTeamDispatcher:
         return self._outcome(run_id, metadata, "routed")
 
     def _record_runner_error(self, run_id: str, result: RunnerResult) -> DispatchOutcome:
+        metadata = self.store.load_metadata(run_id)
         error = dict(result.error or {"code": "RunnerFailed", "message": "runner failed"})
         details = dict(error.get("details") or {})
+        details.setdefault("failed_state", metadata.get("state"))
+        details.setdefault("failed_owner", metadata.get("current_owner"))
+        details.setdefault("failed_attempt", metadata.get("current_attempt"))
+        if result.session_id and "thread_id" not in details:
+            details["thread_id"] = result.session_id
         if result.stdout_tail and "stdout_tail" not in details:
             details["stdout_tail"] = result.stdout_tail
         if result.stderr_tail and "stderr_tail" not in details:

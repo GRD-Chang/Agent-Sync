@@ -329,6 +329,24 @@ def build_role_prompt(
     return "\n".join(common + role_block + final_block) + "\n"
 
 
+def build_resume_prompt(*, role: str, repo_root: Path, run_home: Path) -> str:
+    return "\n".join(
+        [
+            "继续刚才中断的 Codex Team 工作。",
+            "",
+            f"当前 role：{role}",
+            f"仓库根目录：{repo_root}",
+            f"Run home：{run_home}",
+            "",
+            "不要从头开始，不要重新规划。沿着当前 role 的上下文继续完成未完成部分。",
+            "",
+            "如果固定 Markdown artifact 已经写好，请只做必要核对，然后输出符合 Codex Team 协议的最终 JSON envelope，交给 dispatcher 继续路由。",
+            "",
+            "只有整个 run 的 final_condition 真正满足时，才允许 completion_scope=final；否则使用 checkpoint 并继续路由。",
+        ]
+    )
+
+
 def build_envelope_repair_prompt(
     *,
     validator_errors: list[dict[str, Any]],

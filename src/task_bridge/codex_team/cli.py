@@ -52,6 +52,12 @@ def add_codex_team_parser(subparsers: argparse._SubParsersAction[argparse.Argume
     answer.add_argument("--max-steps", type=int, default=50, help="最多推进多少个 agent step")
     answer.add_argument("--json", action="store_true", dest="as_json", help="以 JSON 输出")
 
+    resume = nested.add_parser("resume", help="恢复 failed Codex Team run", formatter_class=formatter_class)
+    resume.add_argument("run_id", help="Codex Team run id")
+    resume.add_argument("--runner", choices=["real", "capture"], default="real", help="runner 类型")
+    resume.add_argument("--max-steps", type=int, default=50, help="最多推进多少个 agent step")
+    resume.add_argument("--json", action="store_true", dest="as_json", help="以 JSON 输出")
+
     cancel = nested.add_parser("cancel", help="取消 Codex Team run", formatter_class=formatter_class)
     cancel.add_argument("run_id", help="Codex Team run id")
     cancel.add_argument("--reason", required=True, help="取消原因")
@@ -104,6 +110,28 @@ def handle_codex_team_command(args: argparse.Namespace, *, home: Path) -> dict[s
         if not args.no_run:
             outcome = dispatcher.run_until_idle(args.run_id, max_steps=args.max_steps)
         return outcome.__dict__
+    if command == "resume":
+        if args.max_steps <= 0:
+            metadata = store.load_metadata(args.run_id)
+            if metadata.get("state") != "failed":
+                raise ValueError("resume is only allowed for failed codex team runs")
+            error = {
+                "code": "MaxStepsExceeded",
+                "message": f"codex team exceeded max_steps={args.max_steps}",
+            }
+            outcome = {
+                "run_id": args.run_id,
+                "state": "failed",
+                "status": "failed",
+                "owner": metadata.get("current_owner"),
+                "event": "failed",
+                "error": error,
+            }
+            return {"outcome": outcome, "metadata": metadata}
+        dispatcher = CodexTeamDispatcher(store=store, runner=_runner_from_name(args.runner))
+        outcome = dispatcher.resume(args.run_id)
+        outcome = dispatcher.run_until_idle(args.run_id, max_steps=args.max_steps - 1)
+        return {"outcome": outcome.__dict__, "metadata": store.load_metadata(args.run_id)}
     if command == "cancel":
         outcome = CodexTeamDispatcher(store=store).cancel(args.run_id, args.reason)
         return outcome.__dict__

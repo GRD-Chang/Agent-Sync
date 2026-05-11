@@ -240,7 +240,7 @@ codex-team/
 | **Task management** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | Manage concrete execution steps |
 | **Worker state** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Workers write back progress and terminal states (used by multiple agents) |
 | **Bridge scheduling** | `worker-status`, `queue`, `dispatch-once`, `notify`, `notify-backfill`, `daemon`, `daemon-status` | Dispatching, notification backfill, supervision, and daemon health checks |
-| **Codex Team harness** | `codex-team start/status/show/logs/answer/cancel` | Create, inspect, resume, and cancel isolated Codex Team runs |
+| **Codex Team harness** | `codex-team start/status/show/logs/answer/resume/cancel` | Create, inspect, resume, and cancel isolated Codex Team runs |
 
 ### Codex Team Harness (Experimental)
 
@@ -254,8 +254,11 @@ task-bridge codex-team status <run_id> --json
 task-bridge codex-team show <run_id> --json
 task-bridge codex-team logs <run_id> --tail 20 --json
 task-bridge codex-team answer <run_id> --text "Limit scope to the CLI path" --json
+task-bridge codex-team resume <run_id> --json
 task-bridge codex-team cancel <run_id> --reason "User cancelled" --json
 ```
+
+`resume` is only for retryable runner-level failures on failed runs, such as Codex auth interruption, runner timeout, runner lock, or a missing final envelope. It first tries `codex exec resume <thread_id>` from the failed stdout log; when no thread id is available, it falls back to rerunning the current owner. Paused runs still use `answer`, and protocol or fixed-artifact failures are not resumable by default.
 
 To verify the run store and CLI without starting real Codex, use:
 
