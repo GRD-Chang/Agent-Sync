@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from .types import ACTIONS, AGENT_STATUSES, COMPLETION_SCOPES, SCHEMA_VERSION, TARGETS
+from .types import ACTIONS, AGENT_STATUSES, SCHEMA_VERSION, TARGETS
 
 
 ACTION_ENVELOPE_SCHEMA = {
@@ -14,7 +14,6 @@ ACTION_ENVELOPE_SCHEMA = {
         "summary",
         "action",
         "target",
-        "completion_scope",
         "reason",
         "artifacts",
     ],
@@ -35,15 +34,11 @@ ACTION_ENVELOPE_SCHEMA = {
         },
         "action": {
             "enum": sorted(ACTIONS),
-            "description": "Business action for the dispatcher. Use candidate_ready after generator work, needs_fix after failed evaluation, pass only for final completion.",
+            "description": "Business action for the dispatcher. Use ready_for_review only after the generator has completed the whole planned build round, needs_fix after failed evaluation, and pass only for final completion.",
         },
         "target": {
             "enum": sorted(TARGETS),
             "description": "Next receiver. Must be consistent with action and current role.",
-        },
-        "completion_scope": {
-            "enum": sorted(COMPLETION_SCOPES),
-            "description": "Use checkpoint when the current plan/candidate/phase is done but more roadmap work may remain. Use final only when the whole requested run is complete; evaluator pass->system requires final.",
         },
         "reason": {
             "type": "string",
@@ -92,7 +87,7 @@ def schema_for_role(role: str) -> dict:
         action_schema["enum"] = ["continue", "ask_user", "stop"]
         target_schema["enum"] = ["generator", "evaluator", "user", "system"]
     elif role == "generator":
-        action_schema["enum"] = ["candidate_ready", "needs_design"]
+        action_schema["enum"] = ["ready_for_review", "needs_design"]
         target_schema["enum"] = ["evaluator", "planner"]
     elif role == "evaluator":
         action_schema["enum"] = ["continue", "pass", "needs_fix", "needs_design", "stop"]

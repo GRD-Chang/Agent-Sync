@@ -3,16 +3,14 @@ from __future__ import annotations
 SCHEMA_VERSION = 1
 
 ROLES = {"planner", "generator", "evaluator"}
-ACTIONS = {"continue", "candidate_ready", "pass", "needs_fix", "needs_design", "ask_user", "stop"}
+ACTIONS = {"continue", "ready_for_review", "pass", "needs_fix", "needs_design", "ask_user", "stop"}
 TARGETS = {"planner", "generator", "evaluator", "user", "system"}
 AGENT_STATUSES = {"completed", "needs_input", "blocked", "failed"}
-COMPLETION_SCOPES = {"checkpoint", "final"}
 RUN_STATES = {
     "created",
     "planning",
     "evaluating_plan",
     "generating",
-    "evaluating_milestone",
     "evaluating_final",
     "paused",
     "completed",

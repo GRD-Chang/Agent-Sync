@@ -17,7 +17,6 @@ def _valid_envelope() -> dict:
         "status": "completed",
         "action": "continue",
         "target": "generator",
-        "completion_scope": "checkpoint",
         "reason": "continue",
         "artifacts": [],
     }
@@ -44,46 +43,13 @@ def test_generator_direct_stop_is_rejected_as_repairable_protocol_error(tmp_path
     assert is_repairable_invalid_envelope(issues)
 
 
-def test_missing_completion_scope_is_repairable(tmp_path: Path) -> None:
+def test_legacy_completion_scope_is_ignored_by_protocol_validator(tmp_path: Path) -> None:
     envelope = _valid_envelope()
-    envelope.pop("completion_scope")
-
-    issues = validate_next_action_envelope(envelope, role="planner", run_home=tmp_path, repo_root=tmp_path)
-
-    assert [issue.code for issue in issues] == ["InvalidCompletionScope"]
-    assert is_repairable_invalid_envelope(issues)
-
-
-def test_invalid_completion_scope_is_repairable(tmp_path: Path) -> None:
-    envelope = _valid_envelope()
-    envelope["completion_scope"] = "done"
-
-    issues = validate_next_action_envelope(envelope, role="planner", run_home=tmp_path, repo_root=tmp_path)
-
-    assert [issue.code for issue in issues] == ["InvalidCompletionScope"]
-    assert is_repairable_invalid_envelope(issues)
-
-
-def test_evaluator_pass_system_requires_final_completion_scope(tmp_path: Path) -> None:
-    envelope = _valid_envelope()
-    envelope["action"] = "pass"
-    envelope["target"] = "system"
     envelope["completion_scope"] = "checkpoint"
 
-    issues = validate_next_action_envelope(envelope, role="evaluator", run_home=tmp_path, repo_root=tmp_path)
-
-    assert [issue.code for issue in issues] == ["InvalidCompletionScope"]
-    assert is_repairable_invalid_envelope(issues)
-
-
-def test_final_completion_scope_requires_system_target(tmp_path: Path) -> None:
-    envelope = _valid_envelope()
-    envelope["completion_scope"] = "final"
-
     issues = validate_next_action_envelope(envelope, role="planner", run_home=tmp_path, repo_root=tmp_path)
 
-    assert [issue.code for issue in issues] == ["InvalidCompletionScope"]
-    assert is_repairable_invalid_envelope(issues)
+    assert issues == []
 
 
 def test_fixed_artifact_requires_existing_non_empty_file_inside_run_home(tmp_path: Path) -> None:

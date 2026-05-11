@@ -22,7 +22,6 @@ def test_fake_runner_returns_queued_envelope(tmp_path: Path) -> None:
         "status": "completed",
         "action": "stop",
         "target": "system",
-        "completion_scope": "final",
         "reason": "done",
         "artifacts": [],
     }
@@ -131,7 +130,7 @@ def test_real_runner_holds_global_and_run_locks_while_process_runs(tmp_path: Pat
             observed["global_lock_exists"] = (run_home.parent / ".codex-team-runner.lock").exists()
             observed["run_lock_exists"] = (run_home / ".runner.lock").exists()
             last.write_text(
-                '{"schema_version":1,"summary":"ok","status":"completed","action":"stop","target":"system","completion_scope":"final","reason":"done","artifacts":[]}'
+                '{"schema_version":1,"summary":"ok","status":"completed","action":"stop","target":"system","reason":"done","artifacts":[]}'
             )
             return "", ""
 
@@ -228,5 +227,6 @@ def test_output_schema_is_strict_for_codex_structured_output() -> None:
 
 
 def test_output_schema_is_role_specific() -> None:
-    assert "candidate_ready" not in schema_for_role("evaluator")["properties"]["action"]["enum"]
+    assert "ready_for_review" not in schema_for_role("evaluator")["properties"]["action"]["enum"]
     assert "stop" not in schema_for_role("generator")["properties"]["action"]["enum"]
+    assert "ready_for_review" in schema_for_role("generator")["properties"]["action"]["enum"]

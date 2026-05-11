@@ -63,7 +63,7 @@ task-bridge dashboard
 引入了覆盖软件工程全生命周期的专业 Agent 团队。在 `task-bridge` 的编排下，团队职责分明：
 
 - **Team Leader (协调者)**：面向用户做高层决策、建单、证据回收和最终收口，不直接承担设计、实现、测试或发布执行。
-- **Planning Agent (规划者)**：负责需求澄清、方案收敛、sprint contract、验收口径与验证要求。
+- **Planning Agent (规划者)**：负责需求澄清、高层 spec 收敛、验收口径与验证要求。
 - **Code Agent (工程执行者)**：负责实现级设计、代码阅读、根因调查、实现、修复、重构、测试与提交。
 - **Quality Agent (质量评估者)**：负责 plan evaluation、implementation evaluation、独立评审、QA、风险分级和必要的小范围修复。
 - **Release Agent (交付执行者)**：负责发布准备、PR/部署/上线验证、回滚口径和文档同步。
@@ -231,6 +231,8 @@ codex-team/
 ### Codex Team harness（实验性）
 
 `codex-team` 是独立于现有 job/task 终态通知的 harness 子系统。它复用 `TASK_BRIDGE_HOME`、CLI、原子 JSON 写入和测试基建，但 run 状态不会直接映射为 `task-bridge` 的 `done/blocked/failed` 任务状态。
+
+Codex Team 采用 round harness：Planner 产出完整高层 spec，Generator 连续完成完整 build round 后用 `ready_for_review -> evaluator` 交给 Evaluator，Evaluator 做 round-level review 并给出聚合修复意见或 final pass。局部 helper、schema、测试或小修复不再作为外部评审点。
 
 常用命令：
 
