@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .types import ACTIONS, AGENT_STATUSES, SCHEMA_VERSION, TARGETS
+from .types import ACTIONS, AGENT_STATUSES, COMPLETION_SCOPES, SCHEMA_VERSION, TARGETS
 
 
 @dataclass(frozen=True)
@@ -47,10 +47,20 @@ def validate_next_action_envelope(
 
     action = envelope.get("action")
     target = envelope.get("target")
+    completion_scope = envelope.get("completion_scope")
     if action not in ACTIONS:
         issues.append(_issue("InvalidNextAction", "action is not allowed", "action", True))
     if target not in TARGETS:
         issues.append(_issue("InvalidNextAction", "target is not allowed", "target", True))
+    if completion_scope not in COMPLETION_SCOPES:
+        issues.append(
+            _issue(
+                "InvalidCompletionScope",
+                "completion_scope must be checkpoint or final",
+                "completion_scope",
+                True,
+            )
+        )
     if not _non_empty_str(envelope.get("reason")):
         issues.append(_issue("InvalidNextAction", "reason must be non-empty", "reason", True))
 
@@ -60,6 +70,15 @@ def validate_next_action_envelope(
 
     if action in ACTIONS and target in TARGETS:
         issues.extend(validate_role_action_target(role=role, action=str(action), target=str(target)))
+    if action in ACTIONS and target in TARGETS and completion_scope in COMPLETION_SCOPES:
+        issues.extend(
+            validate_completion_scope(
+                role=role,
+                action=str(action),
+                target=str(target),
+                completion_scope=str(completion_scope),
+            )
+        )
 
     return issues
 
@@ -94,6 +113,43 @@ def validate_role_action_target(*, role: str | None, action: str, target: str) -
                 "InvalidNextAction",
                 f"role {role!r} cannot route {action!r}->{target!r}",
                 "action",
+                repairable=True,
+            )
+        ]
+    return []
+
+
+def validate_completion_scope(
+    *,
+    role: str | None,
+    action: str,
+    target: str,
+    completion_scope: str,
+) -> list[ValidationIssue]:
+    if completion_scope == "final" and target != "system":
+        return [
+            _issue(
+                "InvalidCompletionScope",
+                "completion_scope='final' is only valid for routes to system",
+                "completion_scope",
+                repairable=True,
+            )
+        ]
+    if target == "system" and action in {"pass", "stop"} and completion_scope != "final":
+        return [
+            _issue(
+                "InvalidCompletionScope",
+                f"{action!r}->{target!r} requires completion_scope='final'",
+                "completion_scope",
+                repairable=True,
+            )
+        ]
+    if role == "evaluator" and action == "continue" and target == "generator" and completion_scope != "checkpoint":
+        return [
+            _issue(
+                "InvalidCompletionScope",
+                "evaluator continue->generator means the roadmap continues and requires completion_scope='checkpoint'",
+                "completion_scope",
                 repairable=True,
             )
         ]

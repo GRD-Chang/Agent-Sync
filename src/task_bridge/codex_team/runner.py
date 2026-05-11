@@ -102,6 +102,7 @@ class CaptureCodexRunner:
             "status": "completed",
             "action": "stop",
             "target": "system",
+            "completion_scope": "final",
             "reason": "capture runner does not execute Codex",
             "artifacts": [str(prompt_path)],
         }

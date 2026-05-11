@@ -170,6 +170,7 @@ class CodexTeamDispatcher:
         prompt = build_envelope_repair_prompt(
             validator_errors=issues_to_payload(issues),
             invalid_output=invalid_output,
+            preserve_checkpoint_semantics=_has_checkpoint_semantics(result.envelope),
         )
         repair_output = run_home / "artifacts" / "logs" / f"{role}-repair-{repair_attempts:03d}.last-message.json"
         self.store.append_event(run_id, {"type": "repair_started", "role": role, "attempt": repair_attempts})
@@ -184,6 +185,18 @@ class CodexTeamDispatcher:
         )
         if repaired.error:
             return self._record_runner_error(run_id, repaired)
+        if _has_checkpoint_semantics(result.envelope) and _upgrades_to_final_completion(repaired.envelope):
+            return self._invalid(
+                run_id,
+                [
+                    ValidationIssue(
+                        "InvalidCompletionScope",
+                        "repair cannot upgrade a checkpoint envelope to final completion; choose a checkpoint route instead",
+                        "completion_scope",
+                        repairable=False,
+                    )
+                ],
+            )
         return self._consume_envelope(run_id, role, repaired.envelope, result=repaired, repair_attempts=repair_attempts)
 
     def _validate_fixed_artifact(self, run_id: str, role: str, envelope: dict[str, Any]) -> list[ValidationIssue]:
@@ -375,3 +388,11 @@ def _state_for_owner(owner: str) -> str:
         "generator": "generating",
         "evaluator": "evaluating_milestone",
     }[owner]
+
+
+def _has_checkpoint_semantics(envelope: dict[str, Any] | None) -> bool:
+    return isinstance(envelope, dict) and envelope.get("completion_scope") == "checkpoint"
+
+
+def _upgrades_to_final_completion(envelope: dict[str, Any] | None) -> bool:
+    return isinstance(envelope, dict) and envelope.get("completion_scope") == "final"

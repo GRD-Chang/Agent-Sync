@@ -2,13 +2,22 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from .types import ACTIONS, AGENT_STATUSES, SCHEMA_VERSION, TARGETS
+from .types import ACTIONS, AGENT_STATUSES, COMPLETION_SCOPES, SCHEMA_VERSION, TARGETS
 
 
 ACTION_ENVELOPE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["schema_version", "status", "summary", "action", "target", "reason", "artifacts"],
+    "required": [
+        "schema_version",
+        "status",
+        "summary",
+        "action",
+        "target",
+        "completion_scope",
+        "reason",
+        "artifacts",
+    ],
     "properties": {
         "schema_version": {
             "type": "integer",
@@ -31,6 +40,10 @@ ACTION_ENVELOPE_SCHEMA = {
         "target": {
             "enum": sorted(TARGETS),
             "description": "Next receiver. Must be consistent with action and current role.",
+        },
+        "completion_scope": {
+            "enum": sorted(COMPLETION_SCOPES),
+            "description": "Use checkpoint when the current plan/candidate/phase is done but more roadmap work may remain. Use final only when the whole requested run is complete; evaluator pass->system requires final.",
         },
         "reason": {
             "type": "string",

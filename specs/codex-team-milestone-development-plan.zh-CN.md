@@ -156,6 +156,7 @@ M1 通过后，M2 可以在稳定 run home 上实现 schema 和 validator。
   - target
 - 校验 `schema_version=1`。
 - 校验 role/action/target 组合。
+- 校验 `completion_scope=checkpoint|final`，且系统完成路由必须是 `final`。
 
 ### Non-Scope
 
@@ -174,6 +175,7 @@ M1 通过后，M2 可以在稳定 run home 上实现 schema 和 validator。
 - 缺少 `schema_version` 的 envelope 被拒绝。
 - 非法 `action`、`target`、空 `reason` 被拒绝。
 - 非法 role/action/target 组合被拒绝。
+- `evaluator pass -> system` 但 `completion_scope=checkpoint` 被拒绝或进入 repair。
 - 固定 artifact 缺失、为空或越出 run home 被拒绝。
 - 补充 artifact 不存在、越界或不适合传递时被过滤并记录 warning，不直接 failed。
 - validator 错误包含机器可读 code 和人可读 message。
@@ -278,7 +280,7 @@ failed
   - `generator -> needs_design(planner)` for clarification, design issue, or infeasible plan
   - `generator -> candidate_ready(evaluator)`
   - `evaluator continue milestone -> generator`
-  - `evaluator pass final -> completed`
+  - `evaluator pass final with completion_scope=final -> completed`
   - `evaluator needs_fix -> generator`
   - `evaluator needs_design -> planner`
 - 实现 generator direct `stop -> system` 拒绝。
@@ -305,7 +307,8 @@ failed
 - fake planner 输出 `continue -> evaluator` 后 state 进入 `evaluating_plan`，评审写入 `plan_evaluation.md`，不占用 `attempts/<n>/evaluation.md`。
 - fake generator 输出 milestone candidate 后 state 进入 `evaluating_milestone`。
 - fake evaluator milestone pass 后 state 回到 `generating`。
-- fake evaluator final pass 后 state 进入 `completed`。
+- fake evaluator final pass 且 `completion_scope=final` 后 state 进入 `completed`。
+- fake evaluator `pass -> system` 但 `completion_scope=checkpoint` 不会完成 run。
 - fake evaluator needs_fix 未超过上限时回 Generator。
 - needs_fix 超过上限后回 Planner。
 - fake generator 输出 `needs_design -> planner` 时 state 回到 `planning`。
@@ -565,6 +568,8 @@ M7 通过后，M8 可以在真实 Codex 输出或固定 artifact 不符合协议
 - JSON parse failed 可触发一次 repair。
 - 缺少 `schema_version` 可触发一次 repair。
 - 缺少 `action` 或 `target` 可触发 repair。
+- 缺少或非法 `completion_scope` 可触发 repair。
+- `pass -> system` 但 `completion_scope=checkpoint` 可触发 route repair。
 - 固定 artifact 缺失或为空可触发 artifact repair。
 - role/action/target 组合不合法可触发 route repair。
 - repair 后合法则继续 route。
@@ -603,6 +608,7 @@ M8 通过后，M9 可以完成 prompts 和端到端 fake/real smoke。
 - 模板注入：
   - repo root
   - run home
+  - artifact 目录规则
   - required reads
   - required writes
   - final envelope schema 约束
@@ -635,8 +641,28 @@ M8 通过后，M9 可以完成 prompts 和端到端 fake/real smoke。
 ### Acceptance
 
 - prompt 不包含长篇 artifact 内容，只传路径、职责和输出约束。
+- Prompt 共享政策从 `ARTIFACT_DIRECTORY_SECTION`、`COMPLETION_SCOPE_POLICY`、`HANDOFF_ECONOMY_POLICY`、`BLOCKING_FIX_POLICY` 生成，避免同一政策散落成多套措辞。
+- 所有 role prompt 都说明 run_home 下 `input.md`、`plan.md`、`plan_evaluation.md`、`attempts/<n>/implementation.md`、`attempts/<n>/evaluation.md`、`next_action.json`、`metadata.json` 和 `artifacts/logs/` 的用途。
+- 所有 role prompt 明确跨 agent handoff 有显著时间和 token 成本，应避免频繁小规模 Generator/Evaluator 往返。
+- Planner prompt 明确要求 `required_scope`、`later_scope` 和 `final_condition`，并区分本次 required scope 与长期 roadmap。
+- Planner prompt 明确 `required_scope` 不应是小 ticket 列表，并定义 `candidate_boundary` 和 `handoff_condition`。
+- Markdown artifact 模板只保留少量关键锚点，不把 `.md` 变成 schema；细节通过自然语言表达。
+- `plan.md` 关键锚点为 `goal_and_scope`、`architecture_direction`、`delivery_roadmap`、`candidate_boundary`、`acceptance_and_verification`、`risks_and_open_questions`。
+- `implementation.md` 关键锚点为 `summary`、`candidate_boundary_status`、`changes_and_evidence`、`scope_status`、`feedback_addressed`、`known_limitations`。
+- `evaluation.md` 关键锚点为 `summary`、`candidate_assessment`、`blocking_fixes`、`non_blocking_findings`、`scope_status`、`route_decision`。
+- Generator prompt 明确在 plan 边界内连续推进一组相关工作，达到 `candidate_boundary` 后再提交 Evaluator。
+- Generator prompt 明确不是机械地尽量完成多个 phase，也避免每个小步骤都交给 Evaluator。
+- Generator prompt 明确能自行推进的问题应继续实现和自测，不把 Evaluator 当作每个小步骤后的确认按钮。
+- Generator prompt 明确 candidate 可判定边界：至少完成一个用户工作流、模块边界、公共接口、状态机、持久化格式、一组可一起验证的相关修复、`handoff_condition` 或高风险边界；单 helper、单测试、单 lint 不得交接。
+- Generator prompt 明确 latest evaluation 为 `continue` 时，必须读取 `candidate_assessment`、`non_blocking_findings`、`scope_status` 和 `route_decision` 作为下一批输入。
+- Generator prompt 明确开发前先自主调研本仓库、项目文档、测试和必要的开源/官方/优秀实践，并在 `implementation.md` 的 `changes_and_evidence` 中记录必要调研、实现和验证证据。
+- Generator prompt 明确只复用外部工作的设计思想、接口模式、验证策略和风险控制方法，不直接照搬外部代码。
+- Generator prompt 在存在 `latest_implementation` 时必须把它和 latest evaluation 一起列入 required reads。
 - Generator prompt 明确禁止直接 `stop -> system` 宣布实现完成。
 - Generator prompt 明确禁止直接 `ask_user`，遇到需求、范围、验收或设计不清时必须 `needs_design -> planner`。
+- Evaluator prompt 明确自己是阶段性质量门，不是频繁打断 Generator 的调度器；final 前必须检查 `final_condition` 和 `remaining_scope`。
+- Evaluator prompt 明确 `blocking_fixes` / `required_fixes` 只放阻塞项，非阻塞问题写入 `non_blocking_findings` 或 `route_decision` 的下一批建议。
+- Evaluator prompt 明确默认路由：blocking issue -> `needs_fix`；candidate 可接受但 remaining scope 非空 -> `continue`；final condition met 且无 remaining scope -> `pass`；边界无法判定 -> `needs_design`。
 - Evaluator prompt 明确禁止直接 `ask_user`，遇到设计缺口、验收歧义或 blocked 时必须 `needs_design -> planner` 或按规则 `stop -> system`。
 - Prompt 明确区分必须读取的固定 artifact 和可选补充 artifact。
 - fake-runner E2E 可以完整完成 run。

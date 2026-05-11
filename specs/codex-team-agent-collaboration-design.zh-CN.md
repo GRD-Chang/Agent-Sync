@@ -116,13 +116,22 @@ Planner 负责把用户输入转成可执行计划。
 
 职责：
 
-- 理解用户目标、非目标和约束。
-- 补齐高层架构、模块边界和实现顺序。
-- 定义 implementation milestones。
-- 定义 acceptance criteria、verification plan 和 task-specific grading criteria。
-- 判断当前任务应停在计划、请求 plan review，还是进入实现。
-- 在 Evaluator 输出 `needs_design` 时重新规划。
-- 统一决定是否向用户提问。
+- 理解用户目标、非目标、范围、约束和当前阶段。
+- 通过读取仓库、文档和上一轮 artifact 补齐必要上下文。
+- 产出有野心但可执行的产品/工程 spec，聚焦用户目标、产品能力、交付边界和高层技术设计。
+- 定义 `goal_and_scope`、`delivery_roadmap`、`candidate_boundary`、`acceptance_and_verification`、`risks_and_open_questions`。
+- 判断当前任务应停在计划、请求 plan evaluation、进入实现，还是向用户提问。
+- 在 Generator/Evaluator 返回 `needs_design` 时重新规划或澄清问题。
+
+工作规则：
+
+- `goal_and_scope` 必须区分 required scope、later scope、non-goal 和 final condition。
+- `required_scope` 是本次 run 必须完成的范围，不是函数级实现计划；小 helper、小测试修复和普通 bug 修复应作为 Generator 内部步骤。
+- `candidate_boundary` 定义什么规模的成果可以交给 Evaluator，并包含 handoff condition。
+- `delivery_roadmap` 保持高层可执行，不替 Generator 预先规定函数级、文件级、类级或具体代码结构。
+- 写权限边界是 `plan.md` 和必要的规划辅助 artifact；不要修改 repo 源码来完成实现。
+- 如果只需要计划且已经完整交付，可以 `action=stop,target=system,completion_scope=final`。
+- 如果需求不清，只有 Planner 可以 `action=ask_user,target=user`。
 
 不负责：
 
@@ -137,22 +146,24 @@ plan.md
 final action envelope
 ```
 
-`plan.md` 建议包含：
+`plan.md` 使用少量关键锚点，不把 Markdown 变成 schema。建议包含：
 
 ```text
-goal
-non_goal
-architecture_summary
-implementation_plan
-implementation_milestones
-acceptance_criteria
-verification_plan
-risk_flags
-open_questions
-grading_criteria
+goal_and_scope
+architecture_direction
+delivery_roadmap
+candidate_boundary
+acceptance_and_verification
+risks_and_open_questions
 ```
 
-Planner 的设计粒度是 implementation milestone。一个 milestone 应该大到覆盖一个功能、模块或风险边界，小到 Generator 可以在一轮 Codex run 中完成并交给 Evaluator 独立评审。
+`goal_and_scope` 应自然写清 required scope、later scope、non-goal 和 final condition。`candidate_boundary` 应写清什么规模可交给 Evaluator，以及 handoff condition。`acceptance_and_verification` 应写清验收、验证方法和 task-specific grading criteria。
+
+Planner 的设计粒度是 implementation milestone 或 delivery phase。一个 phase 应该大到覆盖一个功能、模块、用户工作流或风险边界，小到 Generator 可以在一轮长时间 Codex build 中合理推进并交给 Evaluator 独立评审。
+
+`required_scope` 是本次 run 必须完成的范围，不是小 ticket 列表或实现细节清单。长期 roadmap 必须写入 `later_scope`，不能默认纳入本次 final 条件；只有 `final_condition` 满足时，Evaluator 才能 final pass。
+
+跨 agent handoff 有显著时间和 token 成本。Planner 应让 `required_scope` 表达能力边界和交付目标，而不是把 helper、测试修复、普通 bug 修复拆成独立评审点；Generator 应在能力范围内连续推进；Evaluator 应批量评审并给出聚合反馈。
 
 合适粒度：
 
@@ -178,18 +189,9 @@ M2: Add one if branch for evaluator
 M3: Rename a local variable
 ```
 
-每个 milestone 建议包含：
+每个 delivery phase 应自然写清目标、范围、非范围、验收、验证、grading criteria、candidate boundary 和 handoff condition。它们是计划表达要素，不是固定字段 schema；Planner 应用自然语言说明为什么这样的边界适合交给 Generator 长时间实现，并适合 Evaluator 独立评审。
 
-```text
-milestone_id
-goal
-scope
-non_scope
-acceptance
-verification
-grading_criteria
-handoff_condition
-```
+`candidate_boundary` 由 Planner 定义，说明什么规模的成果值得交给 Evaluator。`handoff_condition` 由 Planner 定义原则，Generator 执行时根据代码事实判断 `candidate_boundary_status`；Evaluator 事后校准这个判断是否合理。Planner 不应把每次交接点写成固定脚本。
 
 Planner 默认不强制请求 plan review。只有当计划涉及高风险边界，例如持久化、状态机、权限、安全、公共接口、复杂迁移或里程碑边界不确定时，Planner 才应主动唤醒 Evaluator 做 plan review。
 
@@ -199,13 +201,27 @@ Generator 负责实现当前计划或当前 milestone。
 
 职责：
 
-- 阅读 `input.md`、`plan.md` 和必要的上一轮评审。
-- 阅读代码库并实施变更。
-- 修改代码、补测试、运行验证。
-- 记录 changed files、tests run、validation evidence 和 known limitations。
-- 根据 `evaluation.md` 中的 required fixes 修复问题。
-- 发现计划不可行时回到 Planner。
-- 发现需求、范围或验收不清时，使用 `action=needs_design,target=planner`，把证据写入固定 artifact 后交回 Planner。
+- 作为本轮实现 owner，读取 plan/evaluation、补齐代码事实、设计实现、修改仓库并自测。
+- 开发前先自主调研本仓库、项目文档和测试；必要时参考开源项目、优秀实现、官方文档或成熟实践。
+- 在 plan 边界内连续推进一组相关工作，达到 `candidate_boundary` 后提交 Evaluator。
+- 处理 `blocking_fixes`，并把 `non_blocking_findings`、`scope_status`、`route_decision` 作为下一批输入。
+- 在 `implementation.md` 中写清 `candidate_boundary_status`、`changes_and_evidence`、`scope_status`、`feedback_addressed` 和 `known_limitations`。
+
+工作规则：
+
+- 开始前确认目标、范围、相关文件、约束、验收标准和验证要求。
+- 调研只复用设计思想、接口模式、验证策略和风险控制方法，不直接照搬外部代码，不引入不明许可证风险。
+- 自主管理内部任务拆分、实现顺序、自测和修复；不是机械地尽量完成多个 phase，也不要每完成一个小步骤就交给 Evaluator。
+- 如果问题仍在 Generator 的实现能力范围内，继续实现和自测，不把 Evaluator 当作每个小步骤后的确认按钮。
+- 如果 latest evaluation 的结论是 `continue`，读取 `candidate_assessment`、`non_blocking_findings`、`scope_status` 和 `route_decision`，作为下一批工作的输入。
+- 如果存在 latest implementation，必须结合 latest evaluation 一起阅读，确认上一轮已完成内容、剩余工作和变更范围。
+- 修改 repo 前先查看 git status，并保护已有未归属本轮任务的改动。
+- 如果任务表现为 bug、回归、异常或失败链路不清，先做根因调查，再修复和验证。
+- 控制 task-scoped 变更范围，不做无关重构或顺手修复。
+- 运行必要测试或验证命令，并保留足够证据给 Evaluator 复核。
+- 写权限边界是 repo 中当前任务相关文件，以及本轮 `implementation.md`；不要修改 `plan.md` 或 `evaluation.md` 来适配自己的实现。
+- 修复轮必须读取 latest evaluation 的 `blocking_fixes` / required fixes，只处理这些修复及其必要验证，不擅自扩大范围或修改验收标准。
+- 遇到需求、范围、验收或设计不清时，必须 `action=needs_design,target=planner`。
 
 不负责：
 
@@ -222,32 +238,38 @@ attempts/<attempt_id>/implementation.md
 final action envelope
 ```
 
-`implementation.md` 建议包含：
+`implementation.md` 使用少量关键锚点，不把 Markdown 变成 schema。建议包含：
 
 ```text
 summary
-changed_files
-tests_run
-validation_evidence
+candidate_boundary_status
+changes_and_evidence
+scope_status
+feedback_addressed
 known_limitations
-deviations_from_plan
-completed_milestone
 ```
 
-Generator 完成一个 milestone 或最终实现后，不输出 `stop`，而是输出 `action=candidate_ready,target=evaluator`。Generator 一次运行期间不唤醒 Evaluator。只有当本轮工作结束并写好固定 artifact 后，才提交 candidate。
+`changes_and_evidence` 应自然写清关键改动、必要调研、设计或根因判断、测试和验证证据。`scope_status` 应写清 completed scope、remaining scope，以及是否是 final candidate。`feedback_addressed` 应说明上一轮 blocking fixes、non-blocking findings 或 carry-forward risks 如何处理。
 
-适合作为 milestone candidate 的边界：
+Generator 完成一个可判定 candidate 或最终实现后，不输出 `stop`，而是输出 `action=candidate_ready,target=evaluator`。Generator 一次运行期间不唤醒 Evaluator。只有当本轮工作结束并写好固定 artifact 后，才提交 candidate。
 
-- 完成一个独立 feature 或模块边界。
-- 改动影响 public API、状态机、权限、数据模型或持久化格式。
-- 后续实现会建立在当前设计选择之上。
-- Generator 对测试策略或兼容性风险不确定。
+适合作为 candidate 的边界至少满足一项：
+
+- 完成一个用户工作流。
+- 完成一个模块边界。
+- 完成或调整一个公共接口。
+- 完成一个状态机边界。
+- 完成一个数据模型或持久化格式边界。
+- 完成一组可一起验证的相关修复。
+- 到达 `plan.md` 中定义的 `handoff_condition`。
+- 遇到需要独立质量门判断的高风险边界。
 
 不适合作为 milestone candidate 的边界：
 
 - 修改单个 helper。
-- 修 lint 或格式。
-- 普通单测失败修复。
+- 单个测试。
+- 单个 lint 或格式修复。
+- 普通小 bug。
 - 当前实现还不能独立验证。
 
 ### 3.3 Evaluator
@@ -256,13 +278,22 @@ Evaluator 负责独立评审，不是第二个 Generator。
 
 职责：
 
-- 阅读用户原始需求、`plan.md`、代码 diff 和对应 attempt 的 `implementation.md`。
-- 按 base criteria、task criteria 和 review focus 评审。
-- 检查实现是否满足验收标准。
-- 检查测试证据是否足够。
-- 发现回归风险、遗漏、过度实现或范围偏移。
-- 必要时运行命令验证或行为验证。
-- 在 `evaluation.md` 中输出明确结论、grading 和 required fixes。
+- 独立评审 plan 或 candidate，不接管实现。
+- 判断 `candidate_boundary`、`scope_status`、validation 和 blocking/non-blocking 问题。
+- 给出 `candidate_assessment`、`blocking_fixes`、`non_blocking_findings`、`scope_status` 和 `route_decision`。
+- 确保最终 JSON 路由与 `evaluation.md` 的 `route_decision` 一致。
+- 遇到设计、验收、final condition 或 candidate 边界无法判定时回 Planner。
+
+评估规则：
+
+- Evaluator 是阶段性质量门，不是频繁打断 Generator 的调度器；主要在符合 `candidate_boundary` 的 candidate 或 final candidate 后评审。
+- 阅读用户需求、`plan.md`、相关 artifact、必要源码、当前 `implementation.md`、代码 diff 和测试证据；不要只读 summary。
+- 对照 product spec、acceptance、verification、base criteria、task-specific criteria 和 review focus 进行 grading。
+- 检查实现是否满足用户工作流和交付目标、范围是否受控、测试证据是否足够、是否存在回归或过度实现。
+- `blocking_fixes` / required fixes 只放阻塞项；非阻塞问题写入 `non_blocking_findings` 或 `route_decision` 的下一批建议。
+- 必要时运行最小验证命令；若无法验证，必须把限制和残余风险写清。
+- 证据不足、验收不满足或存在 fail 时不能 pass。
+- 写权限边界是本轮 `evaluation.md`；不要接管大范围实现，不要修改 repo 源码来替 Generator 完成任务。
 
 不负责：
 
@@ -282,7 +313,31 @@ final action envelope
 
 `evaluation.md` 是给 Generator、Planner 和用户阅读的审查报告。每个 grade 为什么是 `pass`、`weak`、`fail` 或 `not_applicable`，都必须在 Markdown 中解释清楚，包括证据、风险和修复建议。
 
-第一版不要求 Evaluator 额外写 `evaluation.json`。Evaluator 的最终 envelope 只表达路由结论，完整评审依据和 required fixes 以 `evaluation.md` 为准。
+第一版不要求 Evaluator 额外写 `evaluation.json`。Evaluator 的最终 envelope 只表达路由结论，完整评审依据和 blocking fixes 以 `evaluation.md` 为准。
+
+`evaluation.md` 使用少量关键锚点，不把 Markdown 变成 schema。建议包含：
+
+```text
+summary
+candidate_assessment
+blocking_fixes
+non_blocking_findings
+scope_status
+route_decision
+```
+
+`candidate_assessment` 应自然写清 candidate boundary 是否成立、关键 grading、验证证据和风险。`scope_status` 应写清 completed scope、remaining scope 和 final condition status。`route_decision` 必须解释最终 JSON 路由为什么是 `needs_fix`、`continue`、`pass` 或 `needs_design`。
+
+Evaluator 默认路由：
+
+```text
+blocking issue -> needs_fix,target=generator,completion_scope=checkpoint
+candidate 可接受但 required_scope 仍有 remaining_scope -> continue,target=generator,completion_scope=checkpoint
+无 blocking_fixes 且 final_condition 满足且 remaining_scope 为空或仅剩 later_scope -> pass,target=system,completion_scope=final
+plan/acceptance/final_condition/remaining_scope/candidate 边界无法判定 -> needs_design,target=planner,completion_scope=checkpoint
+```
+
+下一批建议不是新计划，也不是强制调度脚本。它应写入 `non_blocking_findings` 或 `route_decision`，用于说明当前 candidate 已接受后下一批应集中推进什么；不能扩大 `plan.md` 的 `required_scope`。
 
 Evaluator 的最终 action 只能表达以下结论：
 
@@ -297,7 +352,7 @@ stop
 候选类型：
 
 - milestone candidate：只评审当前 milestone。通过后通常回到 Generator 继续下一阶段，不代表整体完成。
-- final candidate：完整验收。通过后可以 `action=pass,target=system`，run 进入 `completed`。
+- final candidate：完整验收。通过后可以 `action=pass,target=system,completion_scope=final`，run 进入 `completed`。
 - plan review：评审 Planner 的计划。通过后可进入 Generator，未通过则回到 Planner。
 
 ## 4. 协议
@@ -335,6 +390,7 @@ Canonical shape：
   "summary": "Plan is ready for implementation.",
   "action": "continue",
   "target": "generator",
+  "completion_scope": "checkpoint",
   "reason": "Plan is actionable.",
   "artifacts": [
     "/absolute/path/to/repo/docs/background.md"
@@ -351,8 +407,11 @@ Canonical shape：
 | `summary` | 简短描述本轮完成内容 |
 | `action` | 业务动作，说明为什么进入下一步 |
 | `target` | 下一个接收方：`planner`、`generator`、`evaluator`、`user`、`system` |
+| `completion_scope` | `checkpoint` 表示当前计划、候选或阶段完成但 roadmap 可能继续；`final` 表示整个用户请求已完成 |
 | `reason` | 人类可读原因 |
 | `artifacts` | 可选补充 artifact 索引，不是核心交接依据 |
+
+`completion_scope` 是终止保护，不替代 Markdown artifact。非 system 路由必须使用 `checkpoint`。Evaluator 评审中间 candidate 通过时应使用 `action=continue,target=generator,completion_scope=checkpoint`；只有确认整个 run 已完成时，才允许 `action=pass,target=system,completion_scope=final`。
 
 `action` 支持：
 
@@ -622,11 +681,22 @@ dispatcher 从最新 envelope 生成下一轮 prompt。逻辑是：
 1. 读取 action 和 target
 2. 校验 role/action/target 组合
 3. 根据 target 选择角色 prompt 模板
-4. 注入 repo_root、run_home、必须读取的固定 artifact、可选补充 artifact、必须写入的固定 artifact 和最终 envelope 约束
+4. 注入 repo_root、run_home、artifact 目录规则、必须读取的固定 artifact、可选补充 artifact、必须写入的固定 artifact 和最终 envelope 约束
 5. 启动 codex exec
 ```
 
 不要把长篇工作内容塞进 prompt。prompt 只传路径、职责、本轮目标和输出约束。agent 自己读取 artifact。
+
+Prompt 中共享政策应从统一 section 生成，避免同一政策散落成多套措辞：
+
+```text
+ARTIFACT_DIRECTORY_SECTION
+COMPLETION_SCOPE_POLICY
+HANDOFF_ECONOMY_POLICY
+BLOCKING_FIX_POLICY
+```
+
+role prompt 可以保留必要重复，但 artifact 目录、completion scope、handoff economy 和 blocking/non-blocking fix 的核心语义必须来自这些共享 section。
 
 唤醒 Generator 的中文 prompt 示例：
 
@@ -639,21 +709,50 @@ dispatcher 从最新 envelope 生成下一轮 prompt。逻辑是：
 Run home：
   /absolute/path/to/run_home
 
+Run artifact 目录规则：
+  input.md：用户原始任务。
+  plan.md：Planner 的当前计划。
+  plan_evaluation.md：计划评审。
+  attempts/<n>/implementation.md：第 n 轮 Generator 实现交接。
+  attempts/<n>/evaluation.md：第 n 轮 Evaluator 评审交接。
+  next_action.json：上一轮轻量路由 envelope。
+  metadata.json：当前 run 索引。
+  artifacts/logs/：runner prompt、last-message、stdout/stderr 日志。
+  必须优先读取 required files；需要追溯历史时，可按 attempts/<n>/ 顺序查看旧 implementation/evaluation。
+
 你必须先读取：
   /absolute/path/to/run_home/input.md
   /absolute/path/to/run_home/plan.md
 
 如果这是修复轮，还必须读取：
+  /absolute/path/to/run_home/attempts/001/implementation.md
   /absolute/path/to/run_home/attempts/001/evaluation.md
 
 可选补充 artifacts：
   /absolute/path/to/repo/docs/background.md
 
 你的职责：
-  按当前 plan 或 required fixes 修改仓库代码，补充必要测试并运行验证。
+  你是本轮实现 owner，负责读取 plan/evaluation、补齐代码事实、设计实现、修改仓库并自测。
+  开发前先自主调研本仓库、项目文档和测试；必要时参考开源项目、优秀实现、官方文档或成熟实践。
+  在 plan 边界内连续推进一组相关工作，达到 candidate_boundary 后提交 Evaluator。
+  处理 blocking_fixes，并把 non_blocking_findings、scope_status、route_decision 作为下一批输入。
+  在 implementation.md 中写清 candidate_boundary_status、changes_and_evidence、scope_status、feedback_addressed 和 known_limitations。
+
+工作规则：
+  只复用设计思想、接口模式、验证策略和风险控制方法，不直接照搬外部代码，不引入不明许可证风险。
+  自主管理内部任务拆分、实现顺序、自测和修复；不是机械地尽量完成多个 phase，也不要每完成一个小步骤就交给 Evaluator。
+  如果问题仍在你的实现能力范围内，继续实现和自测，不要把 Evaluator 当作每个小步骤后的确认按钮。
+  如果存在 latest implementation，必须结合 latest evaluation 一起阅读，确认上一轮已完成内容、剩余工作和变更范围。
+  如果 latest evaluation 的 route 是 continue，读取 candidate_assessment、non_blocking_findings、scope_status 和 route_decision 作为下一批输入。
 
 你必须写入：
   /absolute/path/to/run_home/attempts/002/implementation.md
+
+implementation.md 写作要求：
+  Markdown 字段只是关键锚点，不是表格式 schema；用自然语言写清实现判断、证据和剩余风险。
+  至少包含：summary、candidate_boundary_status、changes_and_evidence、scope_status、feedback_addressed、known_limitations。
+  changes_and_evidence 中写清关键改动、必要调研、设计或根因判断、测试和验证证据。
+  scope_status 中写清 completed scope、remaining scope，以及是否是 final candidate。
 
 最终响应：
   输出符合轻量 action schema 的 JSON envelope。
@@ -662,7 +761,8 @@ Run home：
 注意：
   不要覆盖旧 attempt。
   不要直接 stop 宣布实现完成。
-  完成后用 action=candidate_ready,target=evaluator。
+  只有完成用户工作流、模块边界、公共接口、状态机、持久化格式、一组可一起验证的相关修复、plan.md handoff_condition 或高风险边界后，才用 action=candidate_ready,target=evaluator,completion_scope=checkpoint。
+  单 helper、单测试、单 lint 或半成品不得交接。
 ```
 
 唤醒 Evaluator 的中文 prompt 示例：
@@ -682,19 +782,30 @@ Run home：
   /absolute/path/to/run_home/attempts/002/implementation.md
 
 你的职责：
-  独立检查代码 diff、测试证据和当前 milestone/final candidate。
+  作为阶段性质量门独立检查代码 diff、测试证据和当前 candidate，不频繁打断 Generator。
+  不要把每个小问题都变成单独 needs_fix；blocking_fixes / required_fixes 只放阻塞项。
+  非阻塞问题写入 non_blocking_findings 或 route_decision 的下一批建议，减少无意义往返。
   按 base criteria、task criteria 和 review focus 进行 grading。
+  final 判断前先检查 final_condition 和 required_scope；candidate pass 不等于 final completion。
 
 你必须写入：
   /absolute/path/to/run_home/attempts/002/evaluation.md
+
+evaluation.md 写作要求：
+  Markdown 字段只是关键锚点，不是表格式 schema；用自然语言写清评审判断和路由依据。
+  至少包含：summary、candidate_assessment、blocking_fixes、non_blocking_findings、scope_status、route_decision。
+  candidate_assessment 中说明 candidate boundary 是否成立、关键 grading、验证证据和风险。
+  scope_status 中写清 completed scope、remaining scope 和 final condition status。
 
 最终响应：
   输出符合轻量 action schema 的 JSON envelope。
   dispatcher 会校验并写入 /absolute/path/to/run_home/next_action.json。
 
 注意：
-  evaluation.md 写详细判断依据和 required fixes。
-  最终 envelope 只写路由结论，例如 action=needs_fix,target=generator 或 action=pass,target=system。
+  blocking issue -> action=needs_fix,target=generator,completion_scope=checkpoint。
+  当前 candidate 可接受但 remaining_scope 非空 -> action=continue,target=generator,completion_scope=checkpoint。
+  final_condition 满足且 remaining_scope 为空或仅剩 later_scope -> action=pass,target=system,completion_scope=final。
+  无法判定设计、验收、final_condition、remaining_scope 或 candidate 边界 -> action=needs_design,target=planner,completion_scope=checkpoint。
 ```
 
 ## 7. Dispatcher
@@ -731,6 +842,7 @@ Dispatcher 是轻量 harness，不替 agent 做工程判断。
 
 - `action` 合法。
 - `target` 合法。
+- `completion_scope` 必须是 `checkpoint` 或 `final`。
 - 当前 role 可以输出该 `action -> target`。
 - `reason` 非空。
 - 固定 artifact 存在、非空、位于预期 attempt。
@@ -745,12 +857,12 @@ Dispatcher 是轻量 harness，不替 agent 做工程判断。
 Generator 不能直接 stop -> system 宣布代码实现完成。
 
 标准实现完成路径：
-  generator -> candidate_ready -> evaluator -> pass(system)
+  generator -> candidate_ready -> evaluator -> pass(system, final)
 ```
 
-如果 Generator 输出 `stop -> system`，dispatcher 应拒绝该输出或转入 Evaluator，不能直接完成 run。
+如果 Generator 输出 `stop -> system`，dispatcher 应拒绝该输出或转入 Evaluator，不能直接完成 run。Evaluator 输出 `pass -> system` 但 `completion_scope=checkpoint` 时也必须拒绝或 repair，不能把中间 candidate 当作 final completion。
 
-Planner 可以在用户只要求设计、分析或计划时输出 `stop -> system`，前提是已写入 `plan.md`。
+Planner 可以在用户只要求设计、分析或计划时输出 `stop -> system,completion_scope=final`，前提是已写入 `plan.md`。
 
 高风险任务必须经过 Evaluator：
 
@@ -783,18 +895,18 @@ failed
 
 状态转换规则：
 
-- `planner -> stop(system)` 可以完成 plan-only run。
+- `planner -> stop(system, final)` 可以完成 plan-only run。
 - `planner -> evaluator(plan_review)` 进入 `evaluating_plan`。
 - `planner -> generator` 进入 `generating`。
 - `generator -> candidate_ready` 进入 `evaluating_milestone`。
 - `evaluator continue` on milestone 回到 `generating`。
-- `evaluator pass` on final 进入 `completed`。
+- `evaluator pass` on final 且 `completion_scope=final` 进入 `completed`。
 - `planner -> ask_user(user)` 进入 `paused`。
 - `answer` 后写入 `answers.jsonl`，再回到 `planning`。
 - `cancel` 进入 `cancelled`。
 - 不可恢复错误进入 `failed`。
 
-Candidate completion 不能映射成现有 `task-bridge` 的 terminal task state。只有 Codex Team run 在 final evaluator pass 后，才可以视为 `completed`。
+Candidate completion 不能映射成现有 `task-bridge` 的 terminal task state。只有 Codex Team run 在 final evaluator pass 且 `completion_scope=final` 后，才可以视为 `completed`。
 
 ### 7.3 ask_user 与 answer
 
@@ -970,6 +1082,7 @@ Schema 要求：
 - status: completed | needs_input | blocked | failed
 - action: continue | candidate_ready | pass | needs_fix | needs_design | ask_user | stop
 - target: planner | generator | evaluator | user | system
+- completion_scope: checkpoint | final
 - reason: non-empty string
 - artifacts: optional supplemental paths under run_home or repo_root
 
@@ -1022,6 +1135,8 @@ milestone_adjustment_owner = generator
 allow_generator_direct_stop = false
 allowed_targets = planner,generator,evaluator,user,system
 allowed_actions = continue,candidate_ready,pass,needs_fix,needs_design,ask_user,stop
+completion_scopes = checkpoint,final
+require_final_scope_for_system_completion = true
 base_grading_criteria = goal_alignment,functional_correctness,code_quality,test_evidence,regression_risk,scope_control
 allowed_grades = pass,weak,fail,not_applicable
 run_home = $TASK_BRIDGE_HOME/codex-team/runs/<run_id>
@@ -1082,7 +1197,7 @@ python -m pytest -q
 暂缓：
 
 - 完整 sprint contract negotiation。
-- 多 Builder 并行。
+- 多 Generator 并行。
 - specialist agent。
 - 复杂事件系统。
 - 完整权限系统。

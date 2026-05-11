@@ -6,6 +6,7 @@ ROLES = {"planner", "generator", "evaluator"}
 ACTIONS = {"continue", "candidate_ready", "pass", "needs_fix", "needs_design", "ask_user", "stop"}
 TARGETS = {"planner", "generator", "evaluator", "user", "system"}
 AGENT_STATUSES = {"completed", "needs_input", "blocked", "failed"}
+COMPLETION_SCOPES = {"checkpoint", "final"}
 RUN_STATES = {
     "created",
     "planning",
