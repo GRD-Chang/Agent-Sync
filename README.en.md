@@ -1,16 +1,21 @@
-# Codex Team and OpenClaw Multi-Agent Task Orchestration
+# Codex Team Harness and OpenClaw Task Bridge
 
-> Build a Codex / OpenClaw multi-agent development team that can actually deliver, and fix the state loss, evidence loss, and handoff breakage that appear in long-running agent work.
+> Two independent local multi-agent engineering systems: Codex Team reproduces and validates a long-running coding harness, while OpenClaw Task Bridge coordinates OpenClaw agent teams.
 
 [English](README.en.md) | [中文](README.md)
 
-`task-bridge` is a local-first multi-agent coordination system. It now has two primary layers: an independent **Codex Team harness** that uses Planner / Generator / Evaluator roles for long-running coding tasks, and an OpenClaw task bridge that owns Jobs, Tasks, Worker queues, terminal notifications, and anti-stall scheduling.
+This repository currently contains two separate capabilities:
+
+- **Codex Team harness**: a Codex-focused Planner / Generator / Evaluator harness for long-running development work. It has its own run store, artifacts, runner, state machine, and dashboard.
+- **OpenClaw Task Bridge**: a task bridge for OpenClaw agent teams. It owns Jobs, Tasks, Worker queues, terminal notifications, follow-up, and anti-stall scheduling.
+
+Both share the same `task-bridge` Python package, CLI entry point, and local storage foundation, but their product meaning is different. Codex Team asks "can one Codex team finish and review a long task?" OpenClaw Task Bridge asks "can multiple OpenClaw agents be dispatched, tracked, and closed reliably?"
 
 ---
 
 ## Codex Team: Long-Running Development Harness
 
-`task-bridge codex-team` is a Codex harness separate from the OpenClaw job/task flow. It does not turn a large request into a mechanical chain of tiny tickets. Instead, three roles cooperate around one local run home: the Planner turns a high-level request into a testable product and engineering spec, the Generator completes a full build round, and the Evaluator independently reviews the result before passing it or sending focused fixes back.
+`task-bridge codex-team` is a Codex Team for long-running development work. It does not turn a large request into a mechanical chain of tiny tickets. Instead, three Codex roles cooperate around one local run home: the Planner turns a high-level request into a testable product and engineering spec, the Generator completes a full build round, and the Evaluator independently reviews the result before passing it or sending focused fixes back.
 
 The design revisits several ideas from Anthropic's [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps): clear roles, file-based handoff, an independent evaluator, and feedback loops that make subjective quality reviewable. Codex Team keeps those useful structures, but compresses the implementation into the smallest shape `task-bridge` needs: local files, JSON envelopes, a resumable runner, and a read-only dashboard.
 
@@ -52,19 +57,21 @@ TASK_BRIDGE_HOME=/tmp/task-bridge-codex-smoke \
   task-bridge codex-team start --repo-root "$PWD" --input "smoke test" --no-run --json
 ```
 
-### Codex Team Dashboard
+### Codex Team Dashboard: Reproduction Result
 
 ```bash
 task-bridge dashboard
 # Open /codex-team to inspect run lists and details
 ```
 
-The new Codex Team dashboard is separate from the OpenClaw Task Bridge dashboard. It behaves more like a run replay console: the list page shows run state, the detail page puts agent call flow, current route, and duration first, and the artifact reader carries the large Markdown and log content.
+The Codex Team Dashboard was a test task for the Codex Team harness itself: we asked Codex Team to build a dashboard that shows the agent call flow, runtime, outputs, and artifacts for one run, then required the Evaluator to run several UI iterations using the design-review style emphasized in Anthropic's article. The screenshots below show the result of reproducing the ideas in [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps).
+
+This dashboard behaves more like a run replay console: the list page shows run state, the detail page puts agent call flow, current route, and duration first, and the artifact reader carries the large Markdown and log content. The dashboard itself is evidence that the harness works: the Planner set scope, the Generator implemented continuously, and the Evaluator repeatedly pushed on Design quality, Originality, Craft, and Functionality until the run detail and artifact reading experience improved.
 
 | First separated run list | Iterated run list |
 |---|---|
 | ![First separated Codex Team run list](docs/assets/dashboard/codex-team-comparison/v1-separated-runs.png) | ![Iterated Codex Team run list](docs/assets/dashboard/codex-team-comparison/latest-iterated-runs.png) |
-| The first version already separated Codex Team runs from Task Bridge jobs and tasks. | The latest version uses a clearer run tape that emphasizes state, duration, owner, attempt, and route signals. |
+| The first version could already browse Codex Team runs. | The latest version uses a clearer run tape that emphasizes state, duration, owner, attempt, and route signals. |
 
 | First run detail | Iterated run detail |
 |---|---|
@@ -78,7 +85,11 @@ The new Codex Team dashboard is separate from the OpenClaw Task Bridge dashboard
 
 ---
 
-## Task Bridge Dashboard Preview (OpenClaw Orchestration)
+## OpenClaw Task Bridge: Task Dispatch and Terminal Notifications
+
+OpenClaw Task Bridge is the other capability. It serves OpenClaw Team Leader, Planning Agent, Code Agent, Quality Agent, and Release Agent workflows, and focuses on dispatch, status write-back, terminal notifications, follow-up, and anti-stall behavior across IM / agent collaboration.
+
+### Task Bridge Dashboard Preview
 
 Turn local Jobs, Tasks, Worker Queue, Alerts, and Health into a visual dashboard with one command:
 
@@ -314,7 +325,7 @@ codex-team/
 
 ### Codex Team Harness (Experimental)
 
-`codex-team` is a harness subsystem separate from the existing job/task terminal-notification flow. It reuses `TASK_BRIDGE_HOME`, the CLI, atomic JSON writes, and the test infrastructure, but run states do not directly map to existing `task-bridge` task states such as `done`, `blocked`, or `failed`.
+`codex-team` is a harness subsystem for Codex team development. It reuses `TASK_BRIDGE_HOME`, the CLI, atomic JSON writes, and the test infrastructure, and stores its own run metadata, events, next action, plan, implementation, and evaluation artifacts.
 
 Common commands:
 

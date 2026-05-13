@@ -1,16 +1,21 @@
-# 大聪明军团：Codex Team 与 OpenClaw 多 Agent 任务编排
+# 大聪明军团：Codex Team Harness 与 OpenClaw Task Bridge
 
-> 构建真正能交付的 Codex / OpenClaw 多 Agent 开发团队，解决长期任务编排中的状态丢失、证据断裂与收口困难。
+> 两套独立的本地多 Agent 工程系统：Codex Team 用来复现和验证长周期 coding harness，OpenClaw Task Bridge 用来稳定编排 OpenClaw agent 团队。
 
 [中文](README.md) | [English](README.en.md)
 
-`task-bridge` 是一个本地优先的多 Agent 协作系统。当前最重要的能力有两层：第一层是独立的 **Codex Team harness**，用 Planner / Generator / Evaluator 驱动长周期代码任务；第二层是面向 OpenClaw 的任务桥，负责 Job、Task、Worker 队列、终态通知和防假死调度。
+本仓库当前包含两个相互独立的功能：
+
+- **Codex Team harness**：面向 Codex 的 Planner / Generator / Evaluator 长周期开发 harness。它有自己的 run store、artifact、runner、状态机和 dashboard。
+- **OpenClaw Task Bridge**：面向 OpenClaw agent 团队的任务桥。它负责 Job、Task、Worker 队列、终态通知、follow-up 和防假死调度。
+
+两者共享 `task-bridge` 这个 Python 包、CLI 入口和本地数据目录基础设施，但产品语义不同。Codex Team 关注“一个 Codex 团队如何完成长任务并被评审”；OpenClaw Task Bridge 关注“多个 OpenClaw agent 如何被稳定派发、回写和收口”。
 
 ---
 
 ## Codex Team：长周期开发 harness
 
-`task-bridge codex-team` 是独立于 OpenClaw job/task 流的 Codex harness。它不是把一个任务拆成一串机械小工单，而是让三个角色围绕同一个本地 run home 协作：Planner 先把高层需求变成可验收的产品/工程 spec，Generator 连续完成一轮完整 build，Evaluator 再独立审查并给出修复意见或 final pass。
+`task-bridge codex-team` 是一个面向长周期开发的 Codex Team。它不是把一个任务拆成一串机械小工单，而是让三个 Codex 角色围绕同一个本地 run home 协作：Planner 先把高层需求变成可验收的产品/工程 spec，Generator 连续完成一轮完整 build，Evaluator 再独立审查并给出修复意见或 final pass。
 
 这个设计复盘了 Anthropic 在 [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps) 中总结的几个关键点：长任务需要清晰角色、文件化交接、独立 evaluator，以及能把主观质量变成可评审标准的反馈回路。Codex Team 保留这些有效结构，但把实现压到 `task-bridge` 能承载的最小形态：本地文件、JSON envelope、可恢复 runner、只读 dashboard。
 
@@ -52,19 +57,21 @@ TASK_BRIDGE_HOME=/tmp/task-bridge-codex-smoke \
   task-bridge codex-team start --repo-root "$PWD" --input "smoke test" --no-run --json
 ```
 
-### Codex Team Dashboard
+### Codex Team Dashboard：复现实验的结果
 
 ```bash
 task-bridge dashboard
 # 打开 /codex-team 查看 run 列表与详情
 ```
 
-新版 Codex Team dashboard 与 OpenClaw Task Bridge dashboard 分离。它更像一个 run replay console：列表页看 run 状态，detail 页优先展示 agent 调用链路、当前 route 和耗时，artifact 阅读器再承载大块 Markdown/日志内容。
+Codex Team Dashboard 是一个针对 Codex Team harness 的测试任务：我们让 Codex Team 自己开发“查看一次任务中 agent 调用流程、运行时间、产出和 artifact 的 dashboard”，并要求 Evaluator 按 Anthropic 文章中强调的设计评审方式做多轮 UI 迭代。下面的截图展示的是这次复现 [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps) 后得到的结果。
+
+这个 dashboard 更像一个 run replay console：列表页看 run 状态，detail 页优先展示 agent 调用链路、当前 route 和耗时，artifact 阅读器再承载大块 Markdown/日志内容。它本身就是 harness 是否有效的证据：Planner 定义 scope，Generator 连续实现，Evaluator 从 Design quality、Originality、Craft、Functionality 出发反复指出 UI 问题，最终产出更清晰的 run detail 和 artifact 阅读体验。
 
 | 第一版分离后的 run 列表 | 迭代后的 run 列表 |
 |---|---|
 | ![Codex Team 第一版 run 列表](docs/assets/dashboard/codex-team-comparison/v1-separated-runs.png) | ![Codex Team 迭代版 run 列表](docs/assets/dashboard/codex-team-comparison/latest-iterated-runs.png) |
-| 基础 run registry 已经独立于 Task Bridge job/task。 | 最新版改成更清晰的 run tape，强调状态、耗时、owner、attempt 和 route 信号。 |
+| 第一版已经能浏览 Codex Team run。 | 最新版改成更清晰的 run tape，强调状态、耗时、owner、attempt 和 route 信号。 |
 
 | 第一版 run detail | 迭代版 run detail |
 |---|---|
@@ -78,7 +85,11 @@ task-bridge dashboard
 
 ---
 
-## Task Bridge Dashboard 预览（OpenClaw 编排）
+## OpenClaw Task Bridge：任务编排与终态通知
+
+OpenClaw Task Bridge 是另一套功能。它面向 OpenClaw 的 Team Leader、Planning Agent、Code Agent、Quality Agent 和 Release Agent，目标是解决 IM / agent 协作里的派发、状态回写、终态通知和防假死问题。
+
+### Task Bridge Dashboard 预览
 
 只需一条命令，即可将本地的 Job、Tasks、Worker Queue、Alerts 和 Health 状态转化为可视化看板：
 
@@ -296,11 +307,11 @@ codex-team/
 | **任务管理** | `create-task`, `list-tasks`, `show-task`, `update-task`, `delete-task` | 管理具体执行步骤 |
 | **Worker 状态** | `claim`, `start`, `update-result`, `complete`, `block`, `fail` | Worker 回写进度与终态 (各路 Agent 使用) |
 | **Bridge 调度** | `worker-status`, `queue`, `dispatch-once`, `notify`, `notify-backfill`, `daemon`, `daemon-status` | 派发、通知补标、系统守护与后台健康检查 |
-| **Codex Team harness** | `codex-team start/status/show/logs/answer/resume/cancel` | 创建、查看、恢复与取消独立的 Codex Team run |
+| **Codex Team harness** | `codex-team start/status/show/logs/answer/resume/cancel` | 创建、查看、恢复与取消 Codex Team run |
 
 ### Codex Team harness（实验性）
 
-`codex-team` 是独立于现有 job/task 终态通知的 harness 子系统。它复用 `TASK_BRIDGE_HOME`、CLI、原子 JSON 写入和测试基建，但 run 状态不会直接映射为 `task-bridge` 的 `done/blocked/failed` 任务状态。
+`codex-team` 是一个面向 Codex 团队开发的 harness 子系统。它复用 `TASK_BRIDGE_HOME`、CLI、原子 JSON 写入和测试基建，保存自己的 run metadata、events、next action、plan、implementation 和 evaluation artifacts。
 
 Codex Team 采用 round harness：Planner 产出完整高层 spec，Generator 连续完成完整 build round 后用 `ready_for_review -> evaluator` 交给 Evaluator，Evaluator 做 round-level review 并给出聚合修复意见或 final pass。局部 helper、schema、测试或小修复不再作为外部评审点。
 
