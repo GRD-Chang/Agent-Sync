@@ -83,6 +83,41 @@ class DashboardCodexRunner:
         )
 
 
+class FailedFinalEvaluatorRunner(DashboardCodexRunner):
+    def run(
+        self,
+        *,
+        role: str,
+        prompt: str,
+        repo_root: Path,
+        run_home: Path,
+        schema_path: Path | None = None,
+        output_last_message_path: Path | None = None,
+        session_id: str | None = None,
+        resume: bool = False,
+    ) -> RunnerResult:
+        if role == "evaluator" and self.calls.count("evaluator") == 1:
+            self.calls.append(role)
+            return RunnerResult(
+                role=role,
+                returncode=124,
+                duration_seconds=2.0,
+                stdout_tail="final evaluator stdout\n",
+                error={"code": "RunnerTimeout", "message": "final evaluator timed out"},
+                last_message_path=output_last_message_path,
+            )
+        return super().run(
+            role=role,
+            prompt=prompt,
+            repo_root=repo_root,
+            run_home=run_home,
+            schema_path=schema_path,
+            output_last_message_path=output_last_message_path,
+            session_id=session_id,
+            resume=resume,
+        )
+
+
 def seed_codex_team_run(home: Path) -> str:
     store = CodexTeamStore(home)
     repo = home / "repo"
@@ -120,6 +155,29 @@ def test_codex_team_read_model_builds_run_list_and_detail(home: Path) -> None:
         "metadata",
     }
     assert any(log.label.endswith(".stdout.log") for log in detail.logs)
+
+
+def test_codex_team_failed_final_evaluator_error_stays_on_latest_invocation(home: Path) -> None:
+    store = CodexTeamStore(home)
+    repo = home / "repo"
+    repo.mkdir()
+    dispatcher = CodexTeamDispatcher(store=store, runner=FailedFinalEvaluatorRunner())
+
+    outcome = dispatcher.start_run(repo_root=repo, input_text="build a dashboard")
+    outcome = dispatcher.run_until_idle(outcome.run_id)
+
+    assert outcome.state == "failed"
+    detail = CodexTeamDashboardQueryService(home, now_provider=lambda: "2026-03-20T12:00:00Z").run_detail(outcome.run_id)
+
+    assert detail is not None
+    assert [node.role for node in detail.flow_nodes] == ["planner", "evaluator", "generator", "evaluator"]
+    assert [node.status for node in detail.flow_nodes] == ["completed", "completed", "completed", "failed"]
+    assert detail.flow_nodes[1].attempt == 0
+    assert detail.flow_nodes[1].reason == "implementation may start"
+    assert detail.flow_nodes[3].attempt == 1
+    assert detail.flow_nodes[3].reason == "RunnerTimeout: final evaluator timed out"
+    assert detail.flow_nodes[3].last_message_path is not None
+    assert detail.last_error_code == "RunnerTimeout"
 
 
 def test_codex_team_dashboard_routes_render_full_chain_read_only(home: Path) -> None:

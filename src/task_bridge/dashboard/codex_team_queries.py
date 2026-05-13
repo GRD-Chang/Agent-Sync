@@ -310,10 +310,12 @@ class CodexTeamDashboardQueryService:
                 continue
             if event_type in {"runner_error", "invalid_output"}:
                 owner = _error_owner(event.get("error")) or _optional_str(metadata.get("current_owner")) or "unknown"
-                for node in reversed(nodes):
-                    if node.get("role") == owner and node.get("status") != "failed":
-                        node["status"] = "failed"
-                        break
+                error_text = _error_text(event.get("error"))
+                error_node = _find_error_node(nodes, owner, event.get("error"))
+                if error_node is not None:
+                    error_node["status"] = "failed"
+                    if error_text:
+                        error_node["reason"] = error_text
                 else:
                     nodes.append(
                         {
@@ -327,7 +329,7 @@ class CodexTeamDashboardQueryService:
                             "duration_seconds": None,
                             "action": None,
                             "target": None,
-                            "reason": _error_text(event.get("error")),
+                            "reason": error_text,
                             "returncode": None,
                             "last_message_path": None,
                             "stdout_log": None,
@@ -674,6 +676,42 @@ def _error_owner(error: object) -> str | None:
         return None
     details = error.get("details") if isinstance(error.get("details"), dict) else {}
     return _optional_str(details.get("failed_owner"))
+
+
+def _find_error_node(nodes: list[dict[str, Any]], owner: str, error: object) -> dict[str, Any] | None:
+    if not isinstance(error, dict):
+        details: dict[str, Any] = {}
+    else:
+        details = error.get("details") if isinstance(error.get("details"), dict) else {}
+    failed_attempt = _optional_int(details.get("failed_attempt"))
+    failed_state = _optional_str(details.get("failed_state"))
+    last_message_path = _optional_str(details.get("last_message_path"))
+
+    def role_matches(node: dict[str, Any]) -> bool:
+        return node.get("role") == owner
+
+    def attempt_matches(node: dict[str, Any]) -> bool:
+        return failed_attempt is None or _optional_int(node.get("attempt")) == failed_attempt
+
+    def state_matches(node: dict[str, Any]) -> bool:
+        return failed_state is None or _optional_str(node.get("state")) == failed_state
+
+    def path_matches(node: dict[str, Any]) -> bool:
+        return last_message_path is None or _optional_str(node.get("last_message_path")) == last_message_path
+
+    ranked_checks = (
+        lambda node: node.get("status") == "failed" and attempt_matches(node) and state_matches(node) and path_matches(node),
+        lambda node: node.get("status") == "failed" and attempt_matches(node) and state_matches(node),
+        lambda node: node.get("status") == "failed" and attempt_matches(node),
+        lambda node: node.get("status") != "failed" and attempt_matches(node) and state_matches(node) and path_matches(node),
+        lambda node: node.get("status") != "failed" and attempt_matches(node) and state_matches(node),
+        lambda node: node.get("status") != "failed" and attempt_matches(node),
+    )
+    for check in ranked_checks:
+        for node in reversed(nodes):
+            if role_matches(node) and check(node):
+                return node
+    return None
 
 
 def _safe_display_path(run_id: str, value: object, store: CodexTeamStore) -> str | None:
