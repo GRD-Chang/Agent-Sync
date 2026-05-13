@@ -183,6 +183,22 @@ body[data-dashboard-page="codex-team"]::before {
   gap: 0.7rem;
 }
 
+.codex-team-masthead .codex-product-nav,
+.codex-team-masthead .codex-reader-tools {
+  border-color: rgba(237, 244, 239, 0.2);
+  background: rgba(237, 244, 239, 0.08);
+}
+
+.codex-team-masthead .codex-product-nav a,
+.codex-team-masthead .codex-product-nav span {
+  border-color: rgba(237, 244, 239, 0.2);
+  background: rgba(237, 244, 239, 0.94);
+}
+
+.codex-team-masthead .codex-reader-tools summary {
+  color: #edf4ef;
+}
+
 .codex-reader-tools summary {
   cursor: pointer;
   color: var(--codex-ink);
@@ -611,7 +627,8 @@ body[data-dashboard-page="codex-team"]::before {
   margin-top: 0.25rem;
   font-family: var(--font-mono);
   font-size: 1rem;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: keep-all;
 }
 
 .codex-trace-layout {
@@ -772,7 +789,6 @@ body[data-dashboard-page="codex-team"]::before {
 }
 
 .codex-node-links {
-  margin-top: 0.78rem;
   color: var(--codex-muted);
   font-family: var(--font-mono);
   font-size: 0.72rem;
@@ -780,15 +796,45 @@ body[data-dashboard-page="codex-team"]::before {
 }
 
 .codex-node-links a {
-  display: inline-flex;
+  display: grid;
+  gap: 0.18rem;
   border: 1px solid var(--codex-line);
-  border-radius: 999px;
+  border-radius: 5px;
   background: #f6faf6;
-  padding: 0.38rem 0.55rem;
+  padding: 0.5rem 0.58rem;
   color: var(--codex-teal);
   font-family: var(--font-ui);
   font-weight: 800;
   text-decoration: none;
+}
+
+.codex-node-links a small,
+.codex-node-evidence-set > span {
+  color: var(--codex-muted);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.codex-node-links a strong {
+  color: var(--codex-ink);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.codex-node-evidence-set {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.82rem;
+  border: 1px solid rgba(29, 113, 104, 0.18);
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, rgba(29, 113, 104, 0.08), transparent 30%),
+    #f7faf6;
+  padding: 0.62rem;
 }
 
 .codex-node-links a:hover,
@@ -1170,8 +1216,8 @@ body[data-dashboard-page="codex-team"]::before {
 .codex-team-masthead {
   border-color: rgba(18, 25, 27, 0.2);
   background:
-    linear-gradient(90deg, rgba(17, 24, 23, 0.92) 0, rgba(31, 39, 41, 0.9) 36%, rgba(251, 252, 249, 0.95) 36.1%),
-    var(--codex-panel);
+    linear-gradient(135deg, rgba(17, 24, 23, 0.98), rgba(31, 39, 41, 0.96) 58%, rgba(43, 62, 62, 0.94)),
+    var(--codex-console);
 }
 
 .codex-team-brand {
@@ -1300,10 +1346,45 @@ body[data-dashboard-page="codex-team"]::before {
   position: relative;
   display: flex;
   gap: 0.7rem;
-  margin: 1rem 0 1.1rem;
+  margin: 0;
   overflow-x: auto;
-  padding: 0.45rem 0.25rem 0.85rem;
+  padding: 0.55rem 0.35rem 0.85rem;
   scrollbar-width: thin;
+}
+
+.codex-flow-stage {
+  position: relative;
+  margin: 1rem 0 1.1rem;
+  overflow: hidden;
+  border: 1px solid var(--codex-line);
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, rgba(17, 24, 23, 0.035), transparent 28%),
+    #edf3ef;
+}
+
+.codex-flow-stage::after {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 3.5rem;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #edf3ef 72%);
+  content: "";
+}
+
+.codex-flow-scroll-hint {
+  position: absolute;
+  inset: auto 0.6rem 0.45rem auto;
+  z-index: 2;
+  border: 1px solid rgba(29, 113, 104, 0.22);
+  border-radius: 999px;
+  background: rgba(251, 252, 249, 0.95);
+  color: var(--codex-teal);
+  padding: 0.26rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .codex-flow-board::before {
@@ -1320,7 +1401,7 @@ body[data-dashboard-page="codex-team"]::before {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 0.25rem 0.55rem;
-  flex: 0 0 min(13rem, 78vw);
+  flex: 0 0 min(17rem, 82vw);
   min-width: 0;
   border: 1px solid var(--codex-line);
   border-radius: 6px;
@@ -1362,10 +1443,7 @@ body[data-dashboard-page="codex-team"]::before {
 .codex-flow-board-route,
 .codex-flow-board-time {
   min-width: 0;
-  overflow: hidden;
   font-family: var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .codex-flow-board-role {
@@ -1375,14 +1453,33 @@ body[data-dashboard-page="codex-team"]::before {
 }
 
 .codex-flow-board-route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.35rem;
+  align-items: center;
   color: var(--codex-muted);
   font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.codex-flow-board-route b {
+  color: var(--codex-teal);
+  font-family: var(--font-ui);
+}
+
+.codex-flow-board-route span {
+  overflow-wrap: anywhere;
 }
 
 .codex-flow-board-time {
   color: var(--codex-blue);
   font-size: 0.7rem;
   font-weight: 800;
+}
+
+.codex-flow-console h2 {
+  font-size: clamp(1.75rem, 2.8vw, 2.35rem);
+  line-height: 1.05;
 }
 
 .codex-flow-node {
@@ -1534,7 +1631,17 @@ body[data-dashboard-page="codex-team"]::before {
 }
 
 .codex-reader-dossier {
-  grid-template-columns: minmax(0, 1fr) repeat(2, minmax(88px, 0.12fr)) repeat(2, minmax(82px, 0.1fr));
+  grid-template-columns: minmax(12rem, 1fr) repeat(4, minmax(7rem, 0.12fr));
+}
+
+.codex-reader-meta-token dd {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.codex-reader-meta-path dd {
+  overflow-wrap: anywhere;
 }
 
 .codex-reader-document-grid {
@@ -1607,8 +1714,8 @@ body[data-dashboard-page="codex-team"]::before {
 @media (max-width: 1120px) {
   .codex-team-masthead {
     background:
-      linear-gradient(180deg, rgba(17, 24, 23, 0.94) 0, rgba(31, 39, 41, 0.9) 48%, rgba(251, 252, 249, 0.96) 48.1%),
-      var(--codex-panel);
+      linear-gradient(135deg, rgba(17, 24, 23, 0.98), rgba(31, 39, 41, 0.96) 58%, rgba(43, 62, 62, 0.94)),
+      var(--codex-console);
   }
 
   .codex-run-table-head {

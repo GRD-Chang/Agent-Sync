@@ -72,23 +72,23 @@
   </div>
   {% endif %}
   <dl class="codex-reader-meta codex-reader-dossier">
-    <div>
+    <div class="codex-reader-meta-path">
       <dt>{{ ui.codex_team.artifact_path }}</dt>
       <dd>{{ preview.path }}</dd>
     </div>
-    <div>
+    <div class="codex-reader-meta-token">
       <dt>{{ ui.codex_team.artifact_kind }}</dt>
       <dd>{{ preview.kind }}</dd>
     </div>
-    <div>
+    <div class="codex-reader-meta-token">
       <dt>{{ ui.codex_team.artifact_status }}</dt>
       <dd>{{ preview.status }}</dd>
     </div>
-    <div>
+    <div class="codex-reader-meta-token">
       <dt>{{ ui.codex_team.reader_size }}</dt>
       <dd>{{ preview.size_label }}</dd>
     </div>
-    <div>
+    <div class="codex-reader-meta-token">
       <dt>{{ ui.codex_team.reader_lines }}</dt>
       <dd>{{ preview.line_count }}</dd>
     </div>
@@ -174,15 +174,6 @@
     <a class="codex-back-link" href="{{ run.back_href }}">{{ ui.codex_team.runs_link }}</a>
     <p class="eyebrow">{{ ui.codex_team.detail_eyebrow }}</p>
     <h2 id="codex-run-title" data-testid="dashboard-page-title">{{ run.run_id }}</h2>
-    <div class="codex-trace-preview codex-title-trace" aria-label="{{ ui.codex_team.trace_preview }}">
-      {% for node in run.flow_nodes %}
-      <a class="codex-trace-preview-node codex-role-{{ node.role }} status-{{ node.status }}{% if loop.last %} is-terminal{% endif %}" href="#step-{{ node.node_id }}">
-        <span>{{ loop.index }}</span>
-        <strong>{{ node.role }}</strong>
-        <small>{% if node.attempt is not none %}{{ ui.codex_team.attempt }} {{ node.attempt }} · {% endif %}{{ node.duration_label }}</small>
-      </a>
-      {% endfor %}
-    </div>
     <p class="codex-path">{{ run.repo_root }}</p>
   </div>
   <div class="codex-run-position">
@@ -264,15 +255,24 @@
       <h2 id="codex-flow-title">{{ ui.codex_team.flow_title }}</h2>
       <p class="section-note">{{ ui.codex_team.flow_note }}</p>
     </div>
-    <div class="codex-flow-board" aria-label="{{ ui.codex_team.trace_preview }}">
+    <div class="codex-flow-stage">
+      <div class="codex-flow-board" aria-label="{{ ui.codex_team.trace_preview }}">
       {% for node in run.flow_nodes %}
       <a class="codex-flow-board-node codex-role-{{ node.role }} status-{{ node.status }}{% if loop.last %} is-terminal{% endif %}" href="#step-{{ node.node_id }}">
         <span class="codex-flow-board-index">{{ loop.index }}</span>
         <span class="codex-flow-board-role">{{ node.role }}</span>
-        <span class="codex-flow-board-route">{{ node.action or node.status }}{% if node.target %} → {{ node.target }}{% endif %}</span>
+        <span class="codex-flow-board-route">
+          <span>{{ node.action or node.status }}</span>
+          {% if node.target %}
+          <b aria-hidden="true">→</b>
+          <span>{{ node.target }}</span>
+          {% endif %}
+        </span>
         <span class="codex-flow-board-time">{{ node.duration_label }}</span>
       </a>
       {% endfor %}
+      </div>
+      <span class="codex-flow-scroll-hint">{{ ui.codex_team.flow_scroll_hint }}</span>
     </div>
     <div class="codex-flow-list">
       {% for node in run.flow_nodes %}
@@ -341,19 +341,22 @@
           {% if node.reason %}
           <p class="codex-route-copy">{{ node.reason }}</p>
           {% endif %}
-          <div class="codex-node-links">
-            {% if node.artifact_href %}
-            <a href="{{ node.artifact_href }}">{{ ui.codex_team.open_artifact }}</a>
-            {% endif %}
-            {% if node.last_message_href %}
-            <a href="{{ node.last_message_href }}">{{ ui.codex_team.open_last_message }}</a>
-            {% endif %}
-            {% if node.stdout_href %}
-            <a href="{{ node.stdout_href }}">{{ ui.codex_team.open_stdout }}</a>
-            {% endif %}
-            {% if node.stderr_href %}
-            <a href="{{ node.stderr_href }}">{{ ui.codex_team.open_stderr }}</a>
-            {% endif %}
+          <div class="codex-node-evidence-set">
+            <span>{{ ui.codex_team.evidence_set }}</span>
+            <nav class="codex-node-links" aria-label="{{ ui.codex_team.evidence_set }}">
+              {% if node.artifact_href %}
+              <a href="{{ node.artifact_href }}"><small>{{ ui.codex_team.reader_group_artifacts }}</small><strong>{{ ui.codex_team.open_artifact }}</strong></a>
+              {% endif %}
+              {% if node.last_message_href %}
+              <a href="{{ node.last_message_href }}"><small>{{ ui.codex_team.structured_summary }}</small><strong>{{ ui.codex_team.open_last_message }}</strong></a>
+              {% endif %}
+              {% if node.stdout_href %}
+              <a href="{{ node.stdout_href }}"><small>stdout</small><strong>{{ ui.codex_team.open_stdout }}</strong></a>
+              {% endif %}
+              {% if node.stderr_href %}
+              <a href="{{ node.stderr_href }}"><small>stderr</small><strong>{{ ui.codex_team.open_stderr }}</strong></a>
+              {% endif %}
+            </nav>
           </div>
           {% if node.last_message_path or node.stdout_log or node.stderr_log %}
           <details class="codex-step-detail">
