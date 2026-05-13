@@ -168,18 +168,32 @@
 </article>
 {% endmacro %}
 
+{% macro step_evidence_links(node) %}
+<nav class="codex-node-links" aria-label="{{ ui.codex_team.evidence_set }}">
+  {% if node.artifact_href %}
+  <a href="{{ node.artifact_href }}"><small>{{ ui.codex_team.reader_group_artifacts }}</small><strong>{{ ui.codex_team.open_artifact }}</strong></a>
+  {% endif %}
+  {% if node.last_message_href %}
+  <a href="{{ node.last_message_href }}"><small>{{ ui.codex_team.structured_summary }}</small><strong>{{ ui.codex_team.open_last_message }}</strong></a>
+  {% endif %}
+  {% if node.stdout_href %}
+  <a href="{{ node.stdout_href }}"><small>stdout</small><strong>{{ ui.codex_team.open_stdout }}</strong></a>
+  {% endif %}
+  {% if node.stderr_href %}
+  <a href="{{ node.stderr_href }}"><small>stderr</small><strong>{{ ui.codex_team.open_stderr }}</strong></a>
+  {% endif %}
+</nav>
+{% endmacro %}
+
 {% block content %}
-<section class="codex-run-command" aria-labelledby="codex-run-title" data-testid="dashboard-codex-team-detail">
-  <div class="codex-run-identity">
+{% set current_node = run.flow_nodes|last %}
+<section class="codex-run-replay" aria-labelledby="codex-run-title" data-testid="dashboard-codex-team-detail">
+  <div class="codex-run-identity codex-run-replay-identity">
     <a class="codex-back-link" href="{{ run.back_href }}">{{ ui.codex_team.runs_link }}</a>
     <p class="eyebrow">{{ ui.codex_team.detail_eyebrow }}</p>
     <h2 id="codex-run-title" data-testid="dashboard-page-title">{{ run.run_id }}</h2>
     <p class="codex-path">{{ run.repo_root }}</p>
-  </div>
-  <div class="codex-run-position">
-    <p class="eyebrow">{{ ui.codex_team.trace_summary }}</p>
-    <p>{{ ui.codex_team.trace_summary_note }}</p>
-    <dl>
+    <dl class="codex-run-signal-grid" aria-label="{{ ui.codex_team.trace_stats_label }}">
       <div>
         <dt>{{ ui.codex_team.state }}</dt>
         <dd><span class="status-pill codex-state-{{ run.state }}">{{ run.state }}</span></dd>
@@ -193,38 +207,66 @@
         <dd>{{ run.current_owner or ui.common.none }}</dd>
       </div>
       <div>
-        <dt>{{ ui.codex_team.attempt }}</dt>
-        <dd>{{ run.current_attempt }}</dd>
-      </div>
-      <div>
-        <dt>{{ ui.codex_team.updated_at }}</dt>
-        <dd>{{ render_local_time(run.updated_at, run.updated_at_iso) }}</dd>
-      </div>
-      <div>
         <dt>{{ ui.codex_team.duration }}</dt>
         <dd>{{ run.duration_label }}</dd>
       </div>
     </dl>
   </div>
-</section>
 
-<section class="codex-run-strip" aria-label="{{ ui.codex_team.trace_stats_label }}">
-  <div>
-    <span>{{ ui.codex_team.flow_title }}</span>
-    <strong>{{ run.flow_nodes|length }}</strong>
+  <div class="codex-current-step-panel">
+    <p class="eyebrow">{{ ui.codex_team.current_step }}</p>
+    {% if current_node %}
+    <div class="codex-current-step-heading">
+      <span class="codex-current-role codex-role-{{ current_node.role }}">{{ current_node.role }}</span>
+      <h3>{{ current_node.action or current_node.status }}</h3>
+    </div>
+    <dl class="codex-current-step-grid">
+      <div>
+        <dt>{{ ui.codex_team.status }}</dt>
+        <dd><span class="status-pill status-{{ current_node.status }}">{{ current_node.status }}</span></dd>
+      </div>
+      <div>
+        <dt>{{ ui.codex_team.target }}</dt>
+        <dd>{{ current_node.target or ui.common.none }}</dd>
+      </div>
+      <div>
+        <dt>{{ ui.codex_team.duration }}</dt>
+        <dd>{{ current_node.duration_label }}</dd>
+      </div>
+    </dl>
+    {% if current_node.reason %}
+    <p class="codex-current-reason">{{ current_node.reason }}</p>
+    {% endif %}
+    <div class="codex-node-evidence-set codex-current-evidence">
+      <span>{{ ui.codex_team.current_evidence }}</span>
+      {{ step_evidence_links(current_node) }}
+    </div>
+    {% else %}
+    <p>{{ ui.codex_team.trace_summary_note }}</p>
+    {% endif %}
   </div>
-  <div>
-    <span>{{ ui.codex_team.artifacts_title }}</span>
-    <strong>{{ run.artifacts|length }}</strong>
-  </div>
-  <div>
-    <span>{{ ui.codex_team.logs_title }}</span>
-    <strong>{{ run.logs|length }}</strong>
-  </div>
-  <div>
-    <span>{{ ui.codex_team.events_status }}</span>
-    <strong>{{ run.events_status }}</strong>
-  </div>
+
+  <aside class="codex-route-console codex-route-console--inline" data-testid="dashboard-codex-team-route">
+    <p class="eyebrow">{{ ui.codex_team.route_eyebrow }}</p>
+    <h2>{{ ui.codex_team.route_title }}</h2>
+    <dl class="codex-route-strip">
+      <div>
+        <dt>{{ ui.codex_team.action }}</dt>
+        <dd>{{ run.route_decision.action or ui.common.none }}</dd>
+      </div>
+      <div>
+        <dt>{{ ui.codex_team.target }}</dt>
+        <dd>{{ run.route_decision.target or ui.common.none }}</dd>
+      </div>
+    </dl>
+    <p class="codex-route-inline-reason"><strong>{{ ui.codex_team.reason }}</strong> {{ run.route_decision.reason or ui.common.none }}</p>
+    <div class="codex-run-counts" aria-label="{{ ui.codex_team.trace_stats_label }}">
+      <span>{{ ui.codex_team.flow_title }} <strong>{{ run.flow_nodes|length }}</strong></span>
+      <span>{{ ui.codex_team.artifacts_title }} <strong>{{ run.artifacts|length }}</strong></span>
+      <span>{{ ui.codex_team.logs_title }} <strong>{{ run.logs|length }}</strong></span>
+      <span>{{ ui.codex_team.events_status }} <strong>{{ run.events_status }}</strong></span>
+    </div>
+  </aside>
 </section>
 
 {% if run.needs_user_input or run.last_error_code %}
@@ -258,7 +300,11 @@
     <div class="codex-flow-stage">
       <div class="codex-flow-board" aria-label="{{ ui.codex_team.trace_preview }}">
       {% for node in run.flow_nodes %}
-      <a class="codex-flow-board-node codex-role-{{ node.role }} status-{{ node.status }}{% if loop.last %} is-terminal{% endif %}" href="#step-{{ node.node_id }}">
+      <a
+        class="codex-flow-board-node codex-role-{{ node.role }} status-{{ node.status }}{% if loop.last %} is-terminal is-current{% endif %}"
+        href="#step-{{ node.node_id }}"
+        {% if loop.last %}aria-current="step"{% endif %}
+      >
         <span class="codex-flow-board-index">{{ loop.index }}</span>
         <span class="codex-flow-board-role">{{ node.role }}</span>
         <span class="codex-flow-board-route">
@@ -277,7 +323,7 @@
     <div class="codex-flow-list">
       {% for node in run.flow_nodes %}
       <article
-        class="codex-flow-node codex-role-{{ node.role }} status-{{ node.status }}"
+        class="codex-flow-node codex-role-{{ node.role }} status-{{ node.status }}{% if loop.last %} is-current{% endif %}"
         id="step-{{ node.node_id }}"
         data-testid="dashboard-codex-team-flow-node-{{ node.role }}-{{ loop.index }}"
       >
@@ -320,14 +366,6 @@
               <dt>{{ ui.codex_team.ended_at }}</dt>
               <dd>{{ render_local_time(node.ended_at, node.ended_at_iso) }}</dd>
             </div>
-            <div>
-              <dt>{{ ui.codex_team.duration }}</dt>
-              <dd>{{ node.duration_label }}</dd>
-            </div>
-            <div>
-              <dt>{{ ui.codex_team.target }}</dt>
-              <dd>{{ node.target or ui.common.none }}</dd>
-            </div>
             {% if node.returncode is not none %}
             <div>
               <dt>{{ ui.codex_team.returncode }}</dt>
@@ -343,20 +381,7 @@
           {% endif %}
           <div class="codex-node-evidence-set">
             <span>{{ ui.codex_team.evidence_set }}</span>
-            <nav class="codex-node-links" aria-label="{{ ui.codex_team.evidence_set }}">
-              {% if node.artifact_href %}
-              <a href="{{ node.artifact_href }}"><small>{{ ui.codex_team.reader_group_artifacts }}</small><strong>{{ ui.codex_team.open_artifact }}</strong></a>
-              {% endif %}
-              {% if node.last_message_href %}
-              <a href="{{ node.last_message_href }}"><small>{{ ui.codex_team.structured_summary }}</small><strong>{{ ui.codex_team.open_last_message }}</strong></a>
-              {% endif %}
-              {% if node.stdout_href %}
-              <a href="{{ node.stdout_href }}"><small>stdout</small><strong>{{ ui.codex_team.open_stdout }}</strong></a>
-              {% endif %}
-              {% if node.stderr_href %}
-              <a href="{{ node.stderr_href }}"><small>stderr</small><strong>{{ ui.codex_team.open_stderr }}</strong></a>
-              {% endif %}
-            </nav>
+            {{ step_evidence_links(node) }}
           </div>
           {% if node.last_message_path or node.stdout_log or node.stderr_log %}
           <details class="codex-step-detail">
@@ -383,23 +408,7 @@
     </div>
   </div>
 
-  <aside class="codex-route-console" data-testid="dashboard-codex-team-route">
-    <p class="eyebrow">{{ ui.codex_team.route_eyebrow }}</p>
-    <h2>{{ ui.codex_team.route_title }}</h2>
-    <dl class="codex-route-strip">
-      <div>
-        <dt>{{ ui.codex_team.action }}</dt>
-        <dd>{{ run.route_decision.action or ui.common.none }}</dd>
-      </div>
-      <div>
-        <dt>{{ ui.codex_team.target }}</dt>
-        <dd>{{ run.route_decision.target or ui.common.none }}</dd>
-      </div>
-      <div>
-        <dt>{{ ui.codex_team.reason }}</dt>
-        <dd>{{ run.route_decision.reason or ui.common.none }}</dd>
-      </div>
-    </dl>
+  <aside class="codex-route-console codex-route-console--reader">
     <nav class="codex-route-evidence-map" aria-label="{{ ui.codex_team.evidence_map }}">
       <span>{{ ui.codex_team.evidence_map }}</span>
       <a href="#codex-artifacts-title">{{ ui.codex_team.artifacts_title }}</a>
@@ -427,7 +436,11 @@
       <section>
         <h3>{{ ui.codex_team.reader_group_artifacts }}</h3>
       {% for artifact in run.artifacts %}
-      <a class="artifact-status-{{ artifact.status }}" href="#{{ artifact.anchor }}">
+      <a
+        class="artifact-status-{{ artifact.status }}{% if current_node and artifact.source_role == current_node.role and artifact.source_attempt == current_node.attempt %} is-current-evidence{% endif %}"
+        href="#{{ artifact.anchor }}"
+        {% if current_node and artifact.source_role == current_node.role and artifact.source_attempt == current_node.attempt %}aria-current="location"{% endif %}
+      >
         <span>{{ artifact.label }}</span>
         <small>{% if artifact.source_role %}{{ artifact.source_role }}{% if artifact.source_attempt is not none %} · {{ ui.codex_team.attempt }} {{ artifact.source_attempt }}{% endif %} · {% endif %}{{ artifact.kind }} · {{ artifact.status }}</small>
       </a>
@@ -437,7 +450,11 @@
       <section>
         <h3>{{ ui.codex_team.reader_group_logs }}</h3>
       {% for log in run.logs %}
-      <a class="artifact-status-{{ log.status }}" href="#{{ log.anchor }}">
+      <a
+        class="artifact-status-{{ log.status }}{% if current_node and log.source_role == current_node.role and log.source_attempt == current_node.attempt %} is-current-evidence{% endif %}"
+        href="#{{ log.anchor }}"
+        {% if current_node and log.source_role == current_node.role and log.source_attempt == current_node.attempt %}aria-current="location"{% endif %}
+      >
         <span>{{ log.label }}</span>
         <small>{% if log.source_role %}{{ log.source_role }}{% if log.source_attempt is not none %} · {{ ui.codex_team.attempt }} {{ log.source_attempt }}{% endif %} · {% endif %}{{ log.evidence_label or log.kind }} · {{ log.status }}</small>
       </a>

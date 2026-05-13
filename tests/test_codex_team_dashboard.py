@@ -208,14 +208,21 @@ def test_codex_team_dashboard_routes_render_full_chain_read_only(home: Path) -> 
     assert "codex-run-ledger" in list_body
     assert "codex-run-mission-board" in list_body
     assert "codex-run-mission" in list_body
+    assert "codex-run-tape" in list_body
+    assert "codex-run-tape-row" in list_body
     assert 'data-testid="dashboard-codex-team-run-list"' in list_body
     assert run_id in list_body
+    assert 'class="codex-run-replay"' in detail_body
+    assert "Current step" in detail_body
+    assert "Current evidence" in detail_body
     assert 'data-testid="dashboard-codex-team-flow"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-planner-1"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-generator-3"' in detail_body
     assert 'class="codex-flow-stage"' in detail_body
     assert 'class="codex-flow-board"' in detail_body
-    assert "Scroll trace" in detail_body
+    assert "Trace map" in detail_body
+    assert 'aria-current="step"' in detail_body
+    assert "is-current-evidence" in detail_body
     assert 'class="codex-node-route-map"' in detail_body
     assert 'class="codex-node-evidence-set"' in detail_body
     assert 'class="codex-route-evidence-map"' in detail_body

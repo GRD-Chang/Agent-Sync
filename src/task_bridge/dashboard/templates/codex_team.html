@@ -62,33 +62,37 @@
     <p class="codex-path">{{ codex_team.runs_dir }}</p>
   </div>
   {% else %}
-  <div class="codex-run-ledger codex-run-mission-board" data-testid="dashboard-codex-team-run-list">
-    <div class="codex-run-table-head" aria-hidden="true">
-      <span>{{ ui.codex_team.run_identity }}</span>
-      <span>{{ ui.codex_team.status }}</span>
-      <span>{{ ui.codex_team.owner }}</span>
-      <span>{{ ui.codex_team.latest_route }}</span>
-      <span>{{ ui.codex_team.risk }}</span>
-      <span>{{ ui.codex_team.updated_at }}</span>
-    </div>
+  <div class="codex-run-ledger codex-run-mission-board codex-run-tape" data-testid="dashboard-codex-team-run-list">
     {% for run in codex_team.runs %}
-    <a class="codex-run-record codex-run-mission status-{{ run.status }}" href="{{ run.detail_href }}" data-testid="dashboard-codex-team-run-{{ run.run_id }}">
-      <div class="codex-run-cell codex-run-id" data-label="{{ ui.codex_team.run_identity }}">
+    <a class="codex-run-record codex-run-mission codex-run-tape-row status-{{ run.status }}" href="{{ run.detail_href }}" data-testid="dashboard-codex-team-run-{{ run.run_id }}">
+      <div class="codex-run-tape-marker" data-label="{{ ui.codex_team.status }}">
         <span class="codex-run-status-rail status-{{ run.status }}" aria-hidden="true"></span>
-        <strong>{{ run.run_id }}</strong>
-        <span>{{ run.repo_root }}</span>
-      </div>
-      <div class="codex-run-cell" data-label="{{ ui.codex_team.status }}">
         <span class="codex-run-state-lockup">
           <span class="status-pill status-{{ run.status }}">{{ run.status }}</span>
           <span class="status-pill codex-state-{{ run.state }}">{{ run.state }}</span>
         </span>
+        <strong>{{ run.duration_label }}</strong>
+        <small>{{ render_local_time(run.updated_at, run.updated_at_iso) }}</small>
       </div>
-      <div class="codex-run-cell codex-mono" data-label="{{ ui.codex_team.owner }}">
-        <span>{{ run.current_owner or ui.common.none }}</span>
-        <small>{{ ui.codex_team.attempt }} {{ run.current_attempt }} · {{ run.duration_label }}</small>
+      <div class="codex-run-tape-main" data-label="{{ ui.codex_team.run_identity }}">
+        <strong>{{ run.run_id }}</strong>
+        <span>{{ run.repo_root }}</span>
+        <dl class="codex-run-tape-meta">
+          <div>
+            <dt>{{ ui.codex_team.owner }}</dt>
+            <dd>{{ run.current_owner or ui.common.none }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.codex_team.attempt }}</dt>
+            <dd>{{ run.current_attempt }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.codex_team.created_at }}</dt>
+            <dd>{{ render_local_time(run.created_at, run.created_at_iso) }}</dd>
+          </div>
+        </dl>
       </div>
-      <div class="codex-run-cell codex-route-cell" data-label="{{ ui.codex_team.latest_route }}">
+      <div class="codex-run-tape-route codex-route-cell" data-label="{{ ui.codex_team.latest_route }}">
         {% if run.last_action or run.last_target %}
         <span class="codex-route-arrow">
           <span>{{ run.last_action or ui.common.unknown }}</span>
@@ -102,11 +106,7 @@
         <small title="{{ run.last_reason }}">{{ run.last_reason }}</small>
         {% endif %}
       </div>
-      <div class="codex-run-cell" data-label="{{ ui.codex_team.risk }}">{{ risk_pill(run) }}</div>
-      <div class="codex-run-cell codex-mono" data-label="{{ ui.codex_team.updated_at }}">
-        <span>{{ render_local_time(run.updated_at, run.updated_at_iso) }}</span>
-        <small>{{ ui.codex_team.created_at }} {{ render_local_time(run.created_at, run.created_at_iso) }}</small>
-      </div>
+      <div class="codex-run-tape-risk" data-label="{{ ui.codex_team.risk }}">{{ risk_pill(run) }}</div>
     </a>
     {% endfor %}
   </div>
