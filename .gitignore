@@ -18,6 +18,7 @@ node_modules/
 .nox/
 pip-wheel-metadata/
 .playwright-browsers/
+.playwright-mcp/
 __pycache__/
 *.py[cod]
 .pytest_cache/

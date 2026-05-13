@@ -1493,7 +1493,8 @@ def test_dashboard_overview_route_exposes_frozen_read_only_selectors(home: Path)
     assert 'data-testid="dashboard-primary-nav"' in body
     assert 'data-testid="dashboard-page-chrome"' in body
     assert 'data-testid="dashboard-breadcrumbs"' in body
-    assert body.count('data-testid="dashboard-nav-') == 7
+    assert body.count('data-testid="dashboard-nav-') == 6
+    assert 'data-testid="dashboard-cross-product-codex-team"' in body
     assert 'data-testid="dashboard-page-title"' in body
     assert 'data-testid="dashboard-overview-hero"' in body
     assert 'data-testid="dashboard-overview-task-status"' in body

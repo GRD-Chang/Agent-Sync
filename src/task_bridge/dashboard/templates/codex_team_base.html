@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html class="codex-team-document" lang="{{ html_lang }}" data-font-preset="{{ default_font_preset }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }} | Codex Team</title>
+    <script>
+      (function () {
+        try {
+          var preset = window.localStorage.getItem("task-bridge.dashboard.font");
+          if (preset) {
+            document.documentElement.setAttribute("data-font-preset", preset);
+          }
+        } catch (error) {
+          void error;
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='/dashboard.css') }}">
+    <style data-testid="dashboard-agent-theme">{{ dashboard_agent_theme_css | safe }}</style>
+    <script defer src="{{ request.url_for('static', path='/dashboard.js') }}"></script>
+  </head>
+  <body
+    data-dashboard-page="codex-team"
+    data-explicit-timezone="{{ explicit_timezone or '' }}"
+    data-ui-locale="{{ locale }}"
+    data-font-preset="{{ default_font_preset }}"
+  >
+    <a class="skip-link" href="#content">{{ ui.shell.skip_link }}</a>
+    <div class="codex-team-shell" data-testid="codex-team-shell">
+      <header class="codex-team-masthead">
+        <div class="codex-team-brand">
+          <p class="eyebrow">{{ ui.codex_team.eyebrow }}</p>
+          <h1>{{ ui.codex_team.shell_title }}</h1>
+          <p>{{ ui.codex_team.shell_note }}</p>
+        </div>
+        <div class="codex-team-actions">
+          <nav class="codex-product-nav" aria-label="Codex Team" data-testid="codex-team-product-nav">
+            <a href="{{ codex_team_href }}" data-testid="codex-team-runs-link">{{ ui.codex_team.runs_link }}</a>
+            <a href="{{ nav_items[0].href }}" data-testid="codex-team-task-bridge-link">{{ ui.codex_team.home_link }}</a>
+            <span>{{ ui.codex_team.read_only }}</span>
+          </nav>
+          <section class="codex-reader-tools" aria-label="{{ ui.codex_team.reader_controls }}" data-testid="codex-team-reader-tools">
+            <div class="locale-links" aria-label="{{ ui.shell.locale_label }}">
+              {% for option in locale_options %}
+              <a
+                class="locale-link{% if option.is_active %} is-active{% endif %}"
+                data-testid="{{ option.testid }}"
+                href="{{ option.href }}"
+                {% if option.is_active %}aria-current="page"{% endif %}
+              >{{ option.label }}</a>
+              {% endfor %}
+            </div>
+            <div class="font-links" role="group" aria-label="{{ ui.shell.font_label }}" data-testid="dashboard-font-switch">
+              {% for option in font_options %}
+              <button
+                type="button"
+                class="font-link{% if option.is_default %} is-active{% endif %}"
+                data-font-option="{{ option.key }}"
+                data-testid="dashboard-font-{{ option.key }}"
+                aria-label="{{ option.label }}. {{ option.sample }}"
+                title="{{ option.sample }}"
+                aria-pressed="{% if option.is_default %}true{% else %}false{% endif %}"
+              >
+                <span class="font-link-label">{{ option.label }}</span>
+                <span class="font-link-sample">{{ option.sample }}</span>
+              </button>
+              {% endfor %}
+            </div>
+          </section>
+        </div>
+      </header>
+      <main id="content" class="codex-team-main">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </body>
+</html>

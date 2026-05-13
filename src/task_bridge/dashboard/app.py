@@ -30,7 +30,6 @@ NAV_ITEMS = [
     NavItem("overview", "/overview"),
     NavItem("jobs", "/jobs"),
     NavItem("tasks", "/tasks"),
-    NavItem("codex-team", "/codex-team"),
     NavItem("worker-queue", "/worker-queue"),
     NavItem("alerts", "/alerts"),
     NavItem("health", "/health"),
@@ -356,6 +355,11 @@ def _base_context(request: Request, active_page: str) -> dict[str, object]:
             }
             for item in NAV_ITEMS
         ],
+        "codex_team_href": _path_with_locale(
+            "/codex-team",
+            [("tz", explicit_timezone or "")],
+            locale,
+        ),
         "locale": locale,
         "explicit_timezone": explicit_timezone,
         "locale_options": _locale_options(request, locale),

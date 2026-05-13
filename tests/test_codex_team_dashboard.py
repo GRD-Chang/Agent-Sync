@@ -195,13 +195,17 @@ def test_codex_team_dashboard_routes_render_full_chain_read_only(home: Path) -> 
     assert detail_response.status_code == 200
     list_body = list_response.text
     detail_body = detail_response.text
-    assert 'data-testid="dashboard-nav-codex-team"' in list_body
+    assert 'data-testid="codex-team-shell"' in list_body
+    assert 'data-testid="codex-team-product-nav"' in list_body
+    assert 'data-testid="dashboard-primary-nav"' not in list_body
+    assert 'data-testid="dashboard-page-chrome"' not in detail_body
     assert 'data-testid="dashboard-codex-team-run-list"' in list_body
     assert run_id in list_body
     assert 'data-testid="dashboard-codex-team-flow"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-planner-1"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-generator-3"' in detail_body
     assert 'data-testid="dashboard-codex-team-artifact-implementation_001"' in detail_body
+    assert 'data-testid="dashboard-codex-team-log' in detail_body
     assert "ready_for_review" in detail_body
     assert "resume" not in detail_body.lower()
     assert "cancel" not in detail_body.lower()
