@@ -504,8 +504,13 @@ def test_role_prompts_include_core_worker_standards(tmp_path: Path) -> None:
     assert "在 plan 边界内连续推进完整 build round" in generator_prompt
     assert "spec 中的所有设计、required_scope 和 acceptance 都已实现" in generator_prompt
     assert "遵循软件工程原则" in generator_prompt
-    assert "保持可审阅的小步变更" in generator_prompt
-    assert "单一逻辑、范围聚焦的小 commit" in generator_prompt
+    assert "完成完整 spec 才能交给 Evaluator；但 commit 不需要等到完整 spec 完成" in generator_prompt
+    assert "按可审阅的逻辑单元持续小步 commit" in generator_prompt
+    assert "commit 是内部工程持久化记录，不是外部交审点，也不是交审信号" in generator_prompt
+    assert "用后续 fix commit 修复" in generator_prompt
+    assert "selective staging" in generator_prompt
+    assert "conventional commits" in generator_prompt
+    assert "不能提交，必须在 implementation.md 中说明原因" in generator_prompt
     assert "不要每完成一个小步骤就交给 Evaluator" in generator_prompt
     assert "如果问题仍在你的实现能力范围内，继续实现和自测" in generator_prompt
     assert "不要把 Evaluator 当作每个小步骤后的确认按钮" in generator_prompt
@@ -518,12 +523,17 @@ def test_role_prompts_include_core_worker_standards(tmp_path: Path) -> None:
     assert "changes_and_evidence 中写清关键改动、必要调研、设计或根因判断、测试和验证证据" in generator_prompt
     assert "scope_status 中写清 completed_scope、remaining_scope" in generator_prompt
     assert "feedback_addressed 中说明上一轮 blocking_fixes" in generator_prompt
+    assert "本轮提交的 commit hash" in generator_prompt
+    assert "没有提交 commit" in generator_prompt
+    assert "仍有未提交的本轮 task-scoped repo 改动" in generator_prompt
     assert "结论是 continue" in generator_prompt
     assert "build_review、non_blocking_findings、scope_status 和 route_decision" in generator_prompt
     assert "修改 repo 前先查看 git status" in generator_prompt
     assert "如果任务表现为 bug、回归、异常或失败链路不清，先做根因调查" in generator_prompt
     assert "不要修改 plan.md 或 evaluation.md 来适配自己的实现" in generator_prompt
     assert "只有完整 spec 已实现、自测完成且 implementation.md 已写好" in generator_prompt
+    assert "本轮 task-scoped repo 改动已完成验证并提交" in generator_prompt
+    assert "不能提交的本轮改动必须在 implementation.md 中说明文件、原因和下一步" in generator_prompt
     assert "helper、schema、fixture、CLI 子命令、局部 bug fix" in generator_prompt
     assert "action=ready_for_review,target=evaluator" in generator_prompt
     assert "action=needs_design,target=planner" in generator_prompt
@@ -534,6 +544,9 @@ def test_role_prompts_include_core_worker_standards(tmp_path: Path) -> None:
     assert "确保最终 JSON 路由与 evaluation.md 的 route_decision 一致" in evaluator_prompt
     assert "不要只读 summary" in evaluator_prompt
     assert "当前 implementation.md、代码 diff 和测试证据" in evaluator_prompt
+    assert "implementation.md 记录的 commit hash" in evaluator_prompt
+    assert "git show --stat" in evaluator_prompt
+    assert "没有遗漏的 task-scoped dirty changes" in evaluator_prompt
     assert "task-specific grading criteria 和 review focus 进行逐项 grading" in evaluator_prompt
     assert "评估模式" in evaluator_prompt
     assert "plan evaluation" in evaluator_prompt
