@@ -1,14 +1,84 @@
-# OpenClaw Multi-Agent Task Orchestration
+# Codex Team and OpenClaw Multi-Agent Task Orchestration
 
-> Build an OpenClaw multi-agent development team that can actually deliver, and fix the state-loss, evidence-loss, and handoff breakage that appear in long-running agent work.
+> Build a Codex / OpenClaw multi-agent development team that can actually deliver, and fix the state loss, evidence loss, and handoff breakage that appear in long-running agent work.
 
 [English](README.en.md) | [中文](README.md)
 
-`task-bridge` is a local-first, lightweight task coordination system built for OpenClaw multi-agent collaboration. Its core mission is straightforward: let an OpenClaw-built agent team reliably break work down, dispatch tasks, and let execution agents close long-running development work directly.
+`task-bridge` is a local-first multi-agent coordination system. It now has two primary layers: an independent **Codex Team harness** that uses Planner / Generator / Evaluator roles for long-running coding tasks, and an OpenClaw task bridge that owns Jobs, Tasks, Worker queues, terminal notifications, and anti-stall scheduling.
 
 ---
 
-## Dashboard Preview (Global Control)
+## Codex Team: Long-Running Development Harness
+
+`task-bridge codex-team` is a Codex harness separate from the OpenClaw job/task flow. It does not turn a large request into a mechanical chain of tiny tickets. Instead, three roles cooperate around one local run home: the Planner turns a high-level request into a testable product and engineering spec, the Generator completes a full build round, and the Evaluator independently reviews the result before passing it or sending focused fixes back.
+
+The design revisits several ideas from Anthropic's [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps): clear roles, file-based handoff, an independent evaluator, and feedback loops that make subjective quality reviewable. Codex Team keeps those useful structures, but compresses the implementation into the smallest shape `task-bridge` needs: local files, JSON envelopes, a resumable runner, and a read-only dashboard.
+
+Core flow:
+
+```text
+User input
+  -> Planner    writes plan.md: goal, scope, acceptance, risks, and boundaries
+  -> Generator  completes a full build round and writes implementation.md plus evidence
+  -> Evaluator  reviews code, tests, UX, and artifacts, then writes evaluation.md
+       | pass        -> completed
+       | needs_fix   -> Generator starts another fix round
+       | needs_design -> Planner reshapes the plan
+       | ask_user    -> paused until the user answers
+```
+
+Design principles:
+
+- **Separate judgment from building**: the Generator does not approve its own work. The Evaluator owns the pass/fail decision.
+- **File-based handoff**: `input.md`, `plan.md`, `attempts/<n>/implementation.md`, and `attempts/<n>/evaluation.md` are the cross-session source of truth.
+- **Lightweight routing**: agents emit a structured action envelope; the dispatcher validates, records, wakes the next owner, pauses, and resumes.
+- **Full build rounds**: the Generator keeps moving across one coherent capability boundary instead of paying an external handoff cost for every helper, test fix, or ordinary bug.
+- **Replayable observability**: the dashboard connects each agent invocation, state, duration, route decision, artifact, and log into one auditable trace.
+- **Reviewable design quality**: for UI work, the Evaluator must critique Design quality, Originality, Craft, and Functionality, so iteration improves the product rather than only checking that code runs.
+
+### Codex Team Quick Start
+
+```bash
+# Start a real Codex Team run
+task-bridge codex-team start --repo-root "$PWD" --input "Implement a small feature" --json
+
+# Inspect status, logs, and detail
+task-bridge codex-team status <run_id> --json
+task-bridge codex-team logs <run_id> --tail 20 --json
+task-bridge codex-team show <run_id> --json
+
+# Verify the run store and CLI without starting real Codex
+TASK_BRIDGE_HOME=/tmp/task-bridge-codex-smoke \
+  task-bridge codex-team start --repo-root "$PWD" --input "smoke test" --no-run --json
+```
+
+### Codex Team Dashboard
+
+```bash
+task-bridge dashboard
+# Open /codex-team to inspect run lists and details
+```
+
+The new Codex Team dashboard is separate from the OpenClaw Task Bridge dashboard. It behaves more like a run replay console: the list page shows run state, the detail page puts agent call flow, current route, and duration first, and the artifact reader carries the large Markdown and log content.
+
+| First separated run list | Iterated run list |
+|---|---|
+| ![First separated Codex Team run list](docs/assets/dashboard/codex-team-comparison/v1-separated-runs.png) | ![Iterated Codex Team run list](docs/assets/dashboard/codex-team-comparison/latest-iterated-runs.png) |
+| The first version already separated Codex Team runs from Task Bridge jobs and tasks. | The latest version uses a clearer run tape that emphasizes state, duration, owner, attempt, and route signals. |
+
+| First run detail | Iterated run detail |
+|---|---|
+| ![First separated Codex Team run detail](docs/assets/dashboard/codex-team-comparison/v1-separated-run-detail.png) | ![Iterated Codex Team run detail](docs/assets/dashboard/codex-team-comparison/latest-iterated-run-detail.png) |
+| The call flow is visible, but route, current step, and evidence entry points are scattered. | The first viewport now shows current step, route decision, agent call flow, duration, and evidence map before deeper detail. |
+
+| First artifact reader | Iterated artifact reader |
+|---|---|
+| ![First separated Codex Team artifact reader](docs/assets/dashboard/codex-team-comparison/v1-separated-artifact.png) | ![Iterated Codex Team artifact reader](docs/assets/dashboard/codex-team-comparison/latest-iterated-artifact.png) |
+| Large artifacts are mostly plain previews, which makes long-document review harder. | The latest reader adds an artifact sidebar, section chips, metadata, and rendered Markdown for long artifacts. |
+
+---
+
+## Task Bridge Dashboard Preview (OpenClaw Orchestration)
 
 Turn local Jobs, Tasks, Worker Queue, Alerts, and Health into a visual dashboard with one command:
 

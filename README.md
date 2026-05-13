@@ -1,14 +1,84 @@
-# 大聪明军团：OpenClaw 多 Agent 任务编排
+# 大聪明军团：Codex Team 与 OpenClaw 多 Agent 任务编排
 
-> 构建真正能交付的 OpenClaw 多 Agent 开发团队，解决长期任务编排中的状态丢失、证据断裂与收口困难。
+> 构建真正能交付的 Codex / OpenClaw 多 Agent 开发团队，解决长期任务编排中的状态丢失、证据断裂与收口困难。
 
 [中文](README.md) | [English](README.en.md)
 
-`task-bridge` 是一个本地优先、专为 OpenClaw 多 Agent 协作设计的轻量级任务协作系统。它的核心使命是：让 OpenClaw 构建的多 Agent 协作团队，能够稳定地拆解任务、派发任务，并让各执行 Agent 直接把长流程开发工作闭环做完。
+`task-bridge` 是一个本地优先的多 Agent 协作系统。当前最重要的能力有两层：第一层是独立的 **Codex Team harness**，用 Planner / Generator / Evaluator 驱动长周期代码任务；第二层是面向 OpenClaw 的任务桥，负责 Job、Task、Worker 队列、终态通知和防假死调度。
 
 ---
 
-## Dashboard 预览（全局掌控）
+## Codex Team：长周期开发 harness
+
+`task-bridge codex-team` 是独立于 OpenClaw job/task 流的 Codex harness。它不是把一个任务拆成一串机械小工单，而是让三个角色围绕同一个本地 run home 协作：Planner 先把高层需求变成可验收的产品/工程 spec，Generator 连续完成一轮完整 build，Evaluator 再独立审查并给出修复意见或 final pass。
+
+这个设计复盘了 Anthropic 在 [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps) 中总结的几个关键点：长任务需要清晰角色、文件化交接、独立 evaluator，以及能把主观质量变成可评审标准的反馈回路。Codex Team 保留这些有效结构，但把实现压到 `task-bridge` 能承载的最小形态：本地文件、JSON envelope、可恢复 runner、只读 dashboard。
+
+核心流程：
+
+```text
+User input
+  -> Planner    产出 plan.md：目标、范围、验收、风险和实现边界
+  -> Generator  完成完整 build round，写 implementation.md 和验证证据
+  -> Evaluator  独立审查代码、测试、交互和 artifact，写 evaluation.md
+       | pass        -> completed
+       | needs_fix   -> Generator 进入下一轮修复
+       | needs_design -> Planner 重新收敛设计
+       | ask_user    -> paused，等待用户补充
+```
+
+设计原则：
+
+- **角色分离**：Generator 不给自己的实现盖章，Evaluator 独立判断是否通过。
+- **文件化交接**：`input.md`、`plan.md`、`attempts/<n>/implementation.md`、`attempts/<n>/evaluation.md` 是跨 session 的事实源，不依赖聊天上下文。
+- **轻量路由**：agent 只输出结构化 action envelope，dispatcher 负责校验、记录、唤醒、暂停和恢复。
+- **完整 build round**：Generator 默认连续推进一个完整能力边界，不把 helper、小测试修复和普通 bug 修复拆成昂贵的外部 handoff。
+- **可观察 replay**：dashboard 把每个 agent 调用、状态、耗时、route decision、artifact 和日志串成可审查的运行轨迹。
+- **设计质量可评审**：做 UI 时，Evaluator 必须从 Design quality、Originality、Craft、Functionality 四个维度提出具体意见，推动多轮迭代，而不是只检查代码是否能跑。
+
+### Codex Team 快速开始
+
+```bash
+# 真实启动 Codex Team run
+task-bridge codex-team start --repo-root "$PWD" --input "实现一个小功能" --json
+
+# 查看状态、日志和详情
+task-bridge codex-team status <run_id> --json
+task-bridge codex-team logs <run_id> --tail 20 --json
+task-bridge codex-team show <run_id> --json
+
+# 只验证 run store 和 CLI，不启动真实 Codex
+TASK_BRIDGE_HOME=/tmp/task-bridge-codex-smoke \
+  task-bridge codex-team start --repo-root "$PWD" --input "smoke test" --no-run --json
+```
+
+### Codex Team Dashboard
+
+```bash
+task-bridge dashboard
+# 打开 /codex-team 查看 run 列表与详情
+```
+
+新版 Codex Team dashboard 与 OpenClaw Task Bridge dashboard 分离。它更像一个 run replay console：列表页看 run 状态，detail 页优先展示 agent 调用链路、当前 route 和耗时，artifact 阅读器再承载大块 Markdown/日志内容。
+
+| 第一版分离后的 run 列表 | 迭代后的 run 列表 |
+|---|---|
+| ![Codex Team 第一版 run 列表](docs/assets/dashboard/codex-team-comparison/v1-separated-runs.png) | ![Codex Team 迭代版 run 列表](docs/assets/dashboard/codex-team-comparison/latest-iterated-runs.png) |
+| 基础 run registry 已经独立于 Task Bridge job/task。 | 最新版改成更清晰的 run tape，强调状态、耗时、owner、attempt 和 route 信号。 |
+
+| 第一版 run detail | 迭代版 run detail |
+|---|---|
+| ![Codex Team 第一版 run detail](docs/assets/dashboard/codex-team-comparison/v1-separated-run-detail.png) | ![Codex Team 迭代版 run detail](docs/assets/dashboard/codex-team-comparison/latest-iterated-run-detail.png) |
+| 调用链路可见，但 route、当前步骤和 evidence 入口分散。 | 当前步骤、route decision、agent call flow、耗时和 evidence map 放到首屏，先看流程，再进详情。 |
+
+| 第一版 artifact 阅读 | 迭代版 artifact 阅读 |
+|---|---|
+| ![Codex Team 第一版 artifact](docs/assets/dashboard/codex-team-comparison/v1-separated-artifact.png) | ![Codex Team 迭代版 artifact](docs/assets/dashboard/codex-team-comparison/latest-iterated-artifact.png) |
+| 大 artifact 以预览文本为主，长文档阅读和跳转负担较重。 | 新版提供 artifact sidebar、section chips、metadata 和 rendered Markdown，更适合审查长产物。 |
+
+---
+
+## Task Bridge Dashboard 预览（OpenClaw 编排）
 
 只需一条命令，即可将本地的 Job、Tasks、Worker Queue、Alerts 和 Health 状态转化为可视化看板：
 
