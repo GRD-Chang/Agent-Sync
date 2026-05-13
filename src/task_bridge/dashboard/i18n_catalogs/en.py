@@ -170,6 +170,8 @@ EN_MESSAGES: dict[str, Any] = {
         "evidence_source": "Evidence source",
         "structured_summary": "Structured summary",
         "raw_json": "Raw JSON",
+        "back_to_flow": "Back to flow",
+        "evidence_map": "Evidence map",
         "artifact_path": "Path",
         "artifact_kind": "Kind",
         "artifact_status": "Status",

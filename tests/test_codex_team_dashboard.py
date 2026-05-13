@@ -205,15 +205,21 @@ def test_codex_team_dashboard_routes_render_full_chain_read_only(home: Path) -> 
     assert 'data-testid="codex-team-product-nav"' in list_body
     assert 'data-testid="dashboard-primary-nav"' not in list_body
     assert 'data-testid="dashboard-page-chrome"' not in detail_body
-    assert 'class="codex-run-ledger"' in list_body
+    assert "codex-run-ledger" in list_body
+    assert "codex-run-mission-board" in list_body
+    assert "codex-run-mission" in list_body
     assert 'data-testid="dashboard-codex-team-run-list"' in list_body
     assert run_id in list_body
     assert 'data-testid="dashboard-codex-team-flow"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-planner-1"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-generator-3"' in detail_body
     assert "codex-trace-preview codex-title-trace" in detail_body
+    assert 'class="codex-flow-board"' in detail_body
+    assert 'class="codex-node-route-map"' in detail_body
+    assert 'class="codex-route-evidence-map"' in detail_body
     assert 'class="codex-duration-track"' in detail_body
     assert 'data-testid="dashboard-codex-team-artifact-implementation_001"' in detail_body
+    assert "Back to flow" in detail_body
     assert 'class="codex-markdown-document"' in detail_body
     assert 'class="codex-reader-outline"' in detail_body
     assert 'class="codex-reader-source"' in detail_body

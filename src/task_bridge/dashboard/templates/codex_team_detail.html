@@ -55,7 +55,10 @@
       <p class="eyebrow">{{ preview.kind }}</p>
       <h3>{{ preview.label }}</h3>
     </div>
-    <span class="status-pill artifact-status-{{ preview.status }}">{{ preview.status }}</span>
+    <div class="codex-reader-actions">
+      <a href="#codex-flow-title">{{ ui.codex_team.back_to_flow }}</a>
+      <span class="status-pill artifact-status-{{ preview.status }}">{{ preview.status }}</span>
+    </div>
   </header>
   {% if preview.source_role or preview.evidence_label %}
   <div class="codex-reader-source">
@@ -68,7 +71,7 @@
     {% endif %}
   </div>
   {% endif %}
-  <dl class="codex-reader-meta">
+  <dl class="codex-reader-meta codex-reader-dossier">
     <div>
       <dt>{{ ui.codex_team.artifact_path }}</dt>
       <dd>{{ preview.path }}</dd>
@@ -140,8 +143,10 @@
   {% endif %}
   {% if preview.status == "rendered" %}
     {% if preview.kind == "markdown" %}
-    {{ markdown_outline(preview) }}
-    {{ markdown_document(preview) }}
+    <div class="codex-reader-document-grid">
+      {{ markdown_outline(preview) }}
+      {{ markdown_document(preview) }}
+    </div>
     {% elif preview.kind == "json" or preview.kind == "jsonl" %}
     <details class="codex-raw-json" open>
       <summary>{{ ui.codex_team.raw_json }}</summary>
@@ -259,6 +264,16 @@
       <h2 id="codex-flow-title">{{ ui.codex_team.flow_title }}</h2>
       <p class="section-note">{{ ui.codex_team.flow_note }}</p>
     </div>
+    <div class="codex-flow-board" aria-label="{{ ui.codex_team.trace_preview }}">
+      {% for node in run.flow_nodes %}
+      <a class="codex-flow-board-node codex-role-{{ node.role }} status-{{ node.status }}{% if loop.last %} is-terminal{% endif %}" href="#step-{{ node.node_id }}">
+        <span class="codex-flow-board-index">{{ loop.index }}</span>
+        <span class="codex-flow-board-role">{{ node.role }}</span>
+        <span class="codex-flow-board-route">{{ node.action or node.status }}{% if node.target %} → {{ node.target }}{% endif %}</span>
+        <span class="codex-flow-board-time">{{ node.duration_label }}</span>
+      </a>
+      {% endfor %}
+    </div>
     <div class="codex-flow-list">
       {% for node in run.flow_nodes %}
       <article
@@ -282,6 +297,20 @@
               {% endif %}
             </div>
           </header>
+          <dl class="codex-node-route-map">
+            <div>
+              <dt>{{ ui.codex_team.action }}</dt>
+              <dd>{{ node.action or node.status }}</dd>
+            </div>
+            <div>
+              <dt>{{ ui.codex_team.target }}</dt>
+              <dd>{{ node.target or ui.common.none }}</dd>
+            </div>
+            <div>
+              <dt>{{ ui.codex_team.duration }}</dt>
+              <dd>{{ node.duration_label }}</dd>
+            </div>
+          </dl>
           <dl class="codex-node-grid">
             <div>
               <dt>{{ ui.codex_team.started_at }}</dt>
@@ -368,6 +397,16 @@
         <dd>{{ run.route_decision.reason or ui.common.none }}</dd>
       </div>
     </dl>
+    <nav class="codex-route-evidence-map" aria-label="{{ ui.codex_team.evidence_map }}">
+      <span>{{ ui.codex_team.evidence_map }}</span>
+      <a href="#codex-artifacts-title">{{ ui.codex_team.artifacts_title }}</a>
+      {% if run.logs %}
+      <a href="#artifact-{{ run.logs[0].key }}">{{ ui.codex_team.logs_title }}</a>
+      {% endif %}
+      {% if run.route_decision.status == "available" %}
+      <a href="#artifact-next_action">{{ ui.codex_team.artifact_next_action }}</a>
+      {% endif %}
+    </nav>
   </aside>
 </section>
 
@@ -385,7 +424,7 @@
       <section>
         <h3>{{ ui.codex_team.reader_group_artifacts }}</h3>
       {% for artifact in run.artifacts %}
-      <a href="#{{ artifact.anchor }}">
+      <a class="artifact-status-{{ artifact.status }}" href="#{{ artifact.anchor }}">
         <span>{{ artifact.label }}</span>
         <small>{% if artifact.source_role %}{{ artifact.source_role }}{% if artifact.source_attempt is not none %} · {{ ui.codex_team.attempt }} {{ artifact.source_attempt }}{% endif %} · {% endif %}{{ artifact.kind }} · {{ artifact.status }}</small>
       </a>
@@ -395,7 +434,7 @@
       <section>
         <h3>{{ ui.codex_team.reader_group_logs }}</h3>
       {% for log in run.logs %}
-      <a href="#{{ log.anchor }}">
+      <a class="artifact-status-{{ log.status }}" href="#{{ log.anchor }}">
         <span>{{ log.label }}</span>
         <small>{% if log.source_role %}{{ log.source_role }}{% if log.source_attempt is not none %} · {{ ui.codex_team.attempt }} {{ log.source_attempt }}{% endif %} · {% endif %}{{ log.evidence_label or log.kind }} · {{ log.status }}</small>
       </a>

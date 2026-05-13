@@ -170,6 +170,8 @@ ZH_CN_MESSAGES: dict[str, Any] = {
         "evidence_source": "证据来源",
         "structured_summary": "结构化摘要",
         "raw_json": "原始 JSON",
+        "back_to_flow": "返回流程",
+        "evidence_map": "证据地图",
         "artifact_path": "路径",
         "artifact_kind": "类型",
         "artifact_status": "状态",
