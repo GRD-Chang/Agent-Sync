@@ -262,7 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
         "dashboard",
         help="启动 dashboard Web 界面",
         description=(
-            "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Worker Queue / Alerts / Health。"
+            "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Codex Team / Worker Queue / Alerts / Health。"
             "支持通过页面内切换器切换 en / zh-CN 与本地字体风格；"
             "启动后会输出本机访问地址，并在需要时给出同网段访问、SSH 端口转发与端口冲突建议。"
         ),

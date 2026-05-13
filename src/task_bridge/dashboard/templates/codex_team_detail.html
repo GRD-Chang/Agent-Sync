@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% from "_time.html" import render_local_time %}
+
+{% macro preview_block(preview, testid_prefix) %}
+<article class="codex-artifact" id="{{ preview.anchor }}" data-testid="{{ testid_prefix }}-{{ preview.key }}">
+  <header>
+    <div>
+      <p class="eyebrow">{{ preview.kind }}</p>
+      <h3>{{ preview.label }}</h3>
+      <p class="codex-path">{{ preview.path }}</p>
+    </div>
+    <span class="status-pill artifact-status-{{ preview.status }}">{{ preview.status }}</span>
+  </header>
+  {% if preview.action or preview.target or preview.reason %}
+  <dl class="codex-route-strip">
+    <div>
+      <dt>{{ ui.codex_team.action }}</dt>
+      <dd>{{ preview.action or ui.common.none }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.target }}</dt>
+      <dd>{{ preview.target or ui.common.none }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.reason }}</dt>
+      <dd>{{ preview.reason or ui.common.none }}</dd>
+    </div>
+  </dl>
+  {% endif %}
+  {% if preview.status == "rendered" %}
+  <pre class="codex-preview"><code>{{ preview.text }}</code></pre>
+  {% elif preview.status == "missing" %}
+  <div class="codex-inline-state">{{ ui.codex_team.artifact_missing }}</div>
+  {% elif preview.status == "empty" %}
+  <div class="codex-inline-state">{{ ui.codex_team.artifact_empty }}</div>
+  {% else %}
+  <div class="codex-inline-state codex-inline-error">{{ preview.error_message or ui.codex_team.artifact_error }}</div>
+  {% endif %}
+  {% if preview.is_truncated %}
+  <p class="preview-truncation">{{ ui.codex_team.preview_truncated }}</p>
+  {% endif %}
+</article>
+{% endmacro %}
+
+{% block content %}
+<section class="codex-run-hero" aria-labelledby="codex-run-title" data-testid="dashboard-codex-team-detail">
+  <div class="codex-run-heading">
+    <p class="eyebrow">{{ ui.codex_team.detail_eyebrow }}</p>
+    <h2 id="codex-run-title" data-testid="dashboard-page-title">{{ run.run_id }}</h2>
+    <p class="codex-path">{{ run.repo_root }}</p>
+  </div>
+  <dl class="codex-run-status-grid" aria-label="{{ ui.codex_team.detail_stats_label }}">
+    <div>
+      <dt>{{ ui.codex_team.state }}</dt>
+      <dd><span class="status-pill codex-state-{{ run.state }}">{{ run.state }}</span></dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.status }}</dt>
+      <dd><span class="status-pill status-{{ run.status }}">{{ run.status }}</span></dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.owner }}</dt>
+      <dd>{{ run.current_owner or ui.common.none }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.attempt }}</dt>
+      <dd>{{ run.current_attempt }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.updated_at }}</dt>
+      <dd>{{ render_local_time(run.updated_at, run.updated_at_iso) }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.duration }}</dt>
+      <dd>{{ run.duration_label }}</dd>
+    </div>
+  </dl>
+</section>
+
+{% if run.needs_user_input or run.last_error_code %}
+<section class="codex-panel codex-alert-strip" aria-label="{{ ui.codex_team.attention_label }}" data-testid="dashboard-codex-team-attention">
+  {% if run.needs_user_input %}
+  <div>
+    <p class="eyebrow">{{ ui.codex_team.needs_user_input }}</p>
+    {% if run.pending_question %}
+    <p>{{ run.pending_question.text }}</p>
+    {% else %}
+    <p>{{ ui.codex_team.pending_question_missing }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if run.last_error_code %}
+  <div>
+    <p class="eyebrow">{{ ui.codex_team.last_error }}</p>
+    <p>{{ run.last_error_text or run.last_error_code }}</p>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="codex-panel" aria-labelledby="codex-flow-title" data-testid="dashboard-codex-team-flow">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.codex_team.flow_eyebrow }}</p>
+    <h2 id="codex-flow-title">{{ ui.codex_team.flow_title }}</h2>
+    <p class="section-note">{{ ui.codex_team.flow_note }}</p>
+  </div>
+  <div class="codex-flow-list">
+    {% for node in run.flow_nodes %}
+    <article class="codex-flow-node codex-role-{{ node.role }}" data-testid="dashboard-codex-team-flow-node-{{ node.role }}-{{ loop.index }}">
+      <div class="codex-flow-rail" aria-hidden="true">{{ loop.index }}</div>
+      <div class="codex-flow-body">
+        <header>
+          <div>
+            <p class="eyebrow">{{ node.role }}{% if node.attempt is not none %} · {{ ui.codex_team.attempt }} {{ node.attempt }}{% endif %}</p>
+            <h3>{{ node.action or node.status }}</h3>
+          </div>
+          <div class="codex-flow-statuses">
+            <span class="status-pill status-{{ node.status }}">{{ node.status }}</span>
+            {% if node.is_inferred %}
+            <span class="status-pill artifact-status-partial">{{ ui.codex_team.inferred_node }}</span>
+            {% endif %}
+          </div>
+        </header>
+        <dl class="codex-node-grid">
+          <div>
+            <dt>{{ ui.codex_team.started_at }}</dt>
+            <dd>{{ render_local_time(node.started_at, node.started_at_iso) }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.codex_team.ended_at }}</dt>
+            <dd>{{ render_local_time(node.ended_at, node.ended_at_iso) }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.codex_team.duration }}</dt>
+            <dd>{{ node.duration_label }}</dd>
+          </div>
+          <div>
+            <dt>{{ ui.codex_team.target }}</dt>
+            <dd>{{ node.target or ui.common.none }}</dd>
+          </div>
+          {% if node.returncode is not none %}
+          <div>
+            <dt>{{ ui.codex_team.returncode }}</dt>
+            <dd>{{ node.returncode }}</dd>
+          </div>
+          {% endif %}
+        </dl>
+        {% if node.reason %}
+        <p class="codex-route-copy">{{ node.reason }}</p>
+        {% endif %}
+        <div class="codex-node-links">
+          {% if node.artifact_href %}
+          <a href="{{ node.artifact_href }}">{{ ui.codex_team.open_artifact }}</a>
+          {% endif %}
+          {% if node.last_message_path %}
+          <span>{{ ui.codex_team.last_message }}: {{ node.last_message_path }}</span>
+          {% endif %}
+          {% if node.stdout_log %}
+          <span>stdout: {{ node.stdout_log }}</span>
+          {% endif %}
+          {% if node.stderr_log %}
+          <span>stderr: {{ node.stderr_log }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="codex-panel" aria-labelledby="codex-route-title" data-testid="dashboard-codex-team-route">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.codex_team.route_eyebrow }}</p>
+    <h2 id="codex-route-title">{{ ui.codex_team.route_title }}</h2>
+  </div>
+  <dl class="codex-route-strip">
+    <div>
+      <dt>{{ ui.codex_team.action }}</dt>
+      <dd>{{ run.route_decision.action or ui.common.none }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.target }}</dt>
+      <dd>{{ run.route_decision.target or ui.common.none }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.reason }}</dt>
+      <dd>{{ run.route_decision.reason or ui.common.none }}</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="codex-panel" aria-labelledby="codex-artifacts-title" data-testid="dashboard-codex-team-artifacts">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.codex_team.artifacts_eyebrow }}</p>
+    <h2 id="codex-artifacts-title">{{ ui.codex_team.artifacts_title }}</h2>
+    <p class="section-note">{{ ui.codex_team.artifacts_note }}</p>
+  </div>
+  <div class="codex-artifact-grid">
+    {% for artifact in run.artifacts %}
+    {{ preview_block(artifact, "dashboard-codex-team-artifact") }}
+    {% endfor %}
+  </div>
+</section>
+
+<section class="codex-panel" aria-labelledby="codex-logs-title" data-testid="dashboard-codex-team-logs">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.codex_team.logs_eyebrow }}</p>
+    <h2 id="codex-logs-title">{{ ui.codex_team.logs_title }}</h2>
+    <p class="section-note">{{ ui.codex_team.logs_note }}</p>
+  </div>
+  {% if run.logs %}
+  <div class="codex-artifact-grid">
+    {% for log in run.logs %}
+    {{ preview_block(log, "dashboard-codex-team-log") }}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="codex-inline-state" data-testid="dashboard-codex-team-logs-empty">{{ ui.codex_team.logs_empty }}</div>
+  {% endif %}
+</section>
+{% endblock %}

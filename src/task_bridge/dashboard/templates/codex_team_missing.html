@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-codex-team-missing">
+  <p class="eyebrow">{{ ui.codex_team.detail_eyebrow }}</p>
+  <h2>{{ ui.codex_team.missing_title }}</h2>
+  <p>{{ ui.codex_team.missing_body.format(run_id=missing_run_id) }}</p>
+</section>
+{% endblock %}

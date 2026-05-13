@@ -121,7 +121,7 @@ def test_dashboard_help_describes_access_and_launch_guidance(capsys: pytest.Capt
 
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
-    assert "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Worker Queue / Alerts / Health。" in help_text
+    assert "启动 task-bridge dashboard，集中查看 Overview / Jobs / Tasks / Codex Team / Worker Queue / Alerts / Health。" in help_text
     assert "支持通过页面内切换器切换 en / zh-CN 与本地字体风格" in help_text
     assert "启动后会输出本机访问地址，并在需要时给出同网段访问、SSH 端口转发与端口冲突建议" in help_text
     assert "--host" in help_text
@@ -1493,7 +1493,7 @@ def test_dashboard_overview_route_exposes_frozen_read_only_selectors(home: Path)
     assert 'data-testid="dashboard-primary-nav"' in body
     assert 'data-testid="dashboard-page-chrome"' in body
     assert 'data-testid="dashboard-breadcrumbs"' in body
-    assert body.count('data-testid="dashboard-nav-') == 6
+    assert body.count('data-testid="dashboard-nav-') == 7
     assert 'data-testid="dashboard-page-title"' in body
     assert 'data-testid="dashboard-overview-hero"' in body
     assert 'data-testid="dashboard-overview-task-status"' in body

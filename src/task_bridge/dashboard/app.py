@@ -14,6 +14,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
+from .codex_team_queries import CodexTeamDashboardQueryService
 from .i18n import DEFAULT_LOCALE, LOCALE_SWITCH_ITEMS, get_messages, resolve_locale
 from .queries import DashboardQueryService
 from task_bridge.worker_registry import dashboard_agent_theme_css
@@ -29,6 +30,7 @@ NAV_ITEMS = [
     NavItem("overview", "/overview"),
     NavItem("jobs", "/jobs"),
     NavItem("tasks", "/tasks"),
+    NavItem("codex-team", "/codex-team"),
     NavItem("worker-queue", "/worker-queue"),
     NavItem("alerts", "/alerts"),
     NavItem("health", "/health"),
@@ -52,6 +54,8 @@ def create_dashboard_app(home: Path | None = None) -> Starlette:
             Route("/overview", endpoint=overview_page),
             Route("/jobs", endpoint=jobs_page),
             Route("/tasks", endpoint=tasks_page),
+            Route("/codex-team", endpoint=codex_team_page),
+            Route("/codex-team/{run_id:str}", endpoint=codex_team_run_page),
             Route("/worker-queue", endpoint=worker_queue_page),
             Route("/alerts", endpoint=alerts_page),
             Route("/health", endpoint=health_page),
@@ -168,6 +172,67 @@ async def tasks_page(request: Request):
         ),
     )
     return templates.TemplateResponse(request=request, name="tasks.html", context=context)
+
+
+async def codex_team_page(request: Request):
+    context = _base_context(request, "codex-team")
+    context["page_title"] = context["ui"]["codex_team"]["title"]
+    try:
+        snapshot = _codex_team_service(request).runs()
+    except Exception as exc:  # pragma: no cover
+        return _render_live_page_error(
+            request,
+            context=context,
+            error_title=context["ui"]["codex_team"]["error_title"],
+            error_body=context["ui"]["codex_team"]["error_body"],
+            error_label=context["ui"]["codex_team"]["error_label"],
+            error_message=str(exc),
+            error_testid="dashboard-codex-team-error-state",
+        )
+
+    context["codex_team"] = snapshot
+    return templates.TemplateResponse(request=request, name="codex_team.html", context=context)
+
+
+async def codex_team_run_page(request: Request):
+    context = _base_context(request, "codex-team")
+    context["page_title"] = context["ui"]["codex_team"]["detail_title"]
+    try:
+        run = _codex_team_service(request).run_detail(str(request.path_params["run_id"]))
+    except Exception as exc:  # pragma: no cover
+        return _render_live_page_error(
+            request,
+            context=context,
+            error_title=context["ui"]["codex_team"]["error_title"],
+            error_body=context["ui"]["codex_team"]["error_body"],
+            error_label=context["ui"]["codex_team"]["error_label"],
+            error_message=str(exc),
+            error_testid="dashboard-codex-team-error-state",
+        )
+    if run is None:
+        context["missing_run_id"] = str(request.path_params["run_id"])
+        context["page_chrome"] = _page_chrome_context(
+            context,
+            breadcrumbs=_selection_breadcrumbs(
+                request,
+                context,
+                current_label=str(request.path_params["run_id"]),
+                exclude_query_keys=("lang",),
+            ),
+        )
+        return templates.TemplateResponse(request=request, name="codex_team_missing.html", context=context, status_code=404)
+
+    context["run"] = run
+    context["page_chrome"] = _page_chrome_context(
+        context,
+        breadcrumbs=_selection_breadcrumbs(
+            request,
+            context,
+            current_label=run.run_id,
+            exclude_query_keys=("lang",),
+        ),
+    )
+    return templates.TemplateResponse(request=request, name="codex_team_detail.html", context=context)
 
 
 async def worker_queue_page(request: Request):
@@ -337,6 +402,23 @@ def _dashboard_service(request: Request) -> DashboardQueryService:
             now_provider=lambda: now_override,
         )
     return DashboardQueryService(request.app.state.dashboard_home, locale=locale, timezone=timezone)
+
+
+def _codex_team_service(request: Request) -> CodexTeamDashboardQueryService:
+    locale = _request_locale(request)
+    timezone = _request_timezone(request)
+    now_override = os.environ.get("TASK_BRIDGE_DASHBOARD_NOW")
+    now_provider = (lambda: now_override) if now_override else _dashboard_now_iso
+    return CodexTeamDashboardQueryService(
+        request.app.state.dashboard_home,
+        locale=locale,
+        timezone=timezone,
+        now_provider=now_provider,
+    )
+
+
+def _dashboard_now_iso() -> str:
+    return "2026-03-20T12:00:00Z"
 
 
 def _request_locale(request: Request) -> str:

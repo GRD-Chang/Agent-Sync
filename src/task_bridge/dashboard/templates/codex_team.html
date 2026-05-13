@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_time.html" import render_local_time %}
+
+{% block content %}
+<section class="codex-hero" aria-labelledby="codex-team-title" data-testid="dashboard-codex-team-hero">
+  <div class="codex-hero-copy">
+    <p class="eyebrow">{{ ui.codex_team.eyebrow }}</p>
+    <h2 id="codex-team-title" data-testid="dashboard-page-title">{{ ui.codex_team.title }}</h2>
+    <p>{{ ui.codex_team.intro }}</p>
+  </div>
+  <dl class="codex-hero-metrics" aria-label="{{ ui.codex_team.stats_label }}">
+    <div>
+      <dt>{{ ui.codex_team.runs_tracked }}</dt>
+      <dd>{{ codex_team.run_count }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.active_runs }}</dt>
+      <dd>{{ codex_team.active_count }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.waiting_runs }}</dt>
+      <dd>{{ codex_team.waiting_count }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.failed_runs }}</dt>
+      <dd>{{ codex_team.failed_count }}</dd>
+    </div>
+    <div class="codex-wide">
+      <dt>{{ ui.codex_team.runs_dir }}</dt>
+      <dd>{{ codex_team.runs_dir }}</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="codex-panel" aria-labelledby="codex-runs-title" data-testid="dashboard-codex-team-page">
+  <div class="section-heading">
+    <p class="eyebrow">{{ ui.codex_team.list_eyebrow }}</p>
+    <h2 id="codex-runs-title">{{ ui.codex_team.list_title }}</h2>
+    <p class="section-note">{{ ui.codex_team.list_note }}</p>
+  </div>
+
+  {% if codex_team.is_empty %}
+  <div class="state-panel empty-state" role="status" aria-live="polite" data-testid="dashboard-codex-team-empty-state">
+    <h3>{{ ui.codex_team.empty_title }}</h3>
+    <p>{{ ui.codex_team.empty_body }}</p>
+  </div>
+  {% else %}
+  <div class="codex-run-list" data-testid="dashboard-codex-team-run-list">
+    {% for run in codex_team.runs %}
+    <a class="codex-run-row" href="{{ run.detail_href }}" data-testid="dashboard-codex-team-run-{{ run.run_id }}">
+      <div class="codex-run-main">
+        <div class="codex-run-title-line">
+          <h3>{{ run.run_id }}</h3>
+          <span class="status-pill status-{{ run.status }}">{{ run.status }}</span>
+          <span class="status-pill codex-state-{{ run.state }}">{{ run.state }}</span>
+          {% if run.needs_user_input %}
+          <span class="status-pill status-blocked">{{ ui.codex_team.needs_user_input }}</span>
+          {% endif %}
+        </div>
+        <p class="codex-path">{{ run.repo_root }}</p>
+        {% if run.last_reason %}
+        <p class="codex-route-copy">{{ run.last_action or ui.common.unknown }} -> {{ run.last_target or ui.common.unknown }} · {{ run.last_reason }}</p>
+        {% elif run.last_error_code %}
+        <p class="codex-route-copy">{{ ui.codex_team.last_error }} · {{ run.last_error_code }}</p>
+        {% endif %}
+      </div>
+      <dl class="codex-run-meta">
+        <div>
+          <dt>{{ ui.codex_team.owner }}</dt>
+          <dd>{{ run.current_owner or ui.common.none }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.codex_team.attempt }}</dt>
+          <dd>{{ run.current_attempt }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.codex_team.updated_at }}</dt>
+          <dd>{{ render_local_time(run.updated_at, run.updated_at_iso) }}</dd>
+        </div>
+        <div>
+          <dt>{{ ui.codex_team.duration }}</dt>
+          <dd>{{ run.duration_label }}</dd>
+        </div>
+      </dl>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

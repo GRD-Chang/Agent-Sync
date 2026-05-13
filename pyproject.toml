@@ -43,6 +43,8 @@ task_bridge = [
   "prompt_templates/*.txt",
   "dashboard/templates/*.html",
   "dashboard/static/*.css",
+  "dashboard/static/*.js",
+  "dashboard/static/dashboard_css/*.css",
 ]
 
 [tool.pytest.ini_options]

@@ -19,5 +19,8 @@
 /* Worker queue, alerts, and health page-specific layouts */
 @import url("./dashboard_css/50-ops.css");
 
+/* Codex Team read-only run trace pages */
+@import url("./dashboard_css/55-codex-team.css");
+
 /* Responsive overrides kept last to preserve the shipped cascade */
 @import url("./dashboard_css/90-responsive.css");
