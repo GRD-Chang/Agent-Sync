@@ -57,6 +57,17 @@
     </div>
     <span class="status-pill artifact-status-{{ preview.status }}">{{ preview.status }}</span>
   </header>
+  {% if preview.source_role or preview.evidence_label %}
+  <div class="codex-reader-source">
+    <span>{{ ui.codex_team.evidence_source }}</span>
+    {% if preview.source_role %}
+    <strong>{{ preview.source_role }}{% if preview.source_attempt is not none %} · {{ ui.codex_team.attempt }} {{ preview.source_attempt }}{% endif %}</strong>
+    {% endif %}
+    {% if preview.evidence_label %}
+    <em>{{ preview.evidence_label }}</em>
+    {% endif %}
+  </div>
+  {% endif %}
   <dl class="codex-reader-meta">
     <div>
       <dt>{{ ui.codex_team.artifact_path }}</dt>
@@ -99,7 +110,15 @@
   <div class="codex-log-summary">
     <span>{{ ui.codex_team.log_summary }}</span>
     <strong>
-      {% if preview.status == "empty" %}
+      {% if preview.status == "empty" and preview.evidence_label == "stderr" %}
+      {{ ui.codex_team.stderr_empty_summary }}
+      {% elif preview.status == "empty" and preview.evidence_label == "stdout" %}
+      {{ ui.codex_team.stdout_empty_summary }}
+      {% elif preview.evidence_label == "stdout" %}
+      {{ ui.codex_team.stdout_rendered_summary }}
+      {% elif preview.evidence_label == "stderr" %}
+      {{ ui.codex_team.stderr_rendered_summary }}
+      {% elif preview.status == "empty" %}
       {{ ui.codex_team.log_empty_summary }}
       {% elif preview.is_truncated %}
       {{ ui.codex_team.log_truncated_summary }}
@@ -109,10 +128,25 @@
     </strong>
   </div>
   {% endif %}
+  {% if preview.json_summary %}
+  <dl class="codex-json-summary" aria-label="{{ ui.codex_team.structured_summary }}">
+    {% for field in preview.json_summary %}
+    <div>
+      <dt>{{ field.label }}</dt>
+      <dd>{{ field.value }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+  {% endif %}
   {% if preview.status == "rendered" %}
     {% if preview.kind == "markdown" %}
     {{ markdown_outline(preview) }}
     {{ markdown_document(preview) }}
+    {% elif preview.kind == "json" or preview.kind == "jsonl" %}
+    <details class="codex-raw-json" open>
+      <summary>{{ ui.codex_team.raw_json }}</summary>
+      <pre class="codex-reader-content"><code>{{ preview.text }}</code></pre>
+    </details>
     {% else %}
     <pre class="codex-reader-content"><code>{{ preview.text }}</code></pre>
     {% endif %}
@@ -135,6 +169,15 @@
     <a class="codex-back-link" href="{{ run.back_href }}">{{ ui.codex_team.runs_link }}</a>
     <p class="eyebrow">{{ ui.codex_team.detail_eyebrow }}</p>
     <h2 id="codex-run-title" data-testid="dashboard-page-title">{{ run.run_id }}</h2>
+    <div class="codex-trace-preview codex-title-trace" aria-label="{{ ui.codex_team.trace_preview }}">
+      {% for node in run.flow_nodes %}
+      <a class="codex-trace-preview-node codex-role-{{ node.role }} status-{{ node.status }}{% if loop.last %} is-terminal{% endif %}" href="#step-{{ node.node_id }}">
+        <span>{{ loop.index }}</span>
+        <strong>{{ node.role }}</strong>
+        <small>{% if node.attempt is not none %}{{ ui.codex_team.attempt }} {{ node.attempt }} · {% endif %}{{ node.duration_label }}</small>
+      </a>
+      {% endfor %}
+    </div>
     <p class="codex-path">{{ run.repo_root }}</p>
   </div>
   <div class="codex-run-position">
@@ -166,15 +209,6 @@
         <dd>{{ run.duration_label }}</dd>
       </div>
     </dl>
-    <div class="codex-trace-preview" aria-label="{{ ui.codex_team.trace_preview }}">
-      {% for node in run.flow_nodes %}
-      <a class="codex-trace-preview-node codex-role-{{ node.role }} status-{{ node.status }}" href="#step-{{ node.node_id }}">
-        <span>{{ loop.index }}</span>
-        <strong>{{ node.role }}</strong>
-        <small>{{ node.duration_label }}</small>
-      </a>
-      {% endfor %}
-    </div>
   </div>
 </section>
 
@@ -273,7 +307,7 @@
             {% endif %}
           </dl>
           <div class="codex-duration-track" aria-label="{{ ui.codex_team.duration }}">
-            <span style="--duration-index: {{ loop.index }}"></span>
+            <span></span>
           </div>
           {% if node.reason %}
           <p class="codex-route-copy">{{ node.reason }}</p>
@@ -353,7 +387,7 @@
       {% for artifact in run.artifacts %}
       <a href="#{{ artifact.anchor }}">
         <span>{{ artifact.label }}</span>
-        <small>{{ artifact.kind }} · {{ artifact.status }}</small>
+        <small>{% if artifact.source_role %}{{ artifact.source_role }}{% if artifact.source_attempt is not none %} · {{ ui.codex_team.attempt }} {{ artifact.source_attempt }}{% endif %} · {% endif %}{{ artifact.kind }} · {{ artifact.status }}</small>
       </a>
       {% endfor %}
       </section>
@@ -363,7 +397,7 @@
       {% for log in run.logs %}
       <a href="#{{ log.anchor }}">
         <span>{{ log.label }}</span>
-        <small>{{ log.kind }} · {{ log.status }}</small>
+        <small>{% if log.source_role %}{{ log.source_role }}{% if log.source_attempt is not none %} · {{ ui.codex_team.attempt }} {{ log.source_attempt }}{% endif %} · {% endif %}{{ log.evidence_label or log.kind }} · {{ log.status }}</small>
       </a>
       {% endfor %}
       </section>

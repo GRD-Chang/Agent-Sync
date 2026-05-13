@@ -88,6 +88,12 @@ class CodexTeamPreviewSegment:
 
 
 @dataclass(frozen=True)
+class CodexTeamPreviewField:
+    label: str
+    value: str
+
+
+@dataclass(frozen=True)
 class CodexTeamPreview:
     key: str
     label: str
@@ -104,6 +110,10 @@ class CodexTeamPreview:
     line_count: int = 0
     size_label: str = "0 B"
     segments: tuple[CodexTeamPreviewSegment, ...] = ()
+    source_role: str | None = None
+    source_attempt: int | None = None
+    evidence_label: str | None = None
+    json_summary: tuple[CodexTeamPreviewField, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -441,13 +451,25 @@ class CodexTeamDashboardQueryService:
         run_home = self.store.run_home(run_id)
         previews = [
             self._preview_path(run_id, "input", self._messages["artifact_input"], run_home / "input.md", "markdown"),
-            self._preview_path(run_id, "plan", self._messages["artifact_plan"], run_home / "plan.md", "markdown"),
+            self._preview_path(
+                run_id,
+                "plan",
+                self._messages["artifact_plan"],
+                run_home / "plan.md",
+                "markdown",
+                source_role="planner",
+                source_attempt=0,
+                evidence_label=self._messages["artifact_plan"],
+            ),
             self._preview_path(
                 run_id,
                 "plan_evaluation",
                 self._messages["artifact_plan_evaluation"],
                 run_home / "plan_evaluation.md",
                 "markdown",
+                source_role="evaluator",
+                source_attempt=0,
+                evidence_label=self._messages["artifact_plan_evaluation"],
             ),
         ]
         for attempt_dir in sorted((run_home / "attempts").glob("[0-9][0-9][0-9]")):
@@ -459,6 +481,9 @@ class CodexTeamDashboardQueryService:
                     self._messages["artifact_implementation"].format(attempt=attempt),
                     attempt_dir / "implementation.md",
                     "markdown",
+                    source_role="generator",
+                    source_attempt=_safe_int(attempt),
+                    evidence_label=self._messages["artifact_implementation"].format(attempt=attempt),
                 )
             )
             previews.append(
@@ -468,20 +493,49 @@ class CodexTeamDashboardQueryService:
                     self._messages["artifact_evaluation"].format(attempt=attempt),
                     attempt_dir / "evaluation.md",
                     "markdown",
+                    source_role="evaluator",
+                    source_attempt=_safe_int(attempt),
+                    evidence_label=self._messages["artifact_evaluation"].format(attempt=attempt),
                 )
             )
         previews.extend(
             [
-                self._preview_path(run_id, "next_action", self._messages["artifact_next_action"], run_home / "next_action.json", "json"),
-                self._preview_path(run_id, "metadata", self._messages["artifact_metadata"], run_home / "metadata.json", "json"),
+                self._preview_path(
+                    run_id,
+                    "next_action",
+                    self._messages["artifact_next_action"],
+                    run_home / "next_action.json",
+                    "json",
+                    source_role="dispatcher",
+                    evidence_label=self._messages["artifact_next_action"],
+                ),
+                self._preview_path(
+                    run_id,
+                    "metadata",
+                    self._messages["artifact_metadata"],
+                    run_home / "metadata.json",
+                    "json",
+                    source_role="system",
+                    evidence_label=self._messages["artifact_metadata"],
+                ),
                 self._preview_path(
                     run_id,
                     "pending_question",
                     self._messages["artifact_pending_question"],
                     run_home / "pending_question.json",
                     "json",
+                    source_role="planner",
+                    evidence_label=self._messages["artifact_pending_question"],
                 ),
-                self._preview_path(run_id, "answers", self._messages["artifact_answers"], run_home / "answers.jsonl", "jsonl"),
+                self._preview_path(
+                    run_id,
+                    "answers",
+                    self._messages["artifact_answers"],
+                    run_home / "answers.jsonl",
+                    "jsonl",
+                    source_role="user",
+                    evidence_label=self._messages["artifact_answers"],
+                ),
             ]
         )
         return previews
@@ -494,7 +548,20 @@ class CodexTeamDashboardQueryService:
         for path in sorted(logs_dir.glob("*")):
             if path.is_file():
                 kind = "json" if path.name.endswith(".json") else "log"
-                logs.append(self._preview_path(run_id, _log_preview_key(path), path.name, path, kind, char_limit=LOG_CHAR_LIMIT))
+                role, attempt, evidence_label = _log_source_context(path.name)
+                logs.append(
+                    self._preview_path(
+                        run_id,
+                        _log_preview_key(path),
+                        path.name,
+                        path,
+                        kind,
+                        char_limit=LOG_CHAR_LIMIT,
+                        source_role=role,
+                        source_attempt=attempt,
+                        evidence_label=evidence_label,
+                    )
+                )
         return logs
 
     def _preview_path(
@@ -506,30 +573,70 @@ class CodexTeamDashboardQueryService:
         kind: str,
         *,
         char_limit: int = ARTIFACT_CHAR_LIMIT,
+        source_role: str | None = None,
+        source_attempt: int | None = None,
+        evidence_label: str | None = None,
     ) -> CodexTeamPreview:
         anchor = f"artifact-{key}"
         path_value = str(path)
+        source_context = {
+            "source_role": source_role,
+            "source_attempt": source_attempt,
+            "evidence_label": evidence_label,
+        }
         if not self.store.is_inside_run_home(run_id, path):
-            return CodexTeamPreview(key, label, kind, path_value, "unsafe", "", anchor, error_message=self._messages["unsafe_path"])
+            return CodexTeamPreview(
+                key,
+                label,
+                kind,
+                path_value,
+                "unsafe",
+                "",
+                anchor,
+                error_message=self._messages["unsafe_path"],
+                **source_context,
+            )
         try:
             real_path = path.resolve()
         except OSError as exc:
-            return CodexTeamPreview(key, label, kind, path_value, "error", "", anchor, error_message=str(exc))
+            return CodexTeamPreview(key, label, kind, path_value, "error", "", anchor, error_message=str(exc), **source_context)
         if not real_path.exists():
-            return CodexTeamPreview(key, label, kind, path_value, "missing", "", anchor)
+            return CodexTeamPreview(key, label, kind, path_value, "missing", "", anchor, **source_context)
         if not real_path.is_file():
-            return CodexTeamPreview(key, label, kind, path_value, "error", "", anchor, error_message=self._messages["not_file"])
+            return CodexTeamPreview(
+                key,
+                label,
+                kind,
+                path_value,
+                "error",
+                "",
+                anchor,
+                error_message=self._messages["not_file"],
+                **source_context,
+            )
         try:
             data = real_path.read_bytes()
         except OSError as exc:
-            return CodexTeamPreview(key, label, kind, path_value, "error", "", anchor, error_message=str(exc))
+            return CodexTeamPreview(key, label, kind, path_value, "error", "", anchor, error_message=str(exc), **source_context)
         is_truncated = len(data) > char_limit
         text = data[:char_limit].decode("utf-8", errors="replace")
         line_count = text.count("\n") + (1 if text else 0)
         size_label = _format_bytes(len(data))
         if not text.strip():
-            return CodexTeamPreview(key, label, kind, path_value, "empty", "", anchor, line_count=0, size_label=size_label)
+            return CodexTeamPreview(
+                key,
+                label,
+                kind,
+                path_value,
+                "empty",
+                "",
+                anchor,
+                line_count=0,
+                size_label=size_label,
+                **source_context,
+            )
         action = target = reason = None
+        json_summary: tuple[CodexTeamPreviewField, ...] = ()
         if kind == "json":
             try:
                 payload = json.loads(real_path.read_text(encoding="utf-8"))
@@ -537,6 +644,7 @@ class CodexTeamDashboardQueryService:
                     action = _optional_str(payload.get("action"))
                     target = _optional_str(payload.get("target"))
                     reason = _optional_str(payload.get("reason"))
+                    json_summary = _json_summary_fields(payload)
                 text = json.dumps(payload, ensure_ascii=False, indent=2)
                 if len(text) > char_limit:
                     text = text[:char_limit]
@@ -555,6 +663,7 @@ class CodexTeamDashboardQueryService:
                     str(exc),
                     line_count=line_count,
                     size_label=size_label,
+                    **source_context,
                 )
         elif kind == "jsonl":
             rows: list[Any] = []
@@ -563,6 +672,7 @@ class CodexTeamDashboardQueryService:
                     if line.strip():
                         rows.append(json.loads(line))
                 text = json.dumps(rows, ensure_ascii=False, indent=2)
+                json_summary = (CodexTeamPreviewField("rows", str(len(rows))),)
                 if len(text) > char_limit:
                     text = text[:char_limit]
                     is_truncated = True
@@ -580,6 +690,7 @@ class CodexTeamDashboardQueryService:
                     str(exc),
                     line_count=line_count,
                     size_label=size_label,
+                    **source_context,
                 )
         segments: tuple[CodexTeamPreviewSegment, ...] = ()
         if kind == "markdown":
@@ -599,6 +710,8 @@ class CodexTeamDashboardQueryService:
             line_count=line_count,
             size_label=size_label,
             segments=segments,
+            json_summary=json_summary,
+            **source_context,
         )
 
     def _route_decision(self, run_id: str) -> CodexTeamRouteDecision:
@@ -739,6 +852,34 @@ def _format_bytes(value: int) -> str:
 def _log_preview_key(path: Path) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", path.name).strip("_").lower()
     return f"log_{slug or 'file'}"
+
+
+def _log_source_context(name: str) -> tuple[str | None, int | None, str | None]:
+    match = re.match(r"^(planner|generator|evaluator)-(\d+)\.(last-message|stdout|stderr)\.(json|log)$", name)
+    if not match:
+        return None, None, None
+    role, attempt, channel, _suffix = match.groups()
+    return role, _safe_int(attempt), channel
+
+
+def _json_summary_fields(payload: dict[str, Any]) -> tuple[CodexTeamPreviewField, ...]:
+    fields: list[CodexTeamPreviewField] = []
+    for key in ("schema_version", "status", "action", "target", "reason", "run_id", "state", "current_owner", "current_attempt"):
+        if key in payload:
+            fields.append(CodexTeamPreviewField(key, _summary_value(payload[key])))
+    if "artifacts" in payload and isinstance(payload["artifacts"], list):
+        fields.append(CodexTeamPreviewField("artifacts", str(len(payload["artifacts"]))))
+    if "last_error" in payload and isinstance(payload["last_error"], dict):
+        code = _optional_str(payload["last_error"].get("code"))
+        if code:
+            fields.append(CodexTeamPreviewField("last_error", code))
+    return tuple(fields)
+
+
+def _summary_value(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return truncate(json.dumps(value, ensure_ascii=False), 140)
+    return truncate(str(value), 180)
 
 
 def _markdown_segments(text: str) -> tuple[CodexTeamPreviewSegment, ...]:

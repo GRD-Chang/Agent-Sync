@@ -211,13 +211,17 @@ def test_codex_team_dashboard_routes_render_full_chain_read_only(home: Path) -> 
     assert 'data-testid="dashboard-codex-team-flow"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-planner-1"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-generator-3"' in detail_body
-    assert 'class="codex-trace-preview"' in detail_body
+    assert "codex-trace-preview codex-title-trace" in detail_body
     assert 'class="codex-duration-track"' in detail_body
     assert 'data-testid="dashboard-codex-team-artifact-implementation_001"' in detail_body
     assert 'class="codex-markdown-document"' in detail_body
     assert 'class="codex-reader-outline"' in detail_body
+    assert 'class="codex-reader-source"' in detail_body
+    assert 'class="codex-json-summary"' in detail_body
+    assert 'class="codex-raw-json" open' in detail_body
     assert "Runner evidence" in detail_body
     assert "Log summary" in detail_body
+    assert "No error output captured" in detail_body
     assert "Open last message" in detail_body
     assert "Open stdout" in detail_body
     assert 'data-testid="dashboard-codex-team-log' in detail_body
