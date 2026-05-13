@@ -94,6 +94,22 @@ class CodexTeamDispatcher:
         logs_dir.mkdir(parents=True, exist_ok=True)
         sequence = len(list(logs_dir.glob(f"{owner}-*.last-message.json"))) + 1
         output_path = logs_dir / f"{owner}-{sequence:03d}.last-message.json"
+        stdout_log, stderr_log = _stdio_log_paths_for_output(output_path, owner)
+        invocation_id = f"{owner}-{sequence:03d}"
+        self.store.append_event(
+            run_id,
+            {
+                "type": "agent_step_started",
+                "invocation_id": invocation_id,
+                "role": owner,
+                "state": metadata.get("state"),
+                "attempt": _display_attempt_for_role(owner, metadata),
+                "last_message_path": str(output_path),
+                "stdout_log": str(stdout_log),
+                "stderr_log": str(stderr_log),
+                "resume": False,
+            },
+        )
         prompt = build_role_prompt(role=owner, repo_root=repo_root, run_home=run_home, metadata=metadata)
         result = self.runner.run(
             role=owner,
@@ -102,6 +118,14 @@ class CodexTeamDispatcher:
             run_home=run_home,
             schema_path=schema_path,
             output_last_message_path=output_path,
+        )
+        self._record_agent_step_finished(
+            run_id,
+            invocation_id=invocation_id,
+            role=owner,
+            result=result,
+            stdout_log=stdout_log,
+            stderr_log=stderr_log,
         )
         if result.error:
             return self._record_runner_error(run_id, result)
@@ -166,6 +190,23 @@ class CodexTeamDispatcher:
         logs_dir.mkdir(parents=True, exist_ok=True)
         sequence = len(list(logs_dir.glob(f"{role}-resume-*.last-message.json"))) + 1
         output_path = logs_dir / f"{role}-resume-{sequence:03d}.last-message.json"
+        stdout_log, stderr_log = _stdio_log_paths_for_output(output_path, role)
+        invocation_id = f"{role}-resume-{sequence:03d}"
+        self.store.append_event(
+            run_id,
+            {
+                "type": "agent_step_started",
+                "invocation_id": invocation_id,
+                "role": role,
+                "state": metadata.get("state"),
+                "attempt": _display_attempt_for_role(role, metadata),
+                "last_message_path": str(output_path),
+                "stdout_log": str(stdout_log),
+                "stderr_log": str(stderr_log),
+                "resume": True,
+                "thread_id": thread_id,
+            },
+        )
         result = self.runner.run(
             role=role,
             prompt=build_resume_prompt(role=role, repo_root=repo_root, run_home=run_home),
@@ -174,6 +215,14 @@ class CodexTeamDispatcher:
             output_last_message_path=output_path,
             session_id=thread_id,
             resume=True,
+        )
+        self._record_agent_step_finished(
+            run_id,
+            invocation_id=invocation_id,
+            role=role,
+            result=result,
+            stdout_log=stdout_log,
+            stderr_log=stderr_log,
         )
         if result.error:
             return self._record_runner_error(run_id, result)
@@ -271,6 +320,24 @@ class CodexTeamDispatcher:
         )
         repair_output = run_home / "artifacts" / "logs" / f"{role}-repair-{repair_attempts:03d}.last-message.json"
         self.store.append_event(run_id, {"type": "repair_started", "role": role, "attempt": repair_attempts})
+        repair_stdout_log, repair_stderr_log = _stdio_log_paths_for_output(repair_output, role)
+        repair_invocation_id = f"{role}-repair-{repair_attempts:03d}"
+        self.store.append_event(
+            run_id,
+            {
+                "type": "agent_step_started",
+                "invocation_id": repair_invocation_id,
+                "role": role,
+                "state": metadata.get("state"),
+                "attempt": _display_attempt_for_role(role, metadata),
+                "last_message_path": str(repair_output),
+                "stdout_log": str(repair_stdout_log),
+                "stderr_log": str(repair_stderr_log),
+                "resume": True,
+                "repair_attempt": repair_attempts,
+                "thread_id": result.session_id,
+            },
+        )
         repaired = self.runner.run(
             role=role,
             prompt=prompt,
@@ -280,9 +347,48 @@ class CodexTeamDispatcher:
             session_id=result.session_id,
             resume=True,
         )
+        self._record_agent_step_finished(
+            run_id,
+            invocation_id=repair_invocation_id,
+            role=role,
+            result=repaired,
+            stdout_log=repair_stdout_log,
+            stderr_log=repair_stderr_log,
+        )
         if repaired.error:
             return self._record_runner_error(run_id, repaired)
         return self._consume_envelope(run_id, role, repaired.envelope, result=repaired, repair_attempts=repair_attempts)
+
+    def _record_agent_step_finished(
+        self,
+        run_id: str,
+        *,
+        invocation_id: str,
+        role: str,
+        result: RunnerResult,
+        stdout_log: Path,
+        stderr_log: Path,
+    ) -> None:
+        error = result.error if isinstance(result.error, dict) else {}
+        details = error.get("details") if isinstance(error.get("details"), dict) else {}
+        self.store.append_event(
+            run_id,
+            {
+                "type": "agent_step_finished",
+                "invocation_id": invocation_id,
+                "role": role,
+                "status": "failed" if result.error else "completed",
+                "returncode": result.returncode,
+                "duration_seconds": result.duration_seconds,
+                "last_message_path": str(result.last_message_path) if result.last_message_path else None,
+                "stdout_log": str(details.get("stdout_log") or stdout_log),
+                "stderr_log": str(details.get("stderr_log") or stderr_log),
+                "stdout_tail": result.stdout_tail,
+                "stderr_tail": result.stderr_tail,
+                "session_id": result.session_id,
+                "error_code": error.get("code") if error else None,
+            },
+        )
 
     def _validate_fixed_artifact(self, run_id: str, role: str, envelope: dict[str, Any]) -> list[ValidationIssue]:
         path = self._fixed_artifact_path(run_id, role, envelope)
@@ -479,3 +585,17 @@ def _state_for_owner(owner: str) -> str:
         "generator": "generating",
         "evaluator": "evaluating_final",
     }[owner]
+
+
+def _stdio_log_paths_for_output(output_path: Path, role: str) -> tuple[Path, Path]:
+    prefix = output_path.name.removesuffix(".last-message.json")
+    if prefix == output_path.name:
+        prefix = role
+    return output_path.parent / f"{prefix}.stdout.log", output_path.parent / f"{prefix}.stderr.log"
+
+
+def _display_attempt_for_role(role: str, metadata: dict[str, Any]) -> int:
+    current_attempt = int(metadata.get("current_attempt") or 0)
+    if role == "generator":
+        return current_attempt + 1
+    return current_attempt

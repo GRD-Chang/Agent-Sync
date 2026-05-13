@@ -108,6 +108,41 @@ def test_dispatcher_fake_runner_e2e_reaches_completed(tmp_path: Path) -> None:
     assert [event["type"] for event in store.read_events(outcome.run_id)].count("route") >= 4
 
 
+def test_dispatcher_records_agent_step_observability_events(tmp_path: Path) -> None:
+    store = CodexTeamStore(home=tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    metadata = store.create_run(repo_root=repo, input_text="x", run_id="run-1")
+    store.update_metadata(metadata["run_id"], state="planning", current_owner="planner")
+    plan = store.run_home("run-1") / "plan.md"
+    plan.write_text("plan")
+    runner = FakeCodexRunner(
+        [
+            RunnerResult(
+                role="planner",
+                returncode=0,
+                duration_seconds=2.5,
+                stdout_tail="planner stdout",
+                envelope=_envelope("planned", action="continue", target="evaluator"),
+                last_message_path=store.run_home("run-1") / "artifacts" / "logs" / "planner-001.last-message.json",
+            )
+        ]
+    )
+
+    CodexTeamDispatcher(store=store, runner=runner).step("run-1")
+
+    events = store.read_events("run-1")
+    started = next(event for event in events if event["type"] == "agent_step_started")
+    finished = next(event for event in events if event["type"] == "agent_step_finished")
+    assert started["role"] == "planner"
+    assert started["invocation_id"] == "planner-001"
+    assert started["stdout_log"].endswith("planner-001.stdout.log")
+    assert finished["invocation_id"] == "planner-001"
+    assert finished["duration_seconds"] == 2.5
+    assert finished["returncode"] == 0
+    assert finished["stdout_tail"] == "planner stdout"
+
+
 def test_planner_plan_review_uses_plan_evaluation_without_attempt_collision(tmp_path: Path) -> None:
     store = CodexTeamStore(home=tmp_path)
     repo = tmp_path / "repo"
@@ -183,7 +218,7 @@ def test_resume_failed_runner_error_uses_thread_id(tmp_path: Path) -> None:
     assert runner.calls[0]["resume"] is True
     assert runner.calls[0]["session_id"] == "thread-1"
     assert "继续刚才中断的 Codex Team 工作" in runner.calls[0]["prompt"]
-    assert store.read_events("run-1")[-2]["type"] == "resume_started"
+    assert any(event["type"] == "resume_started" for event in store.read_events("run-1"))
 
 
 def test_resume_failed_runner_error_without_thread_reruns_current_owner(tmp_path: Path) -> None:
@@ -208,7 +243,7 @@ def test_resume_failed_runner_error_without_thread_reruns_current_owner(tmp_path
     assert outcome.state == "generating"
     assert metadata["status"] == "running"
     assert runner.calls[0]["resume"] is False
-    assert store.read_events("run-1")[-2]["type"] == "resume_started"
+    assert any(event["type"] == "resume_started" for event in store.read_events("run-1"))
 
 
 def test_resume_rejects_non_runner_failures(tmp_path: Path) -> None:
