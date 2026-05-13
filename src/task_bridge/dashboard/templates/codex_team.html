@@ -93,7 +93,7 @@
         <span>{{ ui.common.none }}</span>
         {% endif %}
         {% if run.last_reason %}
-        <small>{{ run.last_reason }}</small>
+        <small title="{{ run.last_reason }}">{{ run.last_reason }}</small>
         {% endif %}
       </div>
       <div class="codex-run-cell" data-label="{{ ui.codex_team.risk }}">{{ risk_pill(run) }}</div>

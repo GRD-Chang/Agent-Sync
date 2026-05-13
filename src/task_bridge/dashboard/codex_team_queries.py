@@ -658,6 +658,8 @@ class CodexTeamDashboardQueryService:
             return None
         if path.parent != self.store.run_home(run_id) / "artifacts" / "logs":
             return None
+        if not path.exists():
+            return None
         return self._path_with_locale(f"/codex-team/{run_id}") + f"#artifact-{_log_preview_key(path)}"
 
     def _format_time(self, value: str):

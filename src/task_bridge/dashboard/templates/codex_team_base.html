@@ -40,7 +40,8 @@
             <a href="{{ nav_items[0].href }}" data-testid="codex-team-task-bridge-link">{{ ui.codex_team.home_link }}</a>
             <span>{{ ui.codex_team.read_only }}</span>
           </nav>
-          <section class="codex-reader-tools" aria-label="{{ ui.codex_team.reader_controls }}" data-testid="codex-team-reader-tools">
+          <details class="codex-reader-tools" aria-label="{{ ui.codex_team.reader_controls }}" data-testid="codex-team-reader-tools">
+            <summary>{{ ui.codex_team.reader_controls }}</summary>
             <div class="locale-links" aria-label="{{ ui.shell.locale_label }}">
               {% for option in locale_options %}
               <a
@@ -67,7 +68,7 @@
               </button>
               {% endfor %}
             </div>
-          </section>
+          </details>
         </div>
       </header>
       <main id="content" class="codex-team-main">

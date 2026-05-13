@@ -7,9 +7,9 @@
     {% for segment in preview.segments %}
       {% if segment.kind == "heading" %}
         {% if segment.level <= 1 %}
-        <h3>{{ segment.text }}</h3>
+        <h3 id="{{ preview.anchor }}-section-{{ loop.index }}">{{ segment.text }}</h3>
         {% else %}
-        <h4>{{ segment.text }}</h4>
+        <h4 id="{{ preview.anchor }}-section-{{ loop.index }}">{{ segment.text }}</h4>
         {% endif %}
       {% elif segment.kind == "list_item" %}
       <p class="codex-md-list-item">{{ segment.text }}</p>
@@ -23,6 +23,25 @@
   <p>{{ preview.text }}</p>
   {% endif %}
 </div>
+{% endmacro %}
+
+{% macro markdown_outline(preview) %}
+{% set headings = namespace(count=0) %}
+{% for segment in preview.segments %}
+  {% if segment.kind == "heading" %}
+    {% set headings.count = headings.count + 1 %}
+  {% endif %}
+{% endfor %}
+{% if headings.count %}
+<nav class="codex-reader-outline" aria-label="{{ ui.codex_team.reader_sections }}">
+  <span>{{ ui.codex_team.reader_sections }}</span>
+  {% for segment in preview.segments %}
+    {% if segment.kind == "heading" %}
+    <a href="#{{ preview.anchor }}-section-{{ loop.index }}">{{ segment.text }}</a>
+    {% endif %}
+  {% endfor %}
+</nav>
+{% endif %}
 {% endmacro %}
 
 {% macro reader_panel(preview, testid_prefix) %}
@@ -76,8 +95,23 @@
     </div>
   </dl>
   {% endif %}
+  {% if preview.kind == "log" %}
+  <div class="codex-log-summary">
+    <span>{{ ui.codex_team.log_summary }}</span>
+    <strong>
+      {% if preview.status == "empty" %}
+      {{ ui.codex_team.log_empty_summary }}
+      {% elif preview.is_truncated %}
+      {{ ui.codex_team.log_truncated_summary }}
+      {% else %}
+      {{ preview.status }}
+      {% endif %}
+    </strong>
+  </div>
+  {% endif %}
   {% if preview.status == "rendered" %}
     {% if preview.kind == "markdown" %}
+    {{ markdown_outline(preview) }}
     {{ markdown_document(preview) }}
     {% else %}
     <pre class="codex-reader-content"><code>{{ preview.text }}</code></pre>
@@ -132,6 +166,15 @@
         <dd>{{ run.duration_label }}</dd>
       </div>
     </dl>
+    <div class="codex-trace-preview" aria-label="{{ ui.codex_team.trace_preview }}">
+      {% for node in run.flow_nodes %}
+      <a class="codex-trace-preview-node codex-role-{{ node.role }} status-{{ node.status }}" href="#step-{{ node.node_id }}">
+        <span>{{ loop.index }}</span>
+        <strong>{{ node.role }}</strong>
+        <small>{{ node.duration_label }}</small>
+      </a>
+      {% endfor %}
+    </div>
   </div>
 </section>
 
@@ -185,7 +228,7 @@
     <div class="codex-flow-list">
       {% for node in run.flow_nodes %}
       <article
-        class="codex-flow-node codex-role-{{ node.role }}"
+        class="codex-flow-node codex-role-{{ node.role }} status-{{ node.status }}"
         id="step-{{ node.node_id }}"
         data-testid="dashboard-codex-team-flow-node-{{ node.role }}-{{ loop.index }}"
       >
@@ -229,6 +272,9 @@
             </div>
             {% endif %}
           </dl>
+          <div class="codex-duration-track" aria-label="{{ ui.codex_team.duration }}">
+            <span style="--duration-index: {{ loop.index }}"></span>
+          </div>
           {% if node.reason %}
           <p class="codex-route-copy">{{ node.reason }}</p>
           {% endif %}
@@ -302,18 +348,26 @@
   </div>
   <div class="codex-reader-workspace">
     <nav class="codex-artifact-rail" aria-label="{{ ui.codex_team.artifacts_title }}">
+      <section>
+        <h3>{{ ui.codex_team.reader_group_artifacts }}</h3>
       {% for artifact in run.artifacts %}
       <a href="#{{ artifact.anchor }}">
         <span>{{ artifact.label }}</span>
         <small>{{ artifact.kind }} · {{ artifact.status }}</small>
       </a>
       {% endfor %}
+      </section>
+      {% if run.logs %}
+      <section>
+        <h3>{{ ui.codex_team.reader_group_logs }}</h3>
       {% for log in run.logs %}
       <a href="#{{ log.anchor }}">
         <span>{{ log.label }}</span>
         <small>{{ log.kind }} · {{ log.status }}</small>
       </a>
       {% endfor %}
+      </section>
+      {% endif %}
     </nav>
     <div class="codex-reader-stack">
       {% for artifact in run.artifacts %}
