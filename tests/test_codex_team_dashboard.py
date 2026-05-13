@@ -145,6 +145,9 @@ def test_codex_team_read_model_builds_run_list_and_detail(home: Path) -> None:
     assert all(node.duration_label == "1.2s" for node in detail.flow_nodes)
     assert detail.flow_nodes[2].action == "ready_for_review"
     assert detail.flow_nodes[2].artifact_href is not None
+    assert detail.flow_nodes[2].last_message_href is not None
+    assert detail.flow_nodes[2].stdout_href is not None
+    assert detail.flow_nodes[2].stderr_href is not None
     assert {artifact.key for artifact in detail.artifacts} >= {
         "input",
         "plan",
@@ -154,6 +157,9 @@ def test_codex_team_read_model_builds_run_list_and_detail(home: Path) -> None:
         "next_action",
         "metadata",
     }
+    assert next(artifact for artifact in detail.artifacts if artifact.key == "plan").segments
+    assert next(artifact for artifact in detail.artifacts if artifact.key == "plan").size_label.endswith("B")
+    assert any(log.kind == "json" and log.action == "ready_for_review" for log in detail.logs)
     assert any(log.label.endswith(".stdout.log") for log in detail.logs)
 
 
@@ -199,12 +205,16 @@ def test_codex_team_dashboard_routes_render_full_chain_read_only(home: Path) -> 
     assert 'data-testid="codex-team-product-nav"' in list_body
     assert 'data-testid="dashboard-primary-nav"' not in list_body
     assert 'data-testid="dashboard-page-chrome"' not in detail_body
+    assert 'class="codex-run-ledger"' in list_body
     assert 'data-testid="dashboard-codex-team-run-list"' in list_body
     assert run_id in list_body
     assert 'data-testid="dashboard-codex-team-flow"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-planner-1"' in detail_body
     assert 'data-testid="dashboard-codex-team-flow-node-generator-3"' in detail_body
     assert 'data-testid="dashboard-codex-team-artifact-implementation_001"' in detail_body
+    assert 'class="codex-markdown-document"' in detail_body
+    assert "Open last message" in detail_body
+    assert "Open stdout" in detail_body
     assert 'data-testid="dashboard-codex-team-log' in detail_body
     assert "ready_for_review" in detail_body
     assert "resume" not in detail_body.lower()

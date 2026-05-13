@@ -1,6 +1,30 @@
 {% extends "codex_team_base.html" %}
 {% from "_time.html" import render_local_time %}
 
+{% macro markdown_document(preview) %}
+<div class="codex-markdown-document">
+  {% if preview.segments %}
+    {% for segment in preview.segments %}
+      {% if segment.kind == "heading" %}
+        {% if segment.level <= 1 %}
+        <h3>{{ segment.text }}</h3>
+        {% else %}
+        <h4>{{ segment.text }}</h4>
+        {% endif %}
+      {% elif segment.kind == "list_item" %}
+      <p class="codex-md-list-item">{{ segment.text }}</p>
+      {% elif segment.kind == "code" %}
+      <pre class="codex-md-code"><code>{{ segment.text }}</code></pre>
+      {% else %}
+      <p>{{ segment.text }}</p>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+  <p>{{ preview.text }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro reader_panel(preview, testid_prefix) %}
 <article
   class="codex-reader-panel codex-reader-{{ preview.kind }} artifact-status-{{ preview.status }}"
@@ -27,6 +51,14 @@
       <dt>{{ ui.codex_team.artifact_status }}</dt>
       <dd>{{ preview.status }}</dd>
     </div>
+    <div>
+      <dt>{{ ui.codex_team.reader_size }}</dt>
+      <dd>{{ preview.size_label }}</dd>
+    </div>
+    <div>
+      <dt>{{ ui.codex_team.reader_lines }}</dt>
+      <dd>{{ preview.line_count }}</dd>
+    </div>
   </dl>
   {% if preview.action or preview.target or preview.reason %}
   <dl class="codex-route-strip codex-reader-route">
@@ -45,7 +77,11 @@
   </dl>
   {% endif %}
   {% if preview.status == "rendered" %}
-  <pre class="codex-reader-content"><code>{{ preview.text }}</code></pre>
+    {% if preview.kind == "markdown" %}
+    {{ markdown_document(preview) }}
+    {% else %}
+    <pre class="codex-reader-content"><code>{{ preview.text }}</code></pre>
+    {% endif %}
   {% elif preview.status == "missing" %}
   <div class="codex-inline-state">{{ ui.codex_team.artifact_missing }}</div>
   {% elif preview.status == "empty" %}
@@ -99,6 +135,25 @@
   </div>
 </section>
 
+<section class="codex-run-strip" aria-label="{{ ui.codex_team.trace_stats_label }}">
+  <div>
+    <span>{{ ui.codex_team.flow_title }}</span>
+    <strong>{{ run.flow_nodes|length }}</strong>
+  </div>
+  <div>
+    <span>{{ ui.codex_team.artifacts_title }}</span>
+    <strong>{{ run.artifacts|length }}</strong>
+  </div>
+  <div>
+    <span>{{ ui.codex_team.logs_title }}</span>
+    <strong>{{ run.logs|length }}</strong>
+  </div>
+  <div>
+    <span>{{ ui.codex_team.events_status }}</span>
+    <strong>{{ run.events_status }}</strong>
+  </div>
+</section>
+
 {% if run.needs_user_input or run.last_error_code %}
 <section class="codex-attention-strip" aria-label="{{ ui.codex_team.attention_label }}" data-testid="dashboard-codex-team-attention">
   {% if run.needs_user_input %}
@@ -129,7 +184,11 @@
     </div>
     <div class="codex-flow-list">
       {% for node in run.flow_nodes %}
-      <article class="codex-flow-node codex-role-{{ node.role }}" data-testid="dashboard-codex-team-flow-node-{{ node.role }}-{{ loop.index }}">
+      <article
+        class="codex-flow-node codex-role-{{ node.role }}"
+        id="step-{{ node.node_id }}"
+        data-testid="dashboard-codex-team-flow-node-{{ node.role }}-{{ loop.index }}"
+      >
         <div class="codex-flow-rail" aria-hidden="true">
           <span>{{ loop.index }}</span>
         </div>
@@ -177,13 +236,35 @@
             {% if node.artifact_href %}
             <a href="{{ node.artifact_href }}">{{ ui.codex_team.open_artifact }}</a>
             {% endif %}
-            {% if node.last_message_path %}
-            <span>{{ ui.codex_team.last_message }}: {{ node.last_message_path }}</span>
+            {% if node.last_message_href %}
+            <a href="{{ node.last_message_href }}">{{ ui.codex_team.open_last_message }}</a>
             {% endif %}
-            {% if node.stdout_log or node.stderr_log %}
-            <span>{{ ui.codex_team.log_paths }}: {{ node.stdout_log or ui.common.none }} / {{ node.stderr_log or ui.common.none }}</span>
+            {% if node.stdout_href %}
+            <a href="{{ node.stdout_href }}">{{ ui.codex_team.open_stdout }}</a>
+            {% endif %}
+            {% if node.stderr_href %}
+            <a href="{{ node.stderr_href }}">{{ ui.codex_team.open_stderr }}</a>
             {% endif %}
           </div>
+          {% if node.last_message_path or node.stdout_log or node.stderr_log %}
+          <details class="codex-step-detail">
+            <summary>{{ ui.codex_team.linked_resources }}</summary>
+            <dl>
+              <div>
+                <dt>{{ ui.codex_team.last_message }}</dt>
+                <dd>{{ node.last_message_path or ui.common.none }}</dd>
+              </div>
+              <div>
+                <dt>stdout</dt>
+                <dd>{{ node.stdout_log or ui.common.none }}</dd>
+              </div>
+              <div>
+                <dt>stderr</dt>
+                <dd>{{ node.stderr_log or ui.common.none }}</dd>
+              </div>
+            </dl>
+          </details>
+          {% endif %}
         </div>
       </article>
       {% endfor %}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,10 +71,20 @@ class CodexTeamFlowNode:
     reason: str | None
     returncode: int | None
     last_message_path: str | None
+    last_message_href: str | None
     stdout_log: str | None
+    stdout_href: str | None
     stderr_log: str | None
+    stderr_href: str | None
     artifact_href: str | None
     is_inferred: bool = False
+
+
+@dataclass(frozen=True)
+class CodexTeamPreviewSegment:
+    kind: str
+    text: str
+    level: int = 0
 
 
 @dataclass(frozen=True)
@@ -90,6 +101,9 @@ class CodexTeamPreview:
     action: str | None = None
     target: str | None = None
     reason: str | None = None
+    line_count: int = 0
+    size_label: str = "0 B"
+    segments: tuple[CodexTeamPreviewSegment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -369,6 +383,9 @@ class CodexTeamDashboardQueryService:
         started = self._format_time(str(node.get("started_at") or ""))
         ended = self._format_time(str(node.get("ended_at") or ""))
         artifact_href = self._artifact_href_for_role(run_id, str(node.get("role") or ""), node.get("attempt"))
+        last_message_path = _optional_str(node.get("last_message_path"))
+        stdout_log = _optional_str(node.get("stdout_log"))
+        stderr_log = _optional_str(node.get("stderr_log"))
         duration_value = node.get("duration_seconds")
         return CodexTeamFlowNode(
             node_id=str(node.get("node_id") or "node"),
@@ -385,9 +402,12 @@ class CodexTeamDashboardQueryService:
             target=_optional_str(node.get("target")),
             reason=_optional_str(node.get("reason")),
             returncode=_optional_int(node.get("returncode")),
-            last_message_path=_optional_str(node.get("last_message_path")),
-            stdout_log=_optional_str(node.get("stdout_log")),
-            stderr_log=_optional_str(node.get("stderr_log")),
+            last_message_path=last_message_path,
+            last_message_href=self._log_href_for_display_path(run_id, last_message_path),
+            stdout_log=stdout_log,
+            stdout_href=self._log_href_for_display_path(run_id, stdout_log),
+            stderr_log=stderr_log,
+            stderr_href=self._log_href_for_display_path(run_id, stderr_log),
             artifact_href=artifact_href,
             is_inferred=bool(node.get("is_inferred")),
         )
@@ -473,7 +493,8 @@ class CodexTeamDashboardQueryService:
         logs: list[CodexTeamPreview] = []
         for path in sorted(logs_dir.glob("*")):
             if path.is_file():
-                logs.append(self._preview_path(run_id, f"log_{len(logs) + 1}", path.name, path, "log", char_limit=LOG_CHAR_LIMIT))
+                kind = "json" if path.name.endswith(".json") else "log"
+                logs.append(self._preview_path(run_id, _log_preview_key(path), path.name, path, kind, char_limit=LOG_CHAR_LIMIT))
         return logs
 
     def _preview_path(
@@ -504,8 +525,10 @@ class CodexTeamDashboardQueryService:
             return CodexTeamPreview(key, label, kind, path_value, "error", "", anchor, error_message=str(exc))
         is_truncated = len(data) > char_limit
         text = data[:char_limit].decode("utf-8", errors="replace")
+        line_count = text.count("\n") + (1 if text else 0)
+        size_label = _format_bytes(len(data))
         if not text.strip():
-            return CodexTeamPreview(key, label, kind, path_value, "empty", "", anchor)
+            return CodexTeamPreview(key, label, kind, path_value, "empty", "", anchor, line_count=0, size_label=size_label)
         action = target = reason = None
         if kind == "json":
             try:
@@ -518,8 +541,21 @@ class CodexTeamDashboardQueryService:
                 if len(text) > char_limit:
                     text = text[:char_limit]
                     is_truncated = True
+                line_count = text.count("\n") + 1
             except (json.JSONDecodeError, OSError) as exc:
-                return CodexTeamPreview(key, label, kind, path_value, "error", text, anchor, is_truncated, str(exc))
+                return CodexTeamPreview(
+                    key,
+                    label,
+                    kind,
+                    path_value,
+                    "error",
+                    text,
+                    anchor,
+                    is_truncated,
+                    str(exc),
+                    line_count=line_count,
+                    size_label=size_label,
+                )
         elif kind == "jsonl":
             rows: list[Any] = []
             try:
@@ -530,8 +566,24 @@ class CodexTeamDashboardQueryService:
                 if len(text) > char_limit:
                     text = text[:char_limit]
                     is_truncated = True
+                line_count = text.count("\n") + 1
             except (json.JSONDecodeError, OSError) as exc:
-                return CodexTeamPreview(key, label, kind, path_value, "error", text, anchor, is_truncated, str(exc))
+                return CodexTeamPreview(
+                    key,
+                    label,
+                    kind,
+                    path_value,
+                    "error",
+                    text,
+                    anchor,
+                    is_truncated,
+                    str(exc),
+                    line_count=line_count,
+                    size_label=size_label,
+                )
+        segments: tuple[CodexTeamPreviewSegment, ...] = ()
+        if kind == "markdown":
+            segments = _markdown_segments(text.rstrip())
         return CodexTeamPreview(
             key=key,
             label=label,
@@ -544,6 +596,9 @@ class CodexTeamDashboardQueryService:
             action=action,
             target=target,
             reason=reason,
+            line_count=line_count,
+            size_label=size_label,
+            segments=segments,
         )
 
     def _route_decision(self, run_id: str) -> CodexTeamRouteDecision:
@@ -594,6 +649,16 @@ class CodexTeamDashboardQueryService:
             anchor = "plan_evaluation" if attempt_int <= 0 else f"evaluation_{attempt_int:03d}"
             return self._path_with_locale(f"/codex-team/{run_id}") + f"#artifact-{anchor}"
         return None
+
+    def _log_href_for_display_path(self, run_id: str, path_value: str | None) -> str | None:
+        if not path_value:
+            return None
+        path = Path(path_value)
+        if not self.store.is_inside_run_home(run_id, path):
+            return None
+        if path.parent != self.store.run_home(run_id) / "artifacts" / "logs":
+            return None
+        return self._path_with_locale(f"/codex-team/{run_id}") + f"#artifact-{_log_preview_key(path)}"
 
     def _format_time(self, value: str):
         return format_timestamp_for_client(value, fallback=self._messages["unknown"])
@@ -659,6 +724,66 @@ def _format_seconds(seconds: float) -> str:
         return f"{minutes}m {remainder}s"
     hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes}m"
+
+
+def _format_bytes(value: int) -> str:
+    if value < 1024:
+        return f"{value} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.1f} KB"
+    return f"{value / (1024 * 1024):.1f} MB"
+
+
+def _log_preview_key(path: Path) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", path.name).strip("_").lower()
+    return f"log_{slug or 'file'}"
+
+
+def _markdown_segments(text: str) -> tuple[CodexTeamPreviewSegment, ...]:
+    segments: list[CodexTeamPreviewSegment] = []
+    paragraph: list[str] = []
+    code_lines: list[str] = []
+    in_code = False
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            segments.append(CodexTeamPreviewSegment("paragraph", " ".join(paragraph)))
+            paragraph.clear()
+
+    def flush_code() -> None:
+        if code_lines:
+            segments.append(CodexTeamPreviewSegment("code", "\n".join(code_lines).rstrip()))
+            code_lines.clear()
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if line.strip().startswith("```"):
+            if in_code:
+                flush_code()
+                in_code = False
+            else:
+                flush_paragraph()
+                in_code = True
+            continue
+        if in_code:
+            code_lines.append(raw_line)
+            continue
+        if not line.strip():
+            flush_paragraph()
+            continue
+        heading = re.match(r"^(#{1,4})\s+(.+)$", line)
+        if heading:
+            flush_paragraph()
+            segments.append(CodexTeamPreviewSegment("heading", heading.group(2).strip(), len(heading.group(1))))
+            continue
+        if line.lstrip().startswith(("- ", "* ")):
+            flush_paragraph()
+            segments.append(CodexTeamPreviewSegment("list_item", line.lstrip()[2:].strip()))
+            continue
+        paragraph.append(line.strip())
+    flush_paragraph()
+    flush_code()
+    return tuple(segments)
 
 
 def _error_text(error: object) -> str | None:
