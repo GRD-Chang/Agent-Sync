@@ -488,58 +488,66 @@ def test_role_prompts_include_core_worker_standards(tmp_path: Path) -> None:
         assert "Round harness policy" in prompt
         assert "Generator 是 build round owner" in prompt
         assert "Evaluator 只做 round-level review" in prompt
-        assert "Blocking fix policy" in prompt
-        assert "blocking_fixes / required_fixes 只放阻塞完整 spec" in prompt
-        assert "required_scope 仍未完成" in prompt
-        assert "才允许 continue" in prompt
+        assert "Review gate policy" in prompt
+        assert "input.md 是最高优先级事实源" in prompt
+        assert "Issues 为无且证据充分时允许" in prompt
+        assert "continue 只表示当前 build round 合格" in prompt
         assert "Run artifact 目录规则" in prompt
         assert "attempts/<n>/implementation.md" in prompt
         assert "attempts/<n>/evaluation.md" in prompt
         assert "metadata.json" in prompt
         assert "next_action.json" in prompt
         assert "评审术语" in prompt
-        assert "acceptance = 本轮交付必须满足的可观察条件" in prompt
-        assert "verification = 如何证明 acceptance 已满足" in prompt
+        assert "Done Contract = pass 前必须真实满足的硬完成条件" in prompt
+        assert "Verification Contract = 证明 Done Contract 已满足所需的测试、检查和证据" in prompt
         assert "base grading criteria" in prompt
-        assert "task-specific grading criteria = 当前任务特有的可判定质量项" in prompt
+        assert "Evaluation Criteria = Planner 为当前任务定义的 3-5 条质量轴" in prompt
         assert "不做无关重构" in prompt
         assert "checkpoint" not in prompt
         assert "candidate_boundary" not in prompt
         assert "completion_scope" not in prompt
         assert "implementation_strategy" not in prompt
 
-    assert "有野心但可执行的产品/工程 spec" in planner_prompt
-    assert "定义 goal_and_scope、product_spec、architecture_direction、engineering_guidance" in planner_prompt
-    assert "为本任务设计 task-specific grading criteria" in planner_prompt
+    assert "产品契约制定者，不是详细工程方案作者" in planner_prompt
+    assert "判断本轮是 Scope-Lock 还是 Concept-Expand" in planner_prompt
+    assert "简洁、可执行、可验证且不漂移的产品契约" in planner_prompt
+    assert "少而强的 Evaluation Criteria" in planner_prompt
     assert "工作规则" in planner_prompt
-    assert "plan 必须是高层完整 spec" in planner_prompt
-    assert "小 helper、小测试修复和普通 bug 修复应作为 Generator 内部步骤" in planner_prompt
-    assert "required_scope 不是函数级实现计划" in planner_prompt
-    assert "engineering_guidance 只能提供高层工程方向" in planner_prompt
-    assert "不写成执行脚本或外部 review gate" in planner_prompt
+    assert "input.md 是最高优先级事实源" in planner_prompt
+    assert "Scope-Lock：用户已经给出明确目标" in planner_prompt
+    assert "Concept-Expand：用户只给出初步想法" in planner_prompt
+    assert "用户显式 required 不能静默降级为 later_scope" in planner_prompt
+    assert "不能用 fake/stub/controlled failure 包装成 pass" in planner_prompt
+    assert "不替 Generator 预先规定函数级、文件级、类级" in planner_prompt
     assert "Markdown 字段只是关键锚点，不是表格式 schema" in planner_prompt
-    assert "goal_and_scope、product_spec、architecture_direction、engineering_guidance" in planner_prompt
-    assert "acceptance_and_verification、risks_and_open_questions" in planner_prompt
-    assert "goal_and_scope 中写清 required_scope、later_scope、non-goal 和 final_condition" in planner_prompt
-    assert "product_spec 中写清完整 build round 必须交付的能力" in planner_prompt
-    assert "acceptance_and_verification 中写清验收、验证方法和 task-specific grading criteria" in planner_prompt
-    assert "criteria 必须覆盖当前任务特有风险" in planner_prompt
-    assert "实现路径由 Generator 结合代码事实决定" in planner_prompt
-    assert "Generator 可以在 spec 边界内自主选择实现顺序" in planner_prompt
-    assert "engineering_guidance 粒度" in planner_prompt
-    assert "避免过粗" in planner_prompt
+    assert "Planning Mode、Input Contract、Outcome Contract、Scope Contract、Done Contract、Verification Contract、Evaluation Criteria" in planner_prompt
+    assert "不要写 Route section" in planner_prompt
+    assert "Input Contract 中逐条列出 input.md 的显式要求" in planner_prompt
+    assert "每条标记 required / non_goal / blocked / needs_clarification" in planner_prompt
+    assert "Outcome Contract 中写清完成后用户能观察到什么变化" in planner_prompt
+    assert "Scope Contract 中写清本轮必须完成什么" in planner_prompt
+    assert "Done Contract 不能弱于 Input Contract" in planner_prompt
+    assert "Verification Contract 中写清需要运行的测试、smoke、人工检查和证据" in planner_prompt
+    assert "如果包含 E2E，必须列出各链路段哪些必须真实" in planner_prompt
+    assert "Evaluation Criteria 中默认写 3-5 条任务特定质量标准" in planner_prompt
+    assert "只有任务风险确实需要时才增加条目" in planner_prompt
+    assert "每条标准都说明要评判的核心质量" in planner_prompt
+    assert "什么表现算好、什么表现应失败" in planner_prompt
+    assert "不要堆实现 checklist" in planner_prompt
+    assert "实现路径由 Generator 根据代码事实决定" in planner_prompt
+    assert "目标忠实度、核心能力深度、集成真实性" in planner_prompt
     assert "持久化、状态机、权限、安全、公共接口、复杂迁移" in planner_prompt
     assert "自主选择实现顺序" in generator_prompt
     assert "implementation.md 中说明关键判断" in generator_prompt
-    assert "需求、产品边界、acceptance、verification、设计或执行路径不清" in generator_prompt
+    assert "需求、产品边界、Done Contract、Verification Contract、设计或执行路径不清" in generator_prompt
     assert "开发前先自主调研" in generator_prompt
     assert "开源项目、优秀实现、官方文档或成熟实践" in generator_prompt
     assert "只复用设计思想、接口模式、验证策略和风险控制方法" in generator_prompt
-    assert "修复轮必须读取 latest evaluation.md 的 blocking_fixes / required_fixes" in generator_prompt
+    assert "修复轮必须读取 latest evaluation.md 的 Issues、Criteria Review 和 Route Decision" in generator_prompt
     assert "在 plan 边界内连续推进完整 build round" in generator_prompt
-    assert "spec 中的所有设计、required_scope 和 acceptance 都已实现" in generator_prompt
+    assert "产品契约、Done Contract 和 Verification Contract 都已实现" in generator_prompt
     assert "遵循软件工程原则" in generator_prompt
-    assert "完成完整 spec 才能交给 Evaluator；但 commit 不需要等到完整 spec 完成" in generator_prompt
+    assert "完成产品契约才能交给 Evaluator；但 commit 不需要等到产品契约完成" in generator_prompt
     assert "按可审阅的逻辑单元持续小步 commit" in generator_prompt
     assert "commit 是内部工程持久化记录，不是外部交审点，也不是交审信号" in generator_prompt
     assert "用后续 fix commit 修复" in generator_prompt
@@ -550,23 +558,24 @@ def test_role_prompts_include_core_worker_standards(tmp_path: Path) -> None:
     assert "如果问题仍在你的实现能力范围内，继续实现和自测" in generator_prompt
     assert "不要把 Evaluator 当作每个小步骤后的确认按钮" in generator_prompt
     assert "工作规则" in generator_prompt
-    assert "处理 blocking_fixes，并把 non_blocking_findings、scope_status、route_decision 作为下一批输入" in generator_prompt
+    assert "处理 evaluation.md 的 Issues，并把 Criteria Review、Evidence Review 和 Route Decision 作为下一批输入" in generator_prompt
     assert "自主管理内部任务拆分、实现顺序、自测和修复" in generator_prompt
-    assert "summary、build_round_status、changes_and_evidence、scope_status" in generator_prompt
-    assert "feedback_addressed、known_limitations" in generator_prompt
-    assert "build_round_status 中说明完整 spec 是否已经实现并可进入 review" in generator_prompt
+    assert "summary、build_round_status、changes_and_evidence、contract_status" in generator_prompt
+    assert "feedback_addressed、residual_risks" in generator_prompt
+    assert "build_round_status 中说明产品契约是否已经实现并可进入 review" in generator_prompt
     assert "changes_and_evidence 中写清关键改动、必要调研、设计或根因判断、测试和验证证据" in generator_prompt
-    assert "scope_status 中写清 completed_scope、remaining_scope" in generator_prompt
-    assert "feedback_addressed 中说明上一轮 blocking_fixes" in generator_prompt
+    assert "contract_status 中写清 Done Contract、Verification Contract、completed_scope 和 remaining_scope" in generator_prompt
+    assert "feedback_addressed 中说明上一轮 Issues、Criteria Review、Evidence Review 和 Route Decision 如何处理" in generator_prompt
+    assert "residual_risks 中只写真实存在的剩余风险" in generator_prompt
     assert "本轮提交的 commit hash" in generator_prompt
     assert "没有提交 commit" in generator_prompt
     assert "仍有未提交的本轮 task-scoped repo 改动" in generator_prompt
     assert "结论是 continue" in generator_prompt
-    assert "build_review、non_blocking_findings、scope_status 和 route_decision" in generator_prompt
+    assert "Verdict、Criteria Review、Evidence Review、Issues 和 Route Decision" in generator_prompt
     assert "修改 repo 前先查看 git status" in generator_prompt
     assert "如果任务表现为 bug、回归、异常或失败链路不清，先做根因调查" in generator_prompt
     assert "不要修改 plan.md 或 evaluation.md 来适配自己的实现" in generator_prompt
-    assert "只有完整 spec 已实现、自测完成且 implementation.md 已写好" in generator_prompt
+    assert "只有产品契约已实现、自测完成且 implementation.md 已写好" in generator_prompt
     assert "本轮 task-scoped repo 改动已完成验证并提交" in generator_prompt
     assert "不能提交的本轮改动必须在 implementation.md 中说明文件、原因和下一步" in generator_prompt
     assert "helper、schema、fixture、CLI 子命令、局部 bug fix" in generator_prompt
@@ -574,44 +583,59 @@ def test_role_prompts_include_core_worker_standards(tmp_path: Path) -> None:
     assert "action=needs_design,target=planner" in generator_prompt
     assert "Generator 不能使用 action=stop,target=system" in generator_prompt
     assert "评估规则" in evaluator_prompt
-    assert "不是第二个 Generator" in evaluator_prompt
-    assert "判断 spec 满足度、scope_status、validation 和 blocking/non-blocking 问题" in evaluator_prompt
-    assert "确保最终 JSON 路由与 evaluation.md 的 route_decision 一致" in evaluator_prompt
+    assert "批判性的专家评审者" in evaluator_prompt
+    assert "不是第二个 Generator，也不是风险分拣员" in evaluator_prompt
+    assert "是否忠实于 input.md、plan.md 的产品契约和真实可用性" in evaluator_prompt
+    assert "implementation evaluation 必须审查相关源码和真实 diff" in evaluator_prompt
+    assert "不能只根据 implementation.md、日志摘要或测试结果下结论" in evaluator_prompt
+    assert "有影响用户目标、Input Contract、Done Contract、真实性、安全性、资源控制或可维护性的实质问题，就不能 pass" in evaluator_prompt
+    assert "确保最终 JSON 路由与 evaluation.md 的 Route Decision 一致" in evaluator_prompt
+    assert "input.md 是最高优先级事实源" in evaluator_prompt
+    assert "如果 plan.md 弱化、遗漏或重解释用户显式 required / non_goal / forbidden 项" in evaluator_prompt
+    assert "如果 implementation 满足 plan.md 但不满足 input.md" in evaluator_prompt
     assert "不要只读 summary" in evaluator_prompt
-    assert "当前 implementation.md、代码 diff 和测试证据" in evaluator_prompt
+    assert "当前 implementation.md、相关源码、真实代码 diff 和测试证据" in evaluator_prompt
+    assert "代码审查必须覆盖本轮修改文件、关键调用链、接口边界、错误处理、状态持久化和测试覆盖" in evaluator_prompt
     assert "implementation.md 记录的 commit hash" in evaluator_prompt
     assert "git show --stat" in evaluator_prompt
+    assert "如果没有 commit，使用 git diff / git status 审查未提交的 task-scoped 改动" in evaluator_prompt
     assert "没有遗漏的 task-scoped dirty changes" in evaluator_prompt
-    assert "task-specific grading criteria 和 review focus 进行逐项 grading" in evaluator_prompt
+    assert "同时对照 base criteria 和 plan.md 的 3-5 条 Evaluation Criteria" in evaluator_prompt
+    assert "两层 criteria 都必须评审" in evaluator_prompt
+    assert "Issues 中只列导致当前不能 pass 的实质问题" in evaluator_prompt
+    assert "用户显式 required 项、Done Contract、真实性、安全性相关标准没有降低标准通过选项" in evaluator_prompt
+    assert "controlled failure 只能证明 failure path" in evaluator_prompt
     assert "评估模式" in evaluator_prompt
     assert "plan evaluation" in evaluator_prompt
     assert "不要求 diff" in evaluator_prompt
-    assert "product context、scope、engineering_guidance" in evaluator_prompt
+    assert "Input Contract、Done Contract、Verification Contract、Evaluation Criteria" in evaluator_prompt
     assert "implementation evaluation" in evaluator_prompt
-    assert "risk_flags、open_questions 和 task-specific grading criteria" in evaluator_prompt
+    assert "必须审查相关源码与真实 diff" in evaluator_prompt
+    assert "如果 plan.md 没有 Evaluation Criteria" in evaluator_prompt
     assert "不做默认逐工作区域 gate" in evaluator_prompt
     assert "Evaluator 是 round-level QA，不是频繁打断 Generator 的调度器" in evaluator_prompt
-    assert "提前交审、required_scope 未完成、验收证据缺失或完整 spec 未满足都属于阻塞项" in evaluator_prompt
-    assert "non_blocking_findings" in evaluator_prompt
-    assert "summary、build_review、blocking_fixes、non_blocking_findings、scope_status、route_decision" in evaluator_prompt
-    assert "build_review 中说明完整 spec 满足度" in evaluator_prompt
-    assert "base criteria 与 task-specific grading criteria 的逐项结论" in evaluator_prompt
-    assert "route_decision 必须解释最终 JSON 路由" in evaluator_prompt
+    assert "Verdict、Contract Fidelity、Evidence Review、Criteria Review、Issues、Route Decision" in evaluator_prompt
+    assert "Authenticity Review" in evaluator_prompt
+    assert "Verdict 中写 pass / needs_fix / needs_design / continue" in evaluator_prompt
+    assert "Contract Fidelity 中对照 input.md 和 plan.md" in evaluator_prompt
+    assert "Evidence Review 中列出实际检查过的源码文件、diff/commit/worktree" in evaluator_prompt
+    assert "Criteria Review 中同时评审 base criteria 和 plan.md 的 Evaluation Criteria" in evaluator_prompt
+    assert "每条给出 pass / fail / blocked / not_applicable" in evaluator_prompt
+    assert "Issues 中列出所有导致当前不能 pass 的问题" in evaluator_prompt
+    assert "Route Decision 必须解释最终 JSON 路由" in evaluator_prompt
     assert "本轮 review 通过不等于整个 run 结束" in evaluator_prompt
-    assert "先检查 final_condition 和 required_scope" in evaluator_prompt
-    assert "remaining_scope" in evaluator_prompt
+    assert "先检查 Input Contract、Done Contract、Verification Contract 和 Evaluation Criteria" in evaluator_prompt
     assert "不要修改 repo 源码来替 Generator 完成任务" in evaluator_prompt
-    assert "证据不足、验收不满足或存在 fail 时不能 pass" in evaluator_prompt
+    assert "任一 base criteria 或 plan Evaluation Criteria 为 fail / blocked 时不能 pass" in evaluator_prompt
     assert "product_depth、feature_completeness、workflow_completeness" in evaluator_prompt
     assert "默认路由" in evaluator_prompt
-    assert "blocking issue -> action=needs_fix,target=generator" in evaluator_prompt
-    assert "required_scope 仍有 remaining_scope、完整 spec 未满足、验收证据不足或 Generator 提前交审 -> action=needs_fix,target=generator" in evaluator_prompt
-    assert "剩余工作仅为 later_scope、非阻塞增强或可接受残余风险 -> action=continue,target=generator" in evaluator_prompt
-    assert "final_condition 满足，remaining_scope 为空或仅剩 later_scope" in evaluator_prompt
-    assert "完整 spec 边界无法判定 -> action=needs_design,target=planner" in evaluator_prompt
-    assert "continue 不是忽略评审意见" in evaluator_prompt
+    assert "实现有实质问题但方向明确" in evaluator_prompt
+    assert "plan 弱化 input" in evaluator_prompt
+    assert "当前 build round 合格，但 run 明确还有下一阶段 required work" in evaluator_prompt
+    assert "Issues 为无，证据充分 -> action=pass,target=system" in evaluator_prompt
+    assert "不要用 continue 绕开 Issues" in evaluator_prompt
     assert "action=continue,target=generator" in evaluator_prompt
-    assert "engineering_guidance 已失效" in evaluator_prompt
+    assert "Done Contract、Verification Contract 或 Evaluation Criteria 需要调整" in evaluator_prompt
     assert "action=pass,target=system" in evaluator_prompt
     assert "不要使用 action=stop,target=system" in evaluator_prompt
 
